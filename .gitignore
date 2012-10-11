@@ -1,0 +1,16 @@
+# Temporary files #
+###################
+*~
+
+# Compiled Binaries and Bytecode #
+##################################
+*.o
+*.pyc
+
+# CMake temporary files #
+#########################
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+Makefile
+CMakeFiles
