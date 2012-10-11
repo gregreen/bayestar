@@ -1,9 +1,9 @@
 /*
  * interpolation.h
  * 
- * Classes which implement linear and bilinear interpolation on
- * arbitrary objects. The objects must have addition and scalar
- * multiplication defined on them.
+ * Classes which implement linear, bilinear and multilinear
+ * interpolation on arbitrary objects. The objects must have
+ * addition and scalar multiplication defined on them.
  * 
  * This file is part of bayestar.
  * Copyright 2012 Gregory Green
