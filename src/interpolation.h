@@ -28,6 +28,8 @@
 #ifndef __INTERPOLATION_H_
 #define __INTERPOLATION_H_
 
+#include <iostream>
+
 #include <math.h>
 #include <limits>
 #include <vector>
@@ -202,6 +204,7 @@ class TMultiLinearInterp {
 	T *f;					// Function values
 	double *min, *max, *inv_dx;
 	unsigned int *N;
+	unsigned int length;
 	
 	unsigned int ndim;
 	unsigned int *coeff;
@@ -232,7 +235,7 @@ public:
 private:
 	int get_index(double *x) const;
 	int get_lower(double *x) const;
-	void set_index_arr(double *x);
+	int set_index_arr(double *x);
 };
 
 
@@ -240,19 +243,19 @@ template<class T>
 TMultiLinearInterp<T>::TMultiLinearInterp(double *_min, double *_max, unsigned int *_N, unsigned int _ndim, T &_empty)
 	: ndim(_ndim), empty(_empty)
 {
-	unsigned int length = 1;
-	coeff = new double[ndim];
+	length = 1;
+	coeff = new unsigned int[ndim];
 	min = new double[ndim];
 	max = new double[ndim];
 	inv_dx = new double[ndim];
 	N = new unsigned int[ndim];
 	for(int i=0; i<ndim; i++) {
-		coeff[i] = length;
-		length *= N[i];
 		min[i] = _min[i];
 		max[i] = _max[i];
 		N[i] = _N[i];
 		inv_dx[i] = (double)(N[i] - 1) / (max[i] - min[i]);
+		coeff[i] = length;
+		length *= N[i];
 	}
 	
 	f = new T[length];
@@ -264,9 +267,9 @@ TMultiLinearInterp<T>::TMultiLinearInterp(double *_min, double *_max, unsigned i
 	// Compute Deltas (difference in index from lower corner) to corners of box
 	N_Delta = (1 << ndim);
 	Delta_idx = new unsigned int[N_Delta];
-	for(unsigned int i=0; i<N_Delta; i++) {
+	for(int i=0; i<N_Delta; i++) {
 		Delta_idx[i] = 0;
-		for(unsigned int k=0; k<ndim; k++) {
+		for(int k=0; k<ndim; k++) {
 			Delta_idx[i] += coeff[k] * ((i >> k) & 1);
 		}
 	}
@@ -291,7 +294,7 @@ int TMultiLinearInterp<T>::get_index(double* x) const {
 	for(int i=0; i<ndim; i++) {
 		k = (x[i] - min[i]) * inv_dx[i] + 0.5;
 #ifndef INTERP_NO_BOUNDS_CHECK
-		assert((k >= 0) && (k < N[i]));
+		if((k < 0) || (k >= N[i])) { return -1; }
 #endif // INTERP_NO_BOUNDS_CHECK
 		index += coeff[i] * k;
 	}
@@ -304,38 +307,39 @@ int TMultiLinearInterp<T>::get_lower(double* x) const {
 	int k;
 	for(int i=0; i<ndim; i++) {
 		k = (x[i] - min[i]) * inv_dx[i];
-#ifndef INTERP_NO_BOUNDS_CHECK
-		assert((k >= 0) && (k < N[i]));
-#endif // INTERP_NO_BOUNDS_CHECK
+		if((k < 0) || (k >= N[i])) { return -1; }
 		index += coeff[i] * k;
 	}
 	return index;
 }
 
 template<class T>
-void TMultiLinearInterp<T>::set_index_arr(double* x) {
-	int k = 0;
+int TMultiLinearInterp<T>::set_index_arr(double* x) {
+	int index = 0;
+	int k;
 	for(int i=0; i<ndim; i++) {
 		k = (x[i] - min[i]) * inv_dx[i];
-#ifndef INTERP_NO_BOUNDS_CHECK
-		assert((k >= 0) && (k < N[i]));
-#endif // INTERP_NO_BOUNDS_CHECK
+		if((k < 0) || (k >= N[i]-1)) { return -1; }
+		index += coeff[i] * k;
 		lower[i] = (x[i] - min[i]) * inv_dx[i] - (double)k;
 	}
+	return index;
 }
 
 
 template<class T>
 void TMultiLinearInterp<T>::set(double* x, double fx) {
 	int idx = get_index(x);
-	f[idx] = fx;
-	filled[idx] = true;
+	if(idx >= 0) {
+		f[idx] = fx;
+		filled[idx] = true;
+	}
 }
 
 template<class T>
 T TMultiLinearInterp<T>::operator()(double* x) {
-	int idx = get_lower(x);
-	set_index_arr(x);
+	int idx = set_index_arr(x);
+	if(idx < 0) { return empty; }
 	
 	double sum = 0.;
 	double term;
@@ -343,11 +347,14 @@ T TMultiLinearInterp<T>::operator()(double* x) {
 	unsigned int i_max = (1 << ndim);
 	for(unsigned int i=0; i<i_max; i++) {
 		term = f[idx + Delta_idx[i]];
+		if(!filled[idx + Delta_idx[i]]) {
+			return empty;
+		}
 		for(unsigned int k=0; k<ndim; k++) {
 			if((i >> k) & 1) {
-				term *= (1. - lower[k]);
-			} else {
 				term *= lower[k];
+			} else {
+				term *= (1. - lower[k]);
 			}
 		}
 		sum += term;
