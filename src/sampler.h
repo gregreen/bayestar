@@ -34,7 +34,7 @@
 #include <string>
 #include <math.h>
 
-#define __STDC_LIMIT_MACROS
+//#define __STDC_LIMIT_MACROS
 #include <stdint.h>
 
 #define _DM 0

@@ -14,3 +14,12 @@ cmake_install.cmake
 install_manifest.txt
 Makefile
 CMakeFiles
+
+# Build directory #
+###################
+build
+
+# KDevelop Files #
+##################
+*.kdev*
+.kdev*

@@ -224,11 +224,12 @@ public:
 	~TMultiLinearInterp();
 	
 	T operator()(double *x);
+	bool operator()(double *x, T &res);
 	
-	void set(double *x, double fx);
+	void set(double *x, T &fx);
 	
-	bool fill(double *x, double *fx);
-	bool fill(typename std::vector<T>::iterator begin, typename std::vector<T>::iterator end, std::vector<double> &fx);
+	bool fill(double *x, T *fx);
+	bool fill(typename std::vector<T>::iterator begin, typename std::vector<T>::iterator end);
 	void fill(func_t func);
 	void fill(func_ptr_t func);
 	
@@ -328,7 +329,7 @@ int TMultiLinearInterp<T>::set_index_arr(double* x) {
 
 
 template<class T>
-void TMultiLinearInterp<T>::set(double* x, double fx) {
+void TMultiLinearInterp<T>::set(double* x, T &fx) {
 	int idx = get_index(x);
 	if(idx >= 0) {
 		f[idx] = fx;
@@ -341,8 +342,8 @@ T TMultiLinearInterp<T>::operator()(double* x) {
 	int idx = set_index_arr(x);
 	if(idx < 0) { return empty; }
 	
-	double sum = 0.;
-	double term;
+	T sum;
+	T term;
 	
 	unsigned int i_max = (1 << ndim);
 	for(unsigned int i=0; i<i_max; i++) {
@@ -357,10 +358,40 @@ T TMultiLinearInterp<T>::operator()(double* x) {
 				term *= (1. - lower[k]);
 			}
 		}
-		sum += term;
+		if(i == 0){ sum = term; } else { sum += term; }
 	}
 	
 	return sum;
+}
+
+template<class T>
+bool TMultiLinearInterp<T>::operator()(double* x, T &res) {
+	int idx = set_index_arr(x);
+	if(idx < 0) {
+		//res = empty;
+		return false;
+	}
+	
+	T term;
+	
+	unsigned int i_max = (1 << ndim);
+	for(unsigned int i=0; i<i_max; i++) {
+		term = f[idx + Delta_idx[i]];
+		if(!filled[idx + Delta_idx[i]]) {
+			//res = empty;
+			return false;
+		}
+		for(unsigned int k=0; k<ndim; k++) {
+			if((i >> k) & 1) {
+				term *= lower[k];
+			} else {
+				term *= (1. - lower[k]);
+			}
+		}
+		if(i == 0){ res = term; } else { res += term; }
+	}
+	
+	return true;
 }
 
 

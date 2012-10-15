@@ -257,64 +257,80 @@ double TGalacticLOSModel::mu_FeH_disk_interp(double DM) const {
  * 
  ****************************************************************************************************************************/
 
-TSED::TSED() { }
-
-TSED::TSED(bool initialize) {
+TSED::TSED() {
 	for(unsigned int i=0; i<NBANDS; i++) { absmag[i] = 0; }
-	Mr = 0; 
-	FeH = 0;
 }
+
+TSED::TSED(bool uninitialized) { }
 
 TSED::~TSED() { }
 
 TSED& TSED::operator=(const TSED &rhs) {
 	for(unsigned int i=0; i<NBANDS; i++) { absmag[i] = rhs.absmag[i]; }
-	Mr = rhs.Mr;
-	FeH = rhs.FeH;
+	//Mr = rhs.Mr;
+	//FeH = rhs.FeH;
 	return *this;
 }
 
 TSED operator+(const TSED &sed1, const TSED &sed2) {
 	TSED tmp;
 	for(unsigned int i=0; i<NBANDS; i++) { tmp.absmag[i] = sed1.absmag[i] + sed2.absmag[i]; }
-	tmp.Mr = sed1.Mr + sed2.Mr;
-	tmp.FeH = sed1.FeH + sed2.FeH;
+	//tmp.Mr = sed1.Mr + sed2.Mr;
+	//tmp.FeH = sed1.FeH + sed2.FeH;
 	return tmp;
 }
 
 TSED operator-(const TSED &sed1, const TSED &sed2) {
 	TSED tmp;
 	for(unsigned int i=0; i<NBANDS; i++) { tmp.absmag[i] = sed1.absmag[i] - sed2.absmag[i]; }
-	tmp.Mr = sed1.Mr - sed2.Mr;
-	tmp.FeH = sed1.FeH - sed2.FeH;
+	//tmp.Mr = sed1.Mr - sed2.Mr;
+	//tmp.FeH = sed1.FeH - sed2.FeH;
 	return tmp;
 }
 
 TSED operator*(const TSED &sed, const double &a) {
 	TSED tmp;
 	for(unsigned int i=0; i<NBANDS; i++) { tmp.absmag[i] = a*sed.absmag[i]; }
-	tmp.Mr = a*sed.Mr;
-	tmp.FeH = a*sed.FeH;
+	//tmp.Mr = a*sed.Mr;
+	//tmp.FeH = a*sed.FeH;
 	return tmp;
 }
 
 TSED operator*(const double &a, const TSED &sed) {
 	TSED tmp;
 	for(unsigned int i=0; i<NBANDS; i++) { tmp.absmag[i] = a*sed.absmag[i]; }
-	tmp.Mr = a*sed.Mr;
-	tmp.FeH = a*sed.FeH;
+	//tmp.Mr = a*sed.Mr;
+	//tmp.FeH = a*sed.FeH;
 	return tmp;
 }
 
 TSED operator/(const TSED &sed, const double &a) {
 	TSED tmp;
 	for(unsigned int i=0; i<NBANDS; i++) { tmp.absmag[i] = sed.absmag[i]/a; }
-	tmp.Mr = sed.Mr / a;
-	tmp.FeH = sed.FeH / a;
+	//tmp.Mr = sed.Mr / a;
+	//tmp.FeH = sed.FeH / a;
 	return tmp;
 }
 
+TSED& TSED::operator*=(double a) {
+	for(unsigned int i=0; i<NBANDS; i++) { absmag[i] *= a; }
+	return *this;
+}
 
+TSED& TSED::operator/=(double a) {
+	for(unsigned int i=0; i<NBANDS; i++) { absmag[i] /= a; }
+	return *this;
+}
+
+TSED& TSED::operator+=(double a) {
+	for(unsigned int i=0; i<NBANDS; i++) { absmag[i] += a; }
+	return *this;
+}
+
+TSED& TSED::operator+=(const TSED &rhs) {
+	for(unsigned int i=0; i<NBANDS; i++) { absmag[i] += rhs.absmag[i]; }
+	return *this;
+}
 
 
 /****************************************************************************************************************************
@@ -437,8 +453,8 @@ bool TStellarModel::load_seds(std::string seds_fname) {
 		idx = sed_interp->get_index(Mr, FeH);
 		
 		TSED &sed_tmp = (*sed_interp)[idx];
-		sed_tmp.Mr = Mr;
-		sed_tmp.FeH = FeH;
+		//sed_tmp.Mr = Mr;
+		//sed_tmp.FeH = FeH;
 		for(unsigned int i=0; i<NBANDS-1; i++) { ss >> colors[i]; }
 		
 		// Transform colors into absolute magnitudes
@@ -470,6 +486,168 @@ double TStellarModel::get_log_lf(double Mr) {
 }
 
 
+
+/****************************************************************************************************************************
+ * 
+ * TStellarAbundance
+ * 
+ ****************************************************************************************************************************/
+
+double TStellarAbundance::IMF(double logM) {
+	if(logM <= logM_norm) {
+		return IMF_norm * exp( -(logM - logM_c)*(logM - logM_c) / (2.*sigma_logM_2) );
+	} else {
+		return IMF_norm * A_21 * pow(10, -x * logM);
+	}
+}
+
+double TStellarAbundance::SFR(double tau) {
+	if(tau >= tau_max) {
+		return 0.;
+	} else {
+		return SFR_norm * ( 1. + exp( -(tau - tau_burst)*(tau - tau_burst) / (2.*sigma_tau_2) ) );
+	}
+}
+
+void TStellarAbundance::set_IMF(double _logM_norm, double _logM_c, double _sigma_logM, double _x) {
+	logM_norm = _logM_norm;
+	logM_c = _logM_c;
+	sigma_logM_2 = _sigma_logM * _sigma_logM;
+	x = _x;
+	A_21 = pow(10, x * logM_norm) * exp( -(logM_norm - logM_c)*(logM_norm - logM_c) / (2.*sigma_logM_2) );
+	
+	// Determine normalization constant s.t. the IMF integrates to unity
+	IMF_norm = sqrt(PI) / 2. * ( 1. + erf( (logM_norm - logM_c) / (SQRT2 * _sigma_logM) ) );
+	IMF_norm += A_21 * exp( -(x * LN10) * logM_norm );
+	IMF_norm = 1. / IMF_norm;
+}
+
+void TStellarAbundance::set_SFR(double _A_burst, double _tau_burst, double _sigma_tau, double _tau_max) {
+	A_burst = _A_burst;
+	tau_burst = _tau_burst;
+	sigma_tau_2 = _sigma_tau * _sigma_tau;
+	tau_max = _tau_max;
+	
+	// Determine normalization constant s.t. the SFR integrates to unity
+	SFR_norm = 1. + A_burst * sqrt(PI) / 2. * erf((tau_max - tau_burst) / (SQRT2 * _sigma_tau));
+	SFR_norm = 1. / SFR_norm;
+}
+
+
+
+
+
+
+/****************************************************************************************************************************
+ * 
+ * TSyntheticStellarModel
+ * 
+ ****************************************************************************************************************************/
+
+TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
+	H5::H5File file(seds_fname.c_str(), H5F_ACC_RDONLY);
+	//cout << "File opened." << endl;
+	
+	H5::DataSet dataset = file.openDataSet("PARSEC PS1 Templates");
+	//cout << "Dataset opened." << endl;
+	
+	/*
+	 *  Memory datatype
+	 */
+	H5::CompType mtype(sizeof(TSynthSED));
+	mtype.insertMember("Z", HOFFSET(TSynthSED, Z), H5::PredType::NATIVE_FLOAT);
+	mtype.insertMember("logtau", HOFFSET(TSynthSED, logtau), H5::PredType::NATIVE_FLOAT);
+	mtype.insertMember("logMass_init", HOFFSET(TSynthSED, logMass_init), H5::PredType::NATIVE_FLOAT);
+	mtype.insertMember("logTeff", HOFFSET(TSynthSED, logTeff), H5::PredType::NATIVE_FLOAT);
+	mtype.insertMember("logg", HOFFSET(TSynthSED, logg), H5::PredType::NATIVE_FLOAT);
+	mtype.insertMember("M_g", HOFFSET(TSynthSED, M_g), H5::PredType::NATIVE_FLOAT);
+	mtype.insertMember("M_r", HOFFSET(TSynthSED, M_r), H5::PredType::NATIVE_FLOAT);
+	mtype.insertMember("M_i", HOFFSET(TSynthSED, M_i), H5::PredType::NATIVE_FLOAT);
+	mtype.insertMember("M_z", HOFFSET(TSynthSED, M_z), H5::PredType::NATIVE_FLOAT);
+	mtype.insertMember("M_y", HOFFSET(TSynthSED, M_y), H5::PredType::NATIVE_FLOAT);
+	
+	/*
+	 *  Dataspace
+	 */
+	hsize_t length;
+	H5::DataSpace dataspace = dataset.getSpace();
+	dataspace.getSimpleExtentDims(&length);
+	std::cout << "# of elements: " << length << std::endl;
+	
+	/*
+	 *  Read in data
+	 */
+	TSynthSED *data = new TSynthSED[length];
+	dataset.read(data, mtype);
+	
+	H5::DataSet dim_dataset = file.openDataSet("Dimensions");
+	
+	/*
+	 *  Memory datatype
+	 */
+	H5::CompType dim_mtype(sizeof(TGridDim));
+	dim_mtype.insertMember("N_Z", HOFFSET(TGridDim, N_Z), H5::PredType::NATIVE_UINT32);
+	dim_mtype.insertMember("N_logtau", HOFFSET(TGridDim, N_logtau), H5::PredType::NATIVE_UINT32);
+	dim_mtype.insertMember("N_logMass_init", HOFFSET(TGridDim, N_logMass_init), H5::PredType::NATIVE_UINT32);
+	dim_mtype.insertMember("Z_min", HOFFSET(TGridDim, Z_min), H5::PredType::NATIVE_FLOAT);
+	dim_mtype.insertMember("Z_max", HOFFSET(TGridDim, Z_max), H5::PredType::NATIVE_FLOAT);
+	dim_mtype.insertMember("logtau_min", HOFFSET(TGridDim, logtau_min), H5::PredType::NATIVE_FLOAT);
+	dim_mtype.insertMember("logtau_max", HOFFSET(TGridDim, logtau_max), H5::PredType::NATIVE_FLOAT);
+	dim_mtype.insertMember("logMass_init_min", HOFFSET(TGridDim, logMass_init_min), H5::PredType::NATIVE_FLOAT);
+	dim_mtype.insertMember("logMass_init_max", HOFFSET(TGridDim, logMass_init_max), H5::PredType::NATIVE_FLOAT);
+	
+	/*
+	 *  Read in dimensions
+	 */
+	dataset.read(&grid_dim, dim_mtype);
+	
+	/*
+	 *  Construct trilinear interpolator
+	 */
+	unsigned int N_points[3] = {grid_dim.N_logMass_init, grid_dim.N_logtau, grid_dim.N_Z};
+	double min[3] = {grid_dim.logMass_init_min, grid_dim.logtau_min, grid_dim.Z_min};
+	double max[3] = {grid_dim.logMass_init_max, grid_dim.logtau_max, grid_dim.Z_max};
+	TSED empty;
+	empty.absmag[0] = std::numeric_limits<double>::quiet_NaN();
+	empty.absmag[1] = std::numeric_limits<double>::quiet_NaN();
+	empty.absmag[2] = std::numeric_limits<double>::quiet_NaN();
+	empty.absmag[3] = std::numeric_limits<double>::quiet_NaN();
+	empty.absmag[4] = std::numeric_limits<double>::quiet_NaN();
+	sed_interp = new TMultiLinearInterp<TSED>(&min[0], &max[0], &N_points[0], 3, empty);
+	
+	TSED tmp;
+	for(unsigned int i=0; i<length; i++) {
+		Theta[0] = data[i].logMass_init;
+		Theta[1] = data[i].logtau;
+		Theta[2] = data[i].Z;
+		
+		tmp.absmag[0] = data[i].M_g;
+		tmp.absmag[1] = data[i].M_r;
+		tmp.absmag[2] = data[i].M_i;
+		tmp.absmag[3] = data[i].M_z;
+		tmp.absmag[4] = data[i].M_y;
+		
+		sed_interp->set(&Theta[0], tmp);
+	}
+	
+	delete[] data;
+}
+
+TSyntheticStellarModel::~TSyntheticStellarModel() {
+	delete sed_interp;
+}
+
+bool TSyntheticStellarModel::get_sed(double *MtZ, TSED &sed) const {
+	return (*sed_interp)(MtZ, sed);
+}
+
+bool TSyntheticStellarModel::get_sed(double logMass, double logtau, double FeH, TSED &sed) {
+	Theta[0] = logMass;
+	Theta[1] = logtau;
+	Theta[2] = FeH;
+	
+	return (*sed_interp)(&Theta[0], sed);
+}
 
 
 

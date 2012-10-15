@@ -28,10 +28,30 @@
 
 #include <string>
 #include <vector>
+#include <limits.h>
+#include <stddef.h>
+
+#include <H5Cpp.h>
 
 #include <gsl/gsl_spline.h>
 
 #include "interpolation.h"
+
+#ifndef PI
+#define PI 3.14159265358979323
+#endif // PI
+
+#ifndef SQRTPI
+#define SQRTPI 1.7724538509055159
+#endif // SQRTPI
+
+#ifndef SQRT2
+#define SQRT2 1.4142135623730951
+#endif // SQRT2
+
+#ifndef LN10
+#define LN10 2.3025850929940459
+#endif // LN10
 
 #define NBANDS 5
 
@@ -113,7 +133,7 @@ private:
 
 // Spectral energy distribution object, with operators necessary for interpolation
 struct TSED {
-	double Mr, FeH;
+	//double Mr, FeH;
 	double absmag[NBANDS];
 	
 	TSED();			// Data left unitialized
@@ -121,7 +141,7 @@ struct TSED {
 	~TSED();
 	
 	// Comparison based on absolute r-magnitude
-	bool operator<(const TSED &b) const { return Mr < b.Mr || (Mr == b.Mr && FeH < b.FeH); }
+	//bool operator<(const TSED &b) const { return Mr < b.Mr || (Mr == b.Mr && FeH < b.FeH); }
 	
 	// Operators required for bilinear interpolation of SEDs
 	TSED& operator=(const TSED &rhs);
@@ -130,6 +150,10 @@ struct TSED {
 	friend TSED operator*(const TSED &sed, const double &a);
 	friend TSED operator*(const double &a, const TSED &sed);
 	friend TSED operator/(const TSED &sed, const double &a);
+	TSED& operator*=(double a);
+	TSED& operator/=(double a);
+	TSED& operator+=(const TSED &rhs);
+	TSED& operator+=(double a);
 };
 
 
@@ -156,6 +180,74 @@ private:
 	bool load_lf(std::string lf_fname);
 	bool load_seds(std::string seds_fname);
 };
+
+// Returns a normalized creation function C(logM, tau),
+// where logM is the log (base 10) of stellar mass, and
+// tau (positive) is the time in the past. The creation
+// function is defined as
+//     C(logM, tau) = \frac{d N(logM, tau)}{d logM d t} .
+class TStellarAbundance {
+public:
+	TStellarAbundance();
+	~TStellarAbundance();
+	
+	double IMF(double logM);	// Initial mass function
+	double SFR(double tau);		// Star formation rate
+	
+	void set_IMF(double _logM_norm, double _logM_c, double _sigma_logM, double _x);
+	void set_SFR(double _A_burst, double _tau_burst, double _sigma_tau, double _tau_max);
+	
+private:
+	double IMF_norm, SFR_norm;	// Normalization constants for IMF and SFR
+	
+	// Chabrier (2003) IMF parameters
+	double A_21, logM_norm, logM_c, sigma_logM_2, x;
+	
+	// Star formation rate parameters
+	double A_burst, tau_burst, sigma_tau_2, tau_max;
+};
+
+// Synthetic stellar library, with accompanying initial mass function
+// and star formation rate.
+class TSyntheticStellarModel {
+public:
+	TSyntheticStellarModel(std::string seds_fname);
+	~TSyntheticStellarModel();
+	
+	bool get_sed(double *MtZ, TSED &sed) const;
+	bool get_sed(double logMass, double logtau, double FeH, TSED &sed);
+	
+private:
+	struct TSynthSED {
+		float Z;
+		float logtau;
+		float logMass_init;
+		float logTeff;
+		float logg;
+		float M_g;
+		float M_r;
+		float M_i;
+		float M_z;
+		float M_y;
+	};
+
+	struct TGridDim {
+		uint32_t N_Z;
+		uint32_t N_logtau;
+		uint32_t N_logMass_init;
+		float Z_min;
+		float Z_max;
+		float logtau_min;
+		float logtau_max;
+		float logMass_init_min;
+		float logMass_init_max;
+	};
+	
+	TMultiLinearInterp<TSED> *sed_interp;
+	TGridDim grid_dim;
+	double Theta[3];
+};
+
 
 // Dust extinction model
 class TExtinctionModel {
