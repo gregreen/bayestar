@@ -31,8 +31,7 @@
 
 using namespace std;
 
-
-int main(int argc, char **argv) {
+void print_model() {
 	double l = 180.;
 	double b = 90.;
 	TGalacticLOSModel los_model(l, b);
@@ -67,6 +66,34 @@ int main(int argc, char **argv) {
 		TSED sed = stellar_model.get_sed(Mr, -0.5);
 		for(unsigned int i=0; i<5; i++) {
 			cout << setw(6) << sed.absmag[i] << " ";
+		}
+		cout << endl;
+	}
+	cout << endl;
+	
+	TSyntheticStellarModel synthlib("/home/greg/projects/bayestar/data/PS1templates.h5");
+	double logtau = 9.95;
+	double FeH = -0.5;
+	cout << endl;
+	cout << "logM      IMF       SFR       Mg      Mr      Mi      Mz      My" << endl;
+	cout << "===================================================================" << endl;
+	for(double logM=-1.; logM < 1.; logM += 0.1) {
+		cout.flags(ios::left);
+		cout.precision(3);
+		cout << setw(9) << logM << " ";
+		cout << setw(9) << los_model.IMF(logM, 0) << " ";
+		cout << setw(9) << los_model.SFR(logtau, 0) << " ";
+		
+		cout.precision(4);
+		TSED sed;
+		if(synthlib.get_sed(logM, logtau, FeH, sed)) {
+			for(unsigned int i=0; i<5; i++) {
+				cout << setw(7) << sed.absmag[i] << " ";
+			}
+		} else {
+			for(unsigned int i=0; i<5; i++) {
+				cout << setw(7) << "-----   ";
+			}
 		}
 		cout << endl;
 	}
@@ -115,6 +142,10 @@ int main(int argc, char **argv) {
 		cout << endl;
 	}
 	cout << endl;
+}
+
+int main(int argc, char **argv) {
+	print_model();
 	
 	return 0;
 }

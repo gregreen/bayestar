@@ -37,9 +37,6 @@
 //#define __STDC_LIMIT_MACROS
 #include <stdint.h>
 
-#define _DM 0
-#define _Mr 1
-#define _FeH 2
 
 
 // Class for binning sparse data with minimal memory usage. This is especially useful
@@ -75,11 +72,12 @@ private:
 
 // Wrapper for parameters needed by the sampler
 struct TMCMCParams {
-	TMCMCParams(TGalacticLOSModel* _gal_model, TStellarModel* _stellar_model, TExtinctionModel* _ext_model, TStellarData* _data, double _EBV_SFD, unsigned int _N_DM, double _DM_min, double _DM_max);
+	TMCMCParams(TGalacticLOSModel* _gal_model, TSyntheticStellarModel* _stellar_model, TExtinctionModel* _ext_model,
+                    TStellarData* _data, double _EBV_SFD, unsigned int _N_DM, double _DM_min, double _DM_max);
 	~TMCMCParams();
 	
 	// Model
-	TStellarModel *stellar_model;
+	TSyntheticStellarModel *stellar_model;
 	TGalacticLOSModel *gal_model;
 	TExtinctionModel *ext_model;
 	double EBV_SFD;
@@ -101,12 +99,14 @@ struct TMCMCParams {
 
 
 // Probability densities
-double logP_single_star(const double *x, double EBV, double RV, TGalacticLOSModel *gal_model, TStellarModel *stellar_model, TExtinctionModel *ext_model, TStellarData::TMagnitudes d);
+double logP_single_star(const double *x, double EBV, double RV,
+                        const TGalacticLOSModel &gal_model, const TSyntheticStellarModel &stellar_model,
+                        TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed=NULL);
 double logP_EBV(TMCMCParams &p);
 double logP_los(const double *x, unsigned int N, TMCMCParams &p);
 
 // Sampling routines
-void sample_model(TGalacticLOSModel& galactic_model, TStellarModel& stellar_model, TExtinctionModel& ext_model, TStellarData& stellar_data);
+void sample_model(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
 
 
 #endif // _SAMPLER_H__

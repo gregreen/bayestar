@@ -49,86 +49,21 @@
 #define SQRT2 1.4142135623730951
 #endif // SQRT2
 
+#ifndef SQRT2PI
+#define SQRT2PI 2.5066282746310002
+#endif // SQRT2PI
+
 #ifndef LN10
 #define LN10 2.3025850929940459
 #endif // LN10
 
+#define _DM 0
+#define _LOGMASS 1
+#define _LOGTAU 2
+#define _FEH 3
+
 #define NBANDS 5
 
-
-// A model of the galaxy, for producing priors on number density and metallicity of stars
-class TGalacticModel {
-public:
-	// Set default model parameters
-	TGalacticModel();
-	
-	// Set custom model parameters
-	TGalacticModel(double _R0, double _Z0, double _H1, double _L1, double _f_thick, double _H2, double _L2, double _fh, double _qh, double _nh, double _R_br, double _nh_outer, double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH);
-	
-	~TGalacticModel();
-	
-	// Stellar density
-	double rho_halo(double R, double Z) const;
-	double rho_disk(double R, double Z) const;
-	
-	// Stellar metallicity
-	double mu_FeH_disk(double Z) const;
-	double log_p_FeH(double FeH, double R, double Z) const;
-	
-protected:
-	// Density parameters
-	double R0, Z0;				// Solar position
-	double H1, L1;				// Thin disk
-	double f_thick, H2, L2;			// Galactic structure (thin and thick disk)
-	double fh, qh, nh, R_br, nh_outer;	// Galactic structure (power-law halo)
-	double fh_outer;
-	
-	// Metallicity parameters
-	double mu_FeH_inf;
-	double delta_mu_FeH;
-	double H_mu_FeH;
-};
-
-
-// A model of the galaxy, interpolated along one line of sight
-class TGalacticLOSModel : public TGalacticModel {
-public:
-	// Set default model parameters
-	TGalacticLOSModel(double l, double b);
-	
-	// Set custom model parameters
-	TGalacticLOSModel(double l, double b, double _R0, double _Z0, double _H1, double _L1, double _f_thick, double _H2, double _L2, double _fh, double _qh, double _nh, double _R_br, double _nh_outer, double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH);
-	
-	~TGalacticLOSModel();
-	
-	// Stars per unit solid angle per unit distance modulus (up to a normalizing factor)
-	double log_dNdmu(double DM) const;
-	double log_dNdmu_full(double DM) const;
-	
-	// Fraction of stars in the halo at a given distance modulus (rho_halo / rho_disk)
-	double f_halo(double DM) const;
-	double f_halo_full(double DM) const;
-	
-	// Probability density of star being at given distance modulus with given metallicity
-	double log_p_FeH(double DM, double FeH) const;
-	
-	// Convert from distance modulus to R and Z
-	void DM_to_RZ(double DM, double &R, double &Z) const;
-	
-private:
-	double cos_l, sin_l, cos_b, sin_b;
-	double DM_min, DM_max, DM_samples, log_dNdmu_norm;
-	TLinearInterp *log_dNdmu_arr, *f_halo_arr, *mu_FeH_disk_arr;
-	
-	void init(double l, double b);
-	
-	// Stellar density
-	double rho_halo_interp(double DM) const;
-	double rho_disk_interp(double DM) const;
-	
-	// Stellar metallicity
-	double mu_FeH_disk_interp(double DM) const;
-};
 
 
 // Spectral energy distribution object, with operators necessary for interpolation
@@ -136,8 +71,8 @@ struct TSED {
 	//double Mr, FeH;
 	double absmag[NBANDS];
 	
-	TSED();			// Data left unitialized
-	TSED(bool initialize);	// Overloaded version initializes data to zero
+	TSED();				// Data initialized to zero
+	TSED(bool uninitialized);	// Overloaded version leaves data uninitialized
 	~TSED();
 	
 	// Comparison based on absolute r-magnitude
@@ -188,11 +123,11 @@ private:
 //     C(logM, tau) = \frac{d N(logM, tau)}{d logM d t} .
 class TStellarAbundance {
 public:
-	TStellarAbundance();
+	TStellarAbundance(int component);
 	~TStellarAbundance();
 	
-	double IMF(double logM);	// Initial mass function
-	double SFR(double tau);		// Star formation rate
+	double IMF(double logM) const;	// Initial mass function
+	double SFR(double tau) const;	// Star formation rate
 	
 	void set_IMF(double _logM_norm, double _logM_c, double _sigma_logM, double _x);
 	void set_SFR(double _A_burst, double _tau_burst, double _sigma_tau, double _tau_max);
@@ -214,7 +149,7 @@ public:
 	TSyntheticStellarModel(std::string seds_fname);
 	~TSyntheticStellarModel();
 	
-	bool get_sed(double *MtZ, TSED &sed) const;
+	bool get_sed(const double *MtZ, TSED &sed) const;
 	bool get_sed(double logMass, double logtau, double FeH, TSED &sed);
 	
 private:
@@ -262,6 +197,106 @@ private:
 	double RV_min, RV_max;
 	gsl_spline **A_spl;
 	gsl_interp_accel **acc;
+};
+
+
+// A model of the galaxy, for producing priors on number density and metallicity of stars
+class TGalacticModel {
+public:
+	// Set default model parameters
+	TGalacticModel();
+	
+	// Set custom model parameters
+	TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
+	               double _f_thick, double _H2, double _L2,
+	               double _fh, double _qh, double _nh, double _R_br, double _nh_outer,
+	               double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH);
+	
+	~TGalacticModel();
+	
+	// Stellar density
+	double rho_halo(double R, double Z) const;
+	double rho_disk(double R, double Z) const;
+	
+	// Stellar metallicity
+	double mu_FeH_disk(double Z) const;
+	double log_p_FeH(double FeH, double R, double Z) const;
+	
+	// Priors (component = {0 for disk, 1 for halo})
+	double p_FeH(double FeH, double R, double Z, int component) const;
+	double IMF(double logM, int component) const;	// Initial mass function
+	double SFR(double tau, int component) const;	// Star formation rate
+	
+	void set_IMF(int component, double _logM_norm, double _logM_c, double _sigma_logM, double _x);
+	void set_SFR(int component, double _A_burst, double _tau_burst, double _sigma_tau, double _tau_max);
+	
+protected:
+	// Density parameters
+	double R0, Z0;				// Solar position
+	double H1, L1;				// Thin disk
+	double f_thick, H2, L2;			// Galactic structure (thin and thick disk)
+	double fh, qh, nh, R_br, nh_outer;	// Galactic structure (power-law halo)
+	double fh_outer;
+	
+	// Metallicity parameters
+	double mu_FeH_inf;
+	double delta_mu_FeH;
+	double H_mu_FeH;
+	
+	// IMF and SFR of Galaxy
+	TStellarAbundance *halo_abundance;
+	TStellarAbundance *disk_abundance;
+};
+
+
+// A model of the galaxy, interpolated along one line of sight
+class TGalacticLOSModel : public TGalacticModel {
+public:
+	// Set default model parameters
+	TGalacticLOSModel(double l, double b);
+	
+	// Set custom model parameters
+	TGalacticLOSModel(double l, double b, double _R0, double _Z0, double _H1, double _L1,
+	                  double _f_thick, double _H2, double _L2, double _fh, double _qh,
+	                  double _nh, double _R_br, double _nh_outer,
+	                  double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH);
+	
+	~TGalacticLOSModel();
+	
+	// Volume element
+	double dV(double DM) const;
+	
+	// Stars per unit solid angle per unit distance modulus (up to a normalizing factor)
+	double log_dNdmu(double DM) const;
+	double log_dNdmu_full(double DM) const;
+	
+	// Fraction of stars in the halo at a given distance modulus (rho_halo / rho_disk)
+	double f_halo(double DM) const;
+	double f_halo_full(double DM) const;
+	
+	// Probability density of star being at given distance modulus with given metallicity
+	double log_p_FeH_fast(double DM, double FeH, double f_H=-1.) const;
+	
+	double p_FeH_fast(double DM, double FeH, int component) const;
+	double log_prior(double DM, double logM, double logtau, double FeH) const;
+	double log_prior(const double* x) const;
+	
+	// Convert from distance modulus to R and Z
+	void DM_to_RZ(double DM, double &R, double &Z) const;
+	
+private:
+	double cos_l, sin_l, cos_b, sin_b;
+	double DM_min, DM_max, DM_samples, log_dNdmu_norm;
+	TLinearInterp *log_dNdmu_arr, *f_halo_arr, *mu_FeH_disk_arr;
+	
+	void init(double l, double b);
+	
+	// Stellar density
+	double rho_halo_interp(double DM) const;
+	double rho_disk_interp(double DM) const;
+	
+	// Stellar metallicity
+	double mu_FeH_disk_interp(double DM) const;
 };
 
 

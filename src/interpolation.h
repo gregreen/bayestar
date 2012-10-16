@@ -220,28 +220,28 @@ public:
 	typedef T (*func_t)(double *x);
 	typedef T* (*func_ptr_t)(double *x);
 	
-	TMultiLinearInterp(double *_min, double *_max, unsigned int *_N, unsigned int _ndim, T &_empty);
+	TMultiLinearInterp(const double* _min, const double* _max, const unsigned int* _N, unsigned int _ndim, T& _empty);
 	~TMultiLinearInterp();
 	
-	T operator()(double *x);
-	bool operator()(double *x, T &res);
+	T operator()(const double *x);
+	bool operator()(const double *x, T &res);
 	
-	void set(double *x, T &fx);
+	void set(const double *x, T &fx);
 	
-	bool fill(double *x, T *fx);
+	bool fill(const double *x, T *fx);
 	bool fill(typename std::vector<T>::iterator begin, typename std::vector<T>::iterator end);
 	void fill(func_t func);
 	void fill(func_ptr_t func);
 	
 private:
-	int get_index(double *x) const;
-	int get_lower(double *x) const;
-	int set_index_arr(double *x);
+	int get_index(const double *x) const;
+	int get_lower(const double *x) const;
+	int set_index_arr(const double *x);
 };
 
 
 template<class T>
-TMultiLinearInterp<T>::TMultiLinearInterp(double *_min, double *_max, unsigned int *_N, unsigned int _ndim, T &_empty)
+TMultiLinearInterp<T>::TMultiLinearInterp(const double *_min, const double *_max, const unsigned int *_N, unsigned int _ndim, T &_empty)
 	: ndim(_ndim), empty(_empty)
 {
 	length = 1;
@@ -289,7 +289,7 @@ TMultiLinearInterp<T>::~TMultiLinearInterp() {
 
 
 template<class T>
-int TMultiLinearInterp<T>::get_index(double* x) const {
+int TMultiLinearInterp<T>::get_index(const double* x) const {
 	int index = 0;
 	int k;
 	for(int i=0; i<ndim; i++) {
@@ -303,7 +303,7 @@ int TMultiLinearInterp<T>::get_index(double* x) const {
 }
 
 template<class T>
-int TMultiLinearInterp<T>::get_lower(double* x) const {
+int TMultiLinearInterp<T>::get_lower(const double* x) const {
 	int index = 0;
 	int k;
 	for(int i=0; i<ndim; i++) {
@@ -315,7 +315,7 @@ int TMultiLinearInterp<T>::get_lower(double* x) const {
 }
 
 template<class T>
-int TMultiLinearInterp<T>::set_index_arr(double* x) {
+int TMultiLinearInterp<T>::set_index_arr(const double* x) {
 	int index = 0;
 	int k;
 	for(int i=0; i<ndim; i++) {
@@ -329,7 +329,7 @@ int TMultiLinearInterp<T>::set_index_arr(double* x) {
 
 
 template<class T>
-void TMultiLinearInterp<T>::set(double* x, T &fx) {
+void TMultiLinearInterp<T>::set(const double* x, T& fx) {
 	int idx = get_index(x);
 	if(idx >= 0) {
 		f[idx] = fx;
@@ -338,7 +338,7 @@ void TMultiLinearInterp<T>::set(double* x, T &fx) {
 }
 
 template<class T>
-T TMultiLinearInterp<T>::operator()(double* x) {
+T TMultiLinearInterp<T>::operator()(const double* x) {
 	int idx = set_index_arr(x);
 	if(idx < 0) { return empty; }
 	
@@ -365,7 +365,7 @@ T TMultiLinearInterp<T>::operator()(double* x) {
 }
 
 template<class T>
-bool TMultiLinearInterp<T>::operator()(double* x, T &res) {
+bool TMultiLinearInterp<T>::operator()(const double* x, T& res) {
 	int idx = set_index_arr(x);
 	if(idx < 0) {
 		//res = empty;

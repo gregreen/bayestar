@@ -65,16 +65,29 @@ TGalacticModel::TGalacticModel() {
 	mu_FeH_inf = -0.82;
 	delta_mu_FeH = 0.55;
 	H_mu_FeH = 500;
+	
+	// IMF and SFR
+	disk_abundance = new TStellarAbundance(0);
+	halo_abundance = new TStellarAbundance(1);
 }
 
-TGalacticModel::TGalacticModel(double _R0, double _Z0, double _H1, double _L1, double _f_thick, double _H2, double _L2, double _fh, double _qh, double _nh, double _R_br, double _nh_outer, double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
-	: R0(_R0), Z0(_Z0), H1(_H1), L1(_L1), f_thick(_f_thick), H2(_H2), L2(_L2), fh(_fh), qh(_qh), nh(_nh), R_br(_R_br), nh_outer(_nh_outer), mu_FeH_inf(_mu_FeH_inf), delta_mu_FeH(_delta_mu_FeH), H_mu_FeH(_H_mu_FeH)
+TGalacticModel::TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
+                               double _f_thick, double _H2, double _L2,
+                               double _fh, double _qh, double _nh, double _R_br, double _nh_outer,
+                               double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
+	: R0(_R0), Z0(_Z0), H1(_H1), L1(_L1), f_thick(_f_thick), H2(_H2), L2(_L2),
+	  fh(_fh), qh(_qh), nh(_nh), R_br(_R_br), nh_outer(_nh_outer),
+	  mu_FeH_inf(_mu_FeH_inf), delta_mu_FeH(_delta_mu_FeH), H_mu_FeH(_H_mu_FeH)
 {
 	fh_outer = fh * pow(R_br/R0, nh-nh_outer);
+	
+	disk_abundance = new TStellarAbundance(0);
+	halo_abundance = new TStellarAbundance(1);
 }
 
 TGalacticModel::~TGalacticModel() {
-	
+	delete disk_abundance;
+	delete halo_abundance;
 }
 
 double TGalacticModel::rho_halo(double R, double Z) const {
@@ -98,27 +111,60 @@ double TGalacticModel::mu_FeH_disk(double Z) const {
 }
 
 double TGalacticModel::log_p_FeH(double FeH, double R, double Z) const {
-	#define sqrttwopi 2.50662827
 	double f_H = rho_halo(R, Z) / rho_disk(R, Z);
 	
 	// Halo
 	double mu_H = -1.46;
 	double sigma_H = 0.3;
-	double P_tmp = f_H * exp(-(FeH-mu_H)*(FeH-mu_H)/(2.*sigma_H*sigma_H)) / (sqrttwopi*sigma_H);
+	double P_tmp = f_H * exp(-(FeH-mu_H)*(FeH-mu_H)/(2.*sigma_H*sigma_H)) / (SQRT2PI*sigma_H);
 	
 	// Metal-poor disk
 	double mu_D = mu_FeH_disk(Z) - 0.067;
 	double sigma_D = 0.2;
-	P_tmp += 0.63 * (1-f_H) * exp(-(FeH-mu_D)*(FeH-mu_D)/(2.*sigma_D*sigma_D)) / (sqrttwopi*sigma_D);
+	P_tmp += 0.63 * (1-f_H) * exp(-(FeH-mu_D)*(FeH-mu_D)/(2.*sigma_D*sigma_D)) / (SQRT2PI*sigma_D);
 	
 	// Metal-rich disk
 	double mu_D_poor = mu_D + 0.14;
 	double sigma_D_poor = 0.2;
-	P_tmp += 0.37 * (1-f_H) * exp(-(FeH-mu_D_poor)*(FeH-mu_D_poor)/(2.*sigma_D_poor*sigma_D_poor)) / (sqrttwopi*sigma_D_poor);
-	#undef sqrttwopi
+	P_tmp += 0.37 * (1-f_H) * exp(-(FeH-mu_D_poor)*(FeH-mu_D_poor)/(2.*sigma_D_poor*sigma_D_poor)) / (SQRT2PI*sigma_D_poor);
 	
 	return log(P_tmp);
 }
+
+double TGalacticModel::p_FeH(double FeH, double R, double Z, int component) const {
+	if(component == 0) {	// Disk
+		// Metal-poor disk
+		double mu_D = mu_FeH_disk(Z) - 0.067;
+		const double sigma_D = 0.2;
+		double P_tmp = 0.63 * exp(-(FeH-mu_D)*(FeH-mu_D)/(2.*sigma_D*sigma_D)) / (SQRT2PI*sigma_D);
+		
+		// Metal-rich disk
+		const double mu_D_poor = mu_D + 0.14;
+		const double sigma_D_poor = 0.2;
+		return P_tmp + 0.37 * exp(-(FeH-mu_D_poor)*(FeH-mu_D_poor)/(2.*sigma_D_poor*sigma_D_poor)) / (SQRT2PI*sigma_D_poor);
+	} else {		// Halo
+		const double mu_H = -1.46;
+		const double sigma_H = 0.3;
+		return exp(-(FeH-mu_H)*(FeH-mu_H)/(2.*sigma_H*sigma_H)) / (SQRT2PI*sigma_H);
+	}
+}
+
+double TGalacticModel::IMF(double logM, int component) const {
+	if(component == 0) {
+		return disk_abundance->IMF(logM);
+	} else {
+		return halo_abundance->IMF(logM);
+	}
+}
+
+double TGalacticModel::SFR(double tau, int component) const {
+	if(component == 0) {
+		return disk_abundance->SFR(tau);
+	} else {
+		return halo_abundance->SFR(tau);
+	}
+}
+
 
 
 /****************************************************************************************************************************
@@ -133,8 +179,12 @@ TGalacticLOSModel::TGalacticLOSModel(double l, double b)
 	init(l, b);
 }
 
-TGalacticLOSModel::TGalacticLOSModel(double l, double b, double _R0, double _Z0, double _H1, double _L1, double _f_thick, double _H2, double _L2, double _fh, double _qh, double _nh, double _R_br, double _nh_outer, double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
-	: TGalacticModel(_R0, _Z0, _H1, _L1, _f_thick, _H2, _L2, _fh, _qh, _nh, _R_br, _nh_outer, _mu_FeH_inf, _delta_mu_FeH, _H_mu_FeH)
+TGalacticLOSModel::TGalacticLOSModel(double l, double b, double _R0, double _Z0, double _H1, double _L1,
+                                     double _f_thick, double _H2, double _L2,
+                                     double _fh, double _qh, double _nh, double _R_br,
+                                     double _nh_outer, double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
+	: TGalacticModel(_R0, _Z0, _H1, _L1, _f_thick, _H2, _L2, _fh, _qh, _nh, _R_br, _nh_outer,
+	                 _mu_FeH_inf, _delta_mu_FeH, _H_mu_FeH)
 {
 	fh_outer = fh * pow(R_br/R0, nh-nh_outer);
 	init(l, b);
@@ -207,25 +257,23 @@ double TGalacticLOSModel::f_halo_full(double DM) const {
 	return f_h_tmp;
 }
 
-double TGalacticLOSModel::log_p_FeH(double DM, double FeH) const {
-	#define sqrttwopi 2.50662827
-	double f_H = f_halo(DM);
+double TGalacticLOSModel::log_p_FeH_fast(double DM, double FeH, double f_H) const {
+	if(f_H < 0.) { double f_H = f_halo(DM); }
 	
 	// Halo
 	double mu_H = -1.46;
 	double sigma_H = 0.3;
-	double P_tmp = f_H * exp(-(FeH-mu_H)*(FeH-mu_H)/(2.*sigma_H*sigma_H)) / (sqrttwopi*sigma_H);
+	double P_tmp = f_H * exp(-(FeH-mu_H)*(FeH-mu_H)/(2.*sigma_H*sigma_H)) / (SQRT2PI*sigma_H);
 	
 	// Metal-poor disk
 	double mu_D = mu_FeH_disk_interp(DM) - 0.067;
 	double sigma_D = 0.2;
-	P_tmp += 0.63 * (1-f_H) * exp(-(FeH-mu_D)*(FeH-mu_D)/(2.*sigma_D*sigma_D)) / (sqrttwopi*sigma_D);
+	P_tmp += 0.63 * (1-f_H) * exp(-(FeH-mu_D)*(FeH-mu_D)/(2.*sigma_D*sigma_D)) / (SQRT2PI*sigma_D);
 	
 	// Metal-rich disk
 	double mu_D_poor = mu_D + 0.14;
 	double sigma_D_poor = 0.2;
-	P_tmp += 0.37 * (1-f_H) * exp(-(FeH-mu_D_poor)*(FeH-mu_D_poor)/(2.*sigma_D_poor*sigma_D_poor)) / (sqrttwopi*sigma_D_poor);
-	#undef sqrttwopi
+	P_tmp += 0.37 * (1-f_H) * exp(-(FeH-mu_D_poor)*(FeH-mu_D_poor)/(2.*sigma_D_poor*sigma_D_poor)) / (SQRT2PI*sigma_D_poor);
 	
 	return log(P_tmp);
 }
@@ -248,6 +296,39 @@ double TGalacticLOSModel::mu_FeH_disk_interp(double DM) const {
 	return (*mu_FeH_disk_arr)(DM);
 }
 
+double TGalacticLOSModel::p_FeH_fast(double DM, double FeH, int component) const {
+	if(component == 0) {	// Disk
+		// Metal-poor disk
+		double mu_D = mu_FeH_disk_interp(DM) - 0.067;
+		const double sigma_D = 0.2;
+		double P_tmp = 0.63 * exp(-(FeH-mu_D)*(FeH-mu_D)/(2.*sigma_D*sigma_D)) / (SQRT2PI*sigma_D);
+		
+		// Metal-rich disk
+		double mu_D_poor = mu_D + 0.14;
+		const double sigma_D_poor = 0.2;
+		return P_tmp + 0.37 * exp(-(FeH-mu_D_poor)*(FeH-mu_D_poor)/(2.*sigma_D_poor*sigma_D_poor)) / (SQRT2PI*sigma_D_poor);
+	} else {		// Halo
+		const double mu_H = -1.46;
+		const double sigma_H = 0.3;
+		return exp(-(FeH-mu_H)*(FeH-mu_H)/(2.*sigma_H*sigma_H)) / (SQRT2PI*sigma_H);
+	}
+}
+
+double TGalacticLOSModel::log_prior(double DM, double logM, double logtau, double FeH) const {
+	double f_H = f_halo(DM);
+	double tau = pow(10, logtau);
+	double p = (1. - f_H) * IMF(logM, 0) * SFR(tau, 0) * p_FeH_fast(DM, FeH, 0);
+	p += f_H * IMF(logM, 0) * SFR(tau, 0) * p_FeH_fast(DM, FeH, 0);
+	return log_dNdmu(DM) + log(p);
+}
+
+double TGalacticLOSModel::log_prior(const double *x) const {
+	double f_H = f_halo(x[_DM]);
+	double tau = pow(10, x[_LOGTAU]);
+	double p = (1. - f_H) * IMF(x[_LOGMASS], 0) * SFR(tau, 0) * p_FeH_fast(x[_DM], x[_FEH], 0);
+	p += f_H * IMF(x[_LOGMASS], 0) * SFR(tau, 0) * p_FeH_fast(x[_DM], x[_FEH], 0);
+	return log_dNdmu(x[_DM]) + log(p);
+}
 
 
 
@@ -466,7 +547,9 @@ bool TStellarModel::load_seds(std::string seds_fname) {
 	}
 	in.close();
 	
-	if(count != N_FeH*N_Mr) { std::cerr << "# Incomplete SED library provided (grid is sparse, i.e. missing some values of (Mr,FeH)). This may cause problems." << std::endl; }
+	if(count != N_FeH*N_Mr) {
+		std::cerr << "# Incomplete SED library provided (grid is sparse, i.e. missing some values of (Mr,FeH)). This may cause problems." << std::endl;
+	}
 	std::cerr << "# Loaded " << N_FeH*N_Mr << " SEDs from " << seds_fname << std::endl;
 	
 	return true;
@@ -493,7 +576,20 @@ double TStellarModel::get_log_lf(double Mr) {
  * 
  ****************************************************************************************************************************/
 
-double TStellarAbundance::IMF(double logM) {
+// Defaults are from Chabrier (2003)
+TStellarAbundance::TStellarAbundance(int component) {
+	if(component == 0) {	// Disk defaults
+		set_IMF(0., -1.10, 0.692, 1.3);
+		set_SFR(1., 5., 2., 12.);
+	} else {		// Halo defaults
+		set_IMF(-0.155, -0.658, 0.33, 1.3);
+		set_SFR(1.e5, 11., 1., 12.5);
+	}
+}
+
+TStellarAbundance::~TStellarAbundance() { }
+
+double TStellarAbundance::IMF(double logM) const {
 	if(logM <= logM_norm) {
 		return IMF_norm * exp( -(logM - logM_c)*(logM - logM_c) / (2.*sigma_logM_2) );
 	} else {
@@ -501,7 +597,7 @@ double TStellarAbundance::IMF(double logM) {
 	}
 }
 
-double TStellarAbundance::SFR(double tau) {
+double TStellarAbundance::SFR(double tau) const {
 	if(tau >= tau_max) {
 		return 0.;
 	} else {
@@ -572,15 +668,17 @@ TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 	hsize_t length;
 	H5::DataSpace dataspace = dataset.getSpace();
 	dataspace.getSimpleExtentDims(&length);
-	std::cout << "# of elements: " << length << std::endl;
+	std::cerr << "# # of elements: " << length << std::endl;
 	
 	/*
 	 *  Read in data
 	 */
 	TSynthSED *data = new TSynthSED[length];
 	dataset.read(data, mtype);
+	std::cerr << "# Read in " << length << " stellar templates." << std::endl;
 	
 	H5::DataSet dim_dataset = file.openDataSet("Dimensions");
+	std::cerr << "# Opened 'Dimensions' dataset." << std::endl;
 	
 	/*
 	 *  Memory datatype
@@ -596,17 +694,23 @@ TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 	dim_mtype.insertMember("logMass_init_min", HOFFSET(TGridDim, logMass_init_min), H5::PredType::NATIVE_FLOAT);
 	dim_mtype.insertMember("logMass_init_max", HOFFSET(TGridDim, logMass_init_max), H5::PredType::NATIVE_FLOAT);
 	
+	hsize_t dim_length;
+	H5::DataSpace dim_dataspace = dim_dataset.getSpace();
+	dim_dataspace.getSimpleExtentDims(&dim_length);
+	std::cerr << "# # of elements: " << dim_length << std::endl;
+	
 	/*
 	 *  Read in dimensions
 	 */
-	dataset.read(&grid_dim, dim_mtype);
+	dim_dataset.read(&grid_dim, dim_mtype);
+	std::cerr << "# Read in dimensions." << std::endl;
 	
 	/*
 	 *  Construct trilinear interpolator
 	 */
 	unsigned int N_points[3] = {grid_dim.N_logMass_init, grid_dim.N_logtau, grid_dim.N_Z};
-	double min[3] = {grid_dim.logMass_init_min, grid_dim.logtau_min, grid_dim.Z_min};
-	double max[3] = {grid_dim.logMass_init_max, grid_dim.logtau_max, grid_dim.Z_max};
+	double min[3] = {grid_dim.logMass_init_min, grid_dim.logtau_min, log10(grid_dim.Z_min/0.019)};
+	double max[3] = {grid_dim.logMass_init_max, grid_dim.logtau_max, log10(grid_dim.Z_max/0.019)};
 	TSED empty;
 	empty.absmag[0] = std::numeric_limits<double>::quiet_NaN();
 	empty.absmag[1] = std::numeric_limits<double>::quiet_NaN();
@@ -615,11 +719,12 @@ TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 	empty.absmag[4] = std::numeric_limits<double>::quiet_NaN();
 	sed_interp = new TMultiLinearInterp<TSED>(&min[0], &max[0], &N_points[0], 3, empty);
 	
+	std::cerr << "# Constructing interpolating grid over synthetic magnitudes." << std::endl;
 	TSED tmp;
 	for(unsigned int i=0; i<length; i++) {
 		Theta[0] = data[i].logMass_init;
 		Theta[1] = data[i].logtau;
-		Theta[2] = data[i].Z;
+		Theta[2] = log10(data[i].Z/0.019);
 		
 		tmp.absmag[0] = data[i].M_g;
 		tmp.absmag[1] = data[i].M_r;
@@ -630,6 +735,8 @@ TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 		sed_interp->set(&Theta[0], tmp);
 	}
 	
+	std::cerr << "# Done constructing stellar library." << std::endl;
+	
 	delete[] data;
 }
 
@@ -637,7 +744,7 @@ TSyntheticStellarModel::~TSyntheticStellarModel() {
 	delete sed_interp;
 }
 
-bool TSyntheticStellarModel::get_sed(double *MtZ, TSED &sed) const {
+bool TSyntheticStellarModel::get_sed(const double* MtZ, TSED& sed) const {
 	return (*sed_interp)(MtZ, sed);
 }
 

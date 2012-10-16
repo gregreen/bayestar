@@ -106,7 +106,7 @@ double TSparseBinner::get_bin(double* x) {
  * 
  ****************************************************************************************************************************/
 
-TMCMCParams::TMCMCParams(TGalacticLOSModel *_gal_model, TStellarModel *_stellar_model, TExtinctionModel *_ext_model, TStellarData *_data, double _EBV_SFD, unsigned int _N_DM, double _DM_min, double _DM_max)
+TMCMCParams::TMCMCParams(TGalacticLOSModel *_gal_model, TSyntheticStellarModel *_stellar_model, TExtinctionModel *_ext_model, TStellarData *_data, double _EBV_SFD, unsigned int _N_DM, double _DM_min, double _DM_max)
 	: gal_model(_gal_model), stellar_model(_stellar_model), ext_model(_ext_model), data(_data), EBV_SFD(_EBV_SFD), N_DM(_N_DM), DM_min(_DM_min), DM_max(_DM_max)
 {
 	N_stars = data->star.size();
@@ -146,38 +146,44 @@ double TMCMCParams::get_EBV(double DM) {
  * 
  ****************************************************************************************************************************/
 
-double logP_single_star(const double *x, double EBV, double RV, TGalacticLOSModel *gal_model, TStellarModel *stellar_model, TExtinctionModel *ext_model, TStellarData::TMagnitudes d) {
+
+// Natural logarithm of posterior probability density for one star, given parameters x, where
+//
+//     x = {DM, Log_10(Mass_init), Log_10(Age), [Fe/H]}
+double logP_single_star(const double *x, double EBV, double RV,
+                        const TGalacticLOSModel &gal_model, const TSyntheticStellarModel &stellar_model,
+                        TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed) {
 	#define neginf -std::numeric_limits<double>::infinity()
 	double logP = 0.;
 	
-	// P(EBV|G): Flat prior for E(B-V) > 0. Don't allow DM < 0
-	if((EBV < 0.) || (x[_DM] < 0.)) { return neginf; }
+	/*
+	 *  Likelihood
+	 */
+	bool del_sed = false;
+	if(tmp_sed == NULL) {
+		del_sed = true;
+		tmp_sed = new TSED(true);
+	}
+	if(!stellar_model.get_sed(x+1, *tmp_sed)) {
+		if(del_sed) { delete tmp_sed; }
+		return neginf;
+	}
 	
-	// Make sure star is in range of template spectra
-	if(!(stellar_model->in_model(x[_Mr], x[_FeH]))) { return neginf; }
-	
-	// P(Mr|G) from luminosity function
-	double loglf_tmp = stellar_model->get_log_lf(x[_Mr]);
-	logP += loglf_tmp;
-	
-	// P(DM|G) from model of galaxy
-	double logdn_tmp = gal_model->log_dNdmu(x[_DM]);
-	logP += logdn_tmp;
-	
-	// P(FeH|DM,G) from Ivezich et al (2008)
-	double logpFeH_tmp = gal_model->log_p_FeH(x[_DM], x[_FeH]);
-	logP += logpFeH_tmp;
-	
-	// P(g,r,i,z,y|DM,Ar,Mr,FeH) from model magnitudes
-	TSED sed_bilin_interp = stellar_model->get_sed(x[_Mr], x[_FeH]);
 	double logL = 0.;
 	double tmp;
 	for(unsigned int i=0; i<NBANDS; i++) {
-		tmp = d.m[i] - x[_DM] - EBV * ext_model->get_A(RV, i);	// Re-reddened absolute magnitude
-		tmp = (sed_bilin_interp.absmag[i] - tmp) / d.err[i];
+		tmp = d.m[i] - x[_DM] - EBV * ext_model.get_A(RV, i);	// Re-reddened absolute magnitude
+		tmp = (tmp_sed->absmag[i] - tmp) / d.err[i];
 		logL -= 0.5*tmp*tmp;
 	}
 	logP += logL - d.lnL_norm;
+	
+	if(del_sed) { delete tmp_sed; }
+	
+	/*
+	 *  Priors
+	 */
+	logP += gal_model.log_prior(x);
 	
 	#undef neginf
 	return logP;
@@ -196,16 +202,24 @@ double logP_EBV(TMCMCParams &p) {
 double logP_los(const double *x, unsigned int N, TMCMCParams &p) {
 	double logP = 0.;
 	
+	// Prior on RV
+	double RV = x[0];
+	if((RV < 2.1) || (x[0] > 5.1)) {
+		return -std::numeric_limits<double>::infinity();
+	} else {
+		logP -= (RV - 3.1)*(RV - 3.1) / (2. * 0.5 * 0.5);
+	}
+	
 	// Prior on extinction
 	logP += logP_EBV(p);
 	
 	// Probabilities of stars
 	double tmp;
-	double lnp0 = -10.;
+	double lnp0 = -20.;
 	const double *x_star;
 	for(unsigned int i=0; i<p.N_stars; i++) {
-		x_star = &(x[1 + p.N_DM + 3*i]);
-		tmp = logP_single_star(x_star, p.get_EBV(x_star[_DM]), x[0], p.gal_model, p.stellar_model, p.ext_model, p.data->star[i]);
+		x_star = &(x[1 + p.N_DM + 4*i]);
+		tmp = logP_single_star(x_star, p.get_EBV(x_star[_DM]), RV, *p.gal_model, *p.stellar_model, *p.ext_model, p.data->star[i]);
 		tmp = exp(tmp - lnp0);
 		logP += lnp0 + log(tmp + exp(-tmp));	// p --> p + p0 exp(-p/p0)  (Smooth floor on outliers)
 	}
@@ -221,7 +235,7 @@ double logP_los(const double *x, unsigned int N, TMCMCParams &p) {
  * 
  ****************************************************************************************************************************/
 
-void sample_model(TGalacticLOSModel &galactic_model, TStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
+void sample_model(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
