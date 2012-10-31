@@ -173,13 +173,13 @@ double TGalacticModel::SFR(double tau, int component) const {
  * 
  ****************************************************************************************************************************/
 
-TGalacticLOSModel::TGalacticLOSModel(double l, double b) 
+TGalacticLOSModel::TGalacticLOSModel(double _l, double _b) 
 	: TGalacticModel()
 {
-	init(l, b);
+	init(_l, _b);
 }
 
-TGalacticLOSModel::TGalacticLOSModel(double l, double b, double _R0, double _Z0, double _H1, double _L1,
+TGalacticLOSModel::TGalacticLOSModel(double _l, double _b, double _R0, double _Z0, double _H1, double _L1,
                                      double _f_thick, double _H2, double _L2,
                                      double _fh, double _qh, double _nh, double _R_br,
                                      double _nh_outer, double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
@@ -187,7 +187,7 @@ TGalacticLOSModel::TGalacticLOSModel(double l, double b, double _R0, double _Z0,
 	                 _mu_FeH_inf, _delta_mu_FeH, _H_mu_FeH)
 {
 	fh_outer = fh * pow(R_br/R0, nh-nh_outer);
-	init(l, b);
+	init(_l, _b);
 }
 
 TGalacticLOSModel::~TGalacticLOSModel() {
@@ -196,8 +196,10 @@ TGalacticLOSModel::~TGalacticLOSModel() {
 	delete mu_FeH_disk_arr;
 }
 
-void TGalacticLOSModel::init(double l, double b) {
+void TGalacticLOSModel::init(double _l, double _b) {
 	// Precompute trig functions
+	l = _l;
+	b = _b;
 	cos_l = cos(0.0174532925*l);
 	sin_l = sin(0.0174532925*l);
 	cos_b = cos(0.0174532925*b);
@@ -317,7 +319,7 @@ double TGalacticLOSModel::p_FeH_fast(double DM, double FeH, int component) const
 double TGalacticLOSModel::log_prior(double DM, double logM, double logtau, double FeH) const {
 	double f_H = f_halo(DM);
 	double tau = pow(10, logtau);
-	double p = (1. - f_H) * IMF(logM, 0) * SFR(tau, 0) * p_FeH_fast(DM, FeH, 0);
+	double p = (1. - f_H) * IMF(logM, 0) * tau * SFR(tau, 0) * p_FeH_fast(DM, FeH, 0);
 	p += f_H * IMF(logM, 0) * SFR(tau, 0) * p_FeH_fast(DM, FeH, 0);
 	return log_dNdmu(DM) + log(p);
 }
@@ -325,9 +327,16 @@ double TGalacticLOSModel::log_prior(double DM, double logM, double logtau, doubl
 double TGalacticLOSModel::log_prior(const double *x) const {
 	double f_H = f_halo(x[_DM]);
 	double tau = pow(10, x[_LOGTAU]);
-	double p = (1. - f_H) * IMF(x[_LOGMASS], 0) * SFR(tau, 0) * p_FeH_fast(x[_DM], x[_FEH], 0);
+	double p = (1. - f_H) * IMF(x[_LOGMASS], 0) * tau * SFR(tau, 0) * p_FeH_fast(x[_DM], x[_FEH], 0);
 	p += f_H * IMF(x[_LOGMASS], 0) * SFR(tau, 0) * p_FeH_fast(x[_DM], x[_FEH], 0);
 	return log_dNdmu(x[_DM]) + log(p);
+}
+
+double TGalacticLOSModel::get_log_dNdmu_norm() const { return log_dNdmu_norm; }
+
+void TGalacticLOSModel::get_lb(double &_l, double &_b) const {
+	_l = l;
+	_b = b;
 }
 
 
@@ -580,10 +589,10 @@ double TStellarModel::get_log_lf(double Mr) {
 TStellarAbundance::TStellarAbundance(int component) {
 	if(component == 0) {	// Disk defaults
 		set_IMF(0., -1.10, 0.692, 1.3);
-		set_SFR(1., 5., 2., 12.);
+		set_SFR(1., 5.e9, 2.e9, 12.e9);
 	} else {		// Halo defaults
 		set_IMF(-0.155, -0.658, 0.33, 1.3);
-		set_SFR(1.e5, 11., 1., 12.5);
+		set_SFR(1.e2, 10.e9, 1.5e9, 12.5e9);
 	}
 }
 
@@ -601,7 +610,8 @@ double TStellarAbundance::SFR(double tau) const {
 	if(tau >= tau_max) {
 		return 0.;
 	} else {
-		return SFR_norm * ( 1. + exp( -(tau - tau_burst)*(tau - tau_burst) / (2.*sigma_tau_2) ) );
+		double tmp =  -(tau - tau_burst)*(tau - tau_burst) / (2.*sigma_tau_2);
+		return SFR_norm * ( 1. + A_burst * exp( -(tau - tau_burst)*(tau - tau_burst) / (2.*sigma_tau_2) ) );
 	}
 }
 
@@ -616,6 +626,9 @@ void TStellarAbundance::set_IMF(double _logM_norm, double _logM_c, double _sigma
 	IMF_norm = sqrt(PI) / 2. * ( 1. + erf( (logM_norm - logM_c) / (SQRT2 * _sigma_logM) ) );
 	IMF_norm += A_21 * exp( -(x * LN10) * logM_norm );
 	IMF_norm = 1. / IMF_norm;
+	
+	//std::cerr << "# IMF(logM = logM_norm-) = " << IMF(logM_norm - 0.0001) << std::endl;
+	//std::cerr << "# IMF(logM = logM_norm+) = " << IMF(logM_norm + 0.0001) << std::endl;
 }
 
 void TStellarAbundance::set_SFR(double _A_burst, double _tau_burst, double _sigma_tau, double _tau_max) {
@@ -721,6 +734,8 @@ TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 	
 	std::cerr << "# Constructing interpolating grid over synthetic magnitudes." << std::endl;
 	TSED tmp;
+	bool good_sed;
+	unsigned int N_filtered = 0;
 	for(unsigned int i=0; i<length; i++) {
 		Theta[0] = data[i].logMass_init;
 		Theta[1] = data[i].logtau;
@@ -732,10 +747,19 @@ TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 		tmp.absmag[3] = data[i].M_z;
 		tmp.absmag[4] = data[i].M_y;
 		
-		sed_interp->set(&Theta[0], tmp);
+		good_sed = true;
+		for(size_t k=0; k<5; k++) {
+			if((tmp.absmag[k] < -6.) || (tmp.absmag[k] > 25.)) {
+				good_sed = false;
+				N_filtered++;
+				//std::cerr << "# erroneous magnitude: " << data[i].logMass_init << " " << data[i].logtau << " " << data[i].Z << " ==> " << tmp.absmag[k] << std::endl;
+				break;
+			}
+		}
+		if(good_sed) { sed_interp->set(&Theta[0], tmp); }
 	}
 	
-	std::cerr << "# Done constructing stellar library." << std::endl;
+	std::cerr << "# Done constructing stellar library. " << N_filtered << " stellar templates rejected." << std::endl;
 	
 	delete[] data;
 }
@@ -812,6 +836,8 @@ TExtinctionModel::~TExtinctionModel() {
 		gsl_spline_free(A_spl[i]);
 		gsl_interp_accel_free(acc[i]);
 	}
+	delete[] A_spl;
+	delete[] acc;
 }
 
 double TExtinctionModel::get_A(double RV, unsigned int i) {

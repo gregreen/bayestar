@@ -233,6 +233,8 @@ public:
 	void fill(func_t func);
 	void fill(func_ptr_t func);
 	
+	void get_filled(std::vector<bool> &ret);
+	
 private:
 	int get_index(const double *x) const;
 	int get_lower(const double *x) const;
@@ -285,6 +287,7 @@ TMultiLinearInterp<T>::~TMultiLinearInterp() {
 	delete[] coeff;
 	delete[] lower;
 	delete[] Delta_idx;
+	delete[] N;
 }
 
 
@@ -331,6 +334,9 @@ int TMultiLinearInterp<T>::set_index_arr(const double* x) {
 template<class T>
 void TMultiLinearInterp<T>::set(const double* x, T& fx) {
 	int idx = get_index(x);
+	//if(ndim == 1) {
+	//	std::cout << "i(" << *x << ") = " << idx << std::endl;
+	//}
 	if(idx >= 0) {
 		f[idx] = fx;
 		filled[idx] = true;
@@ -393,6 +399,14 @@ bool TMultiLinearInterp<T>::operator()(const double* x, T& res) {
 	
 	return true;
 }
+
+template<class T>
+void TMultiLinearInterp<T>::get_filled(std::vector< bool >& ret) {
+	ret.clear();
+	ret.resize(filled.size());
+	std::copy(filled.begin(), filled.end(), ret.begin());
+}
+
 
 
 

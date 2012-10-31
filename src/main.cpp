@@ -72,7 +72,7 @@ void print_model() {
 	cout << endl;
 	
 	TSyntheticStellarModel synthlib("/home/greg/projects/bayestar/data/PS1templates.h5");
-	double logtau = 9.95;
+	double logtau = 9.0;
 	double FeH = -0.5;
 	cout << endl;
 	cout << "logM      IMF       SFR       Mg      Mr      Mi      Mz      My" << endl;
@@ -82,7 +82,7 @@ void print_model() {
 		cout.precision(3);
 		cout << setw(9) << logM << " ";
 		cout << setw(9) << los_model.IMF(logM, 0) << " ";
-		cout << setw(9) << los_model.SFR(logtau, 0) << " ";
+		cout << setw(9) << los_model.SFR(pow(10, logtau), 0) << " ";
 		
 		cout.precision(4);
 		TSED sed;
@@ -95,6 +95,21 @@ void print_model() {
 				cout << setw(7) << "-----   ";
 			}
 		}
+		cout << endl;
+	}
+	cout << endl;
+	
+	cout << "          -----SFR-----------" << endl;
+	cout << "logtau    Disk      Halo     " << endl;
+	cout << "=============================" << endl;
+	double tau;
+	for(logtau = 6.; logtau < log10(16.e9); logtau += 0.05) {
+		tau = pow(10, logtau);
+		cout.flags(ios::left);
+		cout.precision(3);
+		cout << setw(9) << logtau << " ";
+		cout << setw(9) << tau * los_model.SFR(pow(10, logtau), 0) << " ";
+		cout << setw(9) << tau * los_model.SFR(pow(10, logtau), 1);
 		cout << endl;
 	}
 	cout << endl;
@@ -144,8 +159,61 @@ void print_model() {
 	cout << endl;
 }
 
+void los_test() {
+	double EBV_SFD = 0.5;
+	
+	TSyntheticStellarModel synthlib("/home/greg/projects/bayestar/data/PS1templates.h5");
+	TExtinctionModel ext_model("/home/greg/projects/bayestar/data/PSExtinction.dat");
+	TStellarData stellar_data("/home/greg/projects/bayestar/input/input_0.in", 0);
+	TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
+	
+	sample_model_affine(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
+}
+
+void indiv_test() {
+	double EBV_SFD = 1.5;
+	
+	TSyntheticStellarModel synthlib("/home/greg/projects/bayestar/data/PS1templates.h5");
+	TExtinctionModel ext_model("/home/greg/projects/bayestar/data/PSExtinction.dat");
+	TStellarData stellar_data("/home/greg/projects/bayestar/input/input_0.in", 0);
+	TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
+	
+	sample_indiv(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
+}
+
+void mock_test() {
+	size_t nstars = 10;
+	double EBV_SFD = 1.5;
+	double RV = 3.1;
+	double l = 90.;
+	double b = 10.;
+	uint64_t healpix_index = 1519628;
+	uint32_t nside = 512;
+	bool nested = true;
+	
+	
+	TSyntheticStellarModel synthlib("/home/greg/projects/bayestar/data/PS1templates.h5");
+	TExtinctionModel ext_model("/home/greg/projects/bayestar/data/PSExtinction.dat");
+	TGalacticLOSModel los_model(l, b);
+	TStellarData stellar_data(healpix_index, nside, nested, l, b);
+	
+	std::cout << std::endl;
+	double mag_lim[5];
+	for(size_t i=0; i<5; i++) { mag_lim[i] = 22.5; }
+	draw_from_model(nstars, RV, los_model, synthlib, stellar_data, ext_model, mag_lim);
+	
+	std::stringstream group_name;
+	group_name << healpix_index;
+	remove("mock.hdf5");
+	stellar_data.save("mock.hdf5", group_name.str());
+	
+	sample_indiv(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
+}
+
 int main(int argc, char **argv) {
-	print_model();
+	mock_test();
+	//indiv_test();
+	//print_model();
 	
 	return 0;
 }

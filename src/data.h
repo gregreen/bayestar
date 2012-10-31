@@ -32,13 +32,24 @@
 #include <string>
 #include <math.h>
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 
 //#define __STDC_LIMIT_MACROS
 #include <stdint.h>
 
+#include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
+
+
+// Auxiliary functions
+void seed_gsl_rng(gsl_rng **r);
+
+
 struct TStellarData {
 	struct TMagnitudes {
+		uint64_t obj_id;
+		double l, b;
 		double m[NBANDS];
 		double err[NBANDS];
 		double lnL_norm;
@@ -64,13 +75,30 @@ struct TStellarData {
 		}
 	};
 	
+	uint64_t healpix_index;
+	uint32_t nside;
+	bool nested;
 	double l, b;
 	std::vector<TMagnitudes> star;
 	
-	TStellarData(std::string infile, uint32_t pix_index) { load_data(infile, pix_index); }
+	TStellarData(std::string infile, uint32_t _healpix_index) { load_data(infile, _healpix_index); }
+	TStellarData(uint64_t _healpix_index, uint32_t _nside, bool _nested, double _l, double _b);
 	TStellarData() {}
 	
 	TMagnitudes& operator[](const unsigned int &index) { return star.at(index); }
+	
+	void clear() { star.clear(); }
+	
+	struct TFileData {
+		uint64_t obj_id;
+		float l, b;
+		float mag[NBANDS];
+		float err[NBANDS];
+	};
+	
+	// Read/write stellar photometry from/to HDF5 files
+	bool save(std::string fname, std::string group_name, int compression=1);
+	bool load(std::string fname, std::string group_name, double err_floor=0.02);
 	
 	// Load magnitudes and errors of stars along one line of sight, along with (l,b) for the given l.o.s. Same as load_data, but for binary files.
 	// Each binary file contains magnitudes and errors for stars along multiple lines of sight. The stars are grouped into lines of sight, called
@@ -81,10 +109,14 @@ struct TStellarData {
 	// Each pixel has the form
 	// 
 	// 	Header:
-	// 		l		(double)
-	// 		b		(double)
+	// 		healpix_index	(uint32)
+	// 		l_mean		(double)
+	// 		b_mean		(double)
 	// 		N_stars		(uint32)
 	// 	Data - For each star:
+	// 		obj_id		(uint64)
+	// 		l_star		(double)
+	// 		b_star		(double)
 	// 		mag[NBANDS]	(double)
 	// 		err[NBANDS]	(double)
 	// 
@@ -108,7 +140,7 @@ struct TStellarData {
 			f.read(reinterpret_cast<char*>(&l), sizeof(l));
 			f.read(reinterpret_cast<char*>(&b), sizeof(b));
 			f.read(reinterpret_cast<char*>(&N_stars), sizeof(N_stars));
-			if(i < pix_index) { f.seekg(N_stars * 2*NBANDS*sizeof(double), std::ios::cur); }
+			if(i < pix_index) { f.seekg(N_stars * (3 + 2*NBANDS)*sizeof(double), std::ios::cur); }
 		}
 		
 		if(f.eof()) {
@@ -119,7 +151,7 @@ struct TStellarData {
 		
 		// Exit if N_stars is unrealistically large
 		if(N_stars > 1e7) {
-			std::cerr << "Error reading " << infile << ". Header indicates " << N_stars << " stars. Aborting attempt to read file." << std::endl;
+			std::cerr << "Error reading " << infile << ". Header absurdly indicates " << N_stars << " stars. Aborting attempt to read file." << std::endl;
 			f.close();
 			return false;
 		}
@@ -128,10 +160,21 @@ struct TStellarData {
 		star.reserve(N_stars);
 		for(uint32_t i=0; i<N_stars; i++) {
 			TMagnitudes tmp;
+			f.read(reinterpret_cast<char*>(&(tmp.obj_id)), sizeof(uint64_t));
+			f.read(reinterpret_cast<char*>(&(tmp.l)), sizeof(double));
+			f.read(reinterpret_cast<char*>(&(tmp.b)), sizeof(double));
 			f.read(reinterpret_cast<char*>(&(tmp.m[0])), NBANDS*sizeof(double));
 			f.read(reinterpret_cast<char*>(&(tmp.err[0])), NBANDS*sizeof(double));
-			for(unsigned int i=0; i<NBANDS; i++) { tmp.err[i] = sqrt(tmp.err[i]*tmp.err[i] + err_floor*err_floor); }
+			tmp.lnL_norm = 0.9189385332;
+			for(unsigned int i=0; i<NBANDS; i++) {
+				tmp.err[i] = sqrt(tmp.err[i]*tmp.err[i] + err_floor*err_floor);
+				tmp.lnL_norm += log(tmp.err[i]);
+			}
 			star.push_back(tmp);
+			
+			//for(unsigned int i=0; i<NBANDS; i++) { std::cout << tmp.m[i] << "\t"; }
+			//for(unsigned int i=0; i<NBANDS; i++) { std::cout << tmp.err[i] << "\t"; }
+			//std::cout << std::endl;
 		}
 		
 		if(f.fail()) { f.close(); return false; }
@@ -142,6 +185,26 @@ struct TStellarData {
 		return true;
 	}
 };
+
+
+class TDraw1D {
+public:
+	typedef double (*func_ptr_t)(double x, void* params);
+	
+	TDraw1D(func_ptr_t func, double _x_min, double _x_max, void* _params, unsigned int samples, bool is_log = false);
+	~TDraw1D();
+	
+	double operator()();
+	
+private:
+	double x_min, x_max;
+	TMultiLinearInterp<double>* x_of_P;
+	gsl_rng *r;
+	void *params;
+};
+
+// Generate mock photometry from the given stellar and Galactic model, and magnitude limits
+void draw_from_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TSyntheticStellarModel& stellar_model, TStellarData& stellar_data, TExtinctionModel& ext_model, double (&mag_limit)[NBANDS]);
 
 
 #endif // _STELLAR_DATA_H__

@@ -30,13 +30,29 @@
 #include "data.h"
 
 #include <iostream>
+#include <iomanip>
 #include <map>
 #include <string>
+#include <cstring>
+#include <sstream>
 #include <math.h>
+#include <time.h>
 
 //#define __STDC_LIMIT_MACROS
 #include <stdint.h>
 
+#include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
+
+#include <H5Cpp.h>
+#include <H5Exception.h>
+
+#include "affine_sampler.h"
+#include "chain.h"
+
+//#ifndef GSL_RANGE_CHECK_OFF
+//#define GSL_RANGE_CHECK_OFF
+//#endif // GSL_RANGE_CHECK_OFF
 
 
 // Class for binning sparse data with minimal memory usage. This is especially useful
@@ -46,7 +62,10 @@ public:
 	TSparseBinner(double *_min, double *_max, unsigned int *_N_bins, unsigned int _N);
 	~TSparseBinner();
 	
-	bool write(std::string fname);	// Save the binned data to a binary file
+	// Save the binned data to an HDF5 file
+	bool write(std::string fname, std::string dset_fname,
+	           std::string group_fname, std::string *dim_name,
+	           int compression=9, hsize_t chunk=1000);
 	
 	// Add weight to a point in space
 	void add_point(double *x, double weight);
@@ -54,6 +73,9 @@ public:
 	
 	// Determine the weight of a particular bin;
 	double get_bin(double *x);
+	
+	// Clear the binner
+	void clear();
 	
 private:
 	// Variables describing bounds of region to be binned
@@ -63,10 +85,27 @@ private:
 	uint64_t max_index;	// Total # of bins in volume
 	unsigned int N;		// Dimensionality of posterior
 	
-	std::map<uint64_t, double> bins;	// Bins are stored as index/weight pairs in a stdlib map
+	// Bins are stored as index/weight pairs in a stdlib map
+	std::map<uint64_t, double> bins;
 	
-	uint64_t coord_to_index(double *x);			// Translate a coordinate into a bin number
-	bool index_to_coord(uint64_t index, double* coord);	// Translate a bin number to a coordinate
+	// Translate a coordinate into a bin number
+	uint64_t coord_to_index(double *x);
+	
+	// Translate a bin number to a coordinate
+	bool index_to_coord(uint64_t index, double* coord);
+	
+	// Needed in order to write to HDF5
+	struct TIndexValue {
+		uint64_t index;
+		float value;
+	};
+	
+	// Needed in order to write attributes to HDF5
+	struct TDimDesc {
+		char* name;
+		float min, max;
+		unsigned int N_bins;
+	};
 };
 
 
@@ -93,8 +132,11 @@ struct TMCMCParams {
 	// Auxiliary info for E(B-V) curve
 	TLinearInterp *EBV_interp;
 	double EBV_min, EBV_max;
-	void update_EBV_interp(double *x);
+	void update_EBV_interp(const double* x);
 	double get_EBV(double DM);
+	
+	// Index of star to fit, when sampling from individual stellar posteriors
+	unsigned int idx_star;
 };
 
 
@@ -103,10 +145,20 @@ double logP_single_star(const double *x, double EBV, double RV,
                         const TGalacticLOSModel &gal_model, const TSyntheticStellarModel &stellar_model,
                         TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed=NULL);
 double logP_EBV(TMCMCParams &p);
-double logP_los(const double *x, unsigned int N, TMCMCParams &p);
+double logP_los(const double* x, unsigned int N, TMCMCParams& p, double* lnP_star = 0);
 
 // Sampling routines
 void sample_model(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
+void sample_model_affine(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
+void sample_indiv(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
+
+// Auxiliary functions
+void seed_gsl_rng(gsl_rng **r);
+
+void rand_vector(double *x, double *min, double *max, size_t N, gsl_rng *r);
+void rand_vector(double* x, size_t N, gsl_rng* r, double A=1.);
+void rand_gaussian_vector(double* x, double mu, double sigma, size_t N, gsl_rng* r);
+void rand_gaussian_vector(double *x, double *mu, double *sigma, size_t N, gsl_rng *r);
 
 
 #endif // _SAMPLER_H__

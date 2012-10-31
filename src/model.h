@@ -190,7 +190,7 @@ public:
 	TExtinctionModel(std::string A_RV_fname);
 	~TExtinctionModel();
 	
-	double get_A(double RV, unsigned int i);
+	double get_A(double RV, unsigned int i);	// Get A_i(EBV=1), where i is a bandpass
 	bool in_model(double RV);
 	
 private:
@@ -253,10 +253,10 @@ protected:
 class TGalacticLOSModel : public TGalacticModel {
 public:
 	// Set default model parameters
-	TGalacticLOSModel(double l, double b);
+	TGalacticLOSModel(double _l, double _b);
 	
 	// Set custom model parameters
-	TGalacticLOSModel(double l, double b, double _R0, double _Z0, double _H1, double _L1,
+	TGalacticLOSModel(double _l, double _b, double _R0, double _Z0, double _H1, double _L1,
 	                  double _f_thick, double _H2, double _L2, double _fh, double _qh,
 	                  double _nh, double _R_br, double _nh_outer,
 	                  double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH);
@@ -284,12 +284,16 @@ public:
 	// Convert from distance modulus to R and Z
 	void DM_to_RZ(double DM, double &R, double &Z) const;
 	
+	double get_log_dNdmu_norm() const;
+	
+	void get_lb(double &l, double &b) const;
+	
 private:
-	double cos_l, sin_l, cos_b, sin_b;
+	double cos_l, sin_l, cos_b, sin_b, l, b;
 	double DM_min, DM_max, DM_samples, log_dNdmu_norm;
 	TLinearInterp *log_dNdmu_arr, *f_halo_arr, *mu_FeH_disk_arr;
 	
-	void init(double l, double b);
+	void init(double _l, double _b);
 	
 	// Stellar density
 	double rho_halo_interp(double DM) const;
