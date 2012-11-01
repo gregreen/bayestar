@@ -111,12 +111,13 @@ private:
 
 // Wrapper for parameters needed by the sampler
 struct TMCMCParams {
-	TMCMCParams(TGalacticLOSModel* _gal_model, TSyntheticStellarModel* _stellar_model, TExtinctionModel* _ext_model,
+	TMCMCParams(TGalacticLOSModel* _gal_model, TSyntheticStellarModel* _synth_stellar_model, TStellarModel* _emp_stellar_model, TExtinctionModel* _ext_model,
                     TStellarData* _data, double _EBV_SFD, unsigned int _N_DM, double _DM_min, double _DM_max);
 	~TMCMCParams();
 	
 	// Model
-	TSyntheticStellarModel *stellar_model;
+	TSyntheticStellarModel *synth_stellar_model;
+	TStellarModel *emp_stellar_model;	// TODO: Tie in empirical model
 	TGalacticLOSModel *gal_model;
 	TExtinctionModel *ext_model;
 	double EBV_SFD;
@@ -141,16 +142,22 @@ struct TMCMCParams {
 
 
 // Probability densities
-double logP_single_star(const double *x, double EBV, double RV,
-                        const TGalacticLOSModel &gal_model, const TSyntheticStellarModel &stellar_model,
-                        TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed=NULL);
 double logP_EBV(TMCMCParams &p);
-double logP_los(const double* x, unsigned int N, TMCMCParams& p, double* lnP_star = 0);
+double logP_los_synth(const double* x, unsigned int N, TMCMCParams& p, double* lnP_star = 0);
+
+double logP_single_star_synth(const double *x, double EBV, double RV,
+                              const TGalacticLOSModel &gal_model, const TSyntheticStellarModel &stellar_model,
+                              TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed=NULL);
+double logP_single_star_emp(const double *x, double EBV, double RV,
+                            const TGalacticLOSModel &gal_model, const TStellarModel &stellar_model,
+                            TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed=NULL);
 
 // Sampling routines
-void sample_model(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
-void sample_model_affine(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
-void sample_indiv(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
+void sample_model_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
+void sample_model_affine_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
+void sample_indiv_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
+
+void sample_indiv_emp(TGalacticLOSModel& galactic_model, TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
 
 // Auxiliary functions
 void seed_gsl_rng(gsl_rng **r);

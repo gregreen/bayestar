@@ -167,7 +167,7 @@ void los_test() {
 	TStellarData stellar_data("/home/greg/projects/bayestar/input/input_0.in", 0);
 	TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
 	
-	sample_model_affine(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
+	sample_model_affine_synth(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
 }
 
 void indiv_test() {
@@ -178,7 +178,7 @@ void indiv_test() {
 	TStellarData stellar_data("/home/greg/projects/bayestar/input/input_0.in", 0);
 	TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
 	
-	sample_indiv(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
+	sample_indiv_synth(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
 }
 
 void mock_test() {
@@ -191,10 +191,11 @@ void mock_test() {
 	uint32_t nside = 512;
 	bool nested = true;
 	
-	
+	TStellarModel emplib("/home/greg/projects/bayestar/data/PSMrLF.dat", "/home/greg/projects/bayestar/data/PScolors.dat");
 	TSyntheticStellarModel synthlib("/home/greg/projects/bayestar/data/PS1templates.h5");
 	TExtinctionModel ext_model("/home/greg/projects/bayestar/data/PSExtinction.dat");
 	TGalacticLOSModel los_model(l, b);
+	//los_model.load_lf("/home/greg/projects/bayestar/data/PSMrLF.dat");
 	TStellarData stellar_data(healpix_index, nside, nested, l, b);
 	
 	std::cout << std::endl;
@@ -207,7 +208,8 @@ void mock_test() {
 	remove("mock.hdf5");
 	stellar_data.save("mock.hdf5", group_name.str());
 	
-	sample_indiv(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
+	//sample_indiv_synth(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
+	sample_indiv_emp(los_model, emplib, ext_model, stellar_data, EBV_SFD);
 }
 
 int main(int argc, char **argv) {

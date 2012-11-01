@@ -204,7 +204,8 @@ private:
 };
 
 // Generate mock photometry from the given stellar and Galactic model, and magnitude limits
-void draw_from_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TSyntheticStellarModel& stellar_model, TStellarData& stellar_data, TExtinctionModel& ext_model, double (&mag_limit)[NBANDS]);
+void draw_from_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TSyntheticStellarModel& stellar_model,
+                     TStellarData& stellar_data, TExtinctionModel& ext_model, double (&mag_limit)[NBANDS]);
 
 
 #endif // _STELLAR_DATA_H__

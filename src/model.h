@@ -98,9 +98,10 @@ public:
 	TStellarModel(std::string lf_fname, std::string seds_fname);
 	~TStellarModel();
 	
+	bool get_sed(const double* x, TSED& sed) const;
 	TSED get_sed(double Mr, double FeH);
 	bool in_model(double Mr, double FeH);
-	double get_log_lf(double Mr);
+	double get_log_lf(double Mr) const;
 	
 private:
 	// Template library data
@@ -183,7 +184,6 @@ private:
 	double Theta[3];
 };
 
-
 // Dust extinction model
 class TExtinctionModel {
 public:
@@ -199,6 +199,23 @@ private:
 	gsl_interp_accel **acc;
 };
 
+// Luminosity function
+/*struct TLuminosityFunc {
+	double Mr0, dMr;
+	std::vector<double> lf;
+	TLinearInterp *lf_interp;
+	double log_lf_norm;
+
+	TLuminosityFunc(const std::string &fn) : lf_interp(NULL) { load(fn); }
+	~TLuminosityFunc() { delete lf_interp; }
+	
+	// return the LF at position Mr (linear interpolation)
+	double operator()(double Mr) const {
+		return (*lf_interp)(Mr) - log_lf_norm;
+	}
+	
+	void load(const std::string &fn);
+};*/
 
 // A model of the galaxy, for producing priors on number density and metallicity of stars
 class TGalacticModel {
@@ -226,9 +243,12 @@ public:
 	double p_FeH(double FeH, double R, double Z, int component) const;
 	double IMF(double logM, int component) const;	// Initial mass function
 	double SFR(double tau, int component) const;	// Star formation rate
+	//double lnp_Mr(double Mr) const;		// Luminosity function
 	
 	void set_IMF(int component, double _logM_norm, double _logM_c, double _sigma_logM, double _x);
 	void set_SFR(int component, double _A_burst, double _tau_burst, double _sigma_tau, double _tau_max);
+	
+	//void load_lf(std::string lf_fname);
 	
 protected:
 	// Density parameters
@@ -246,6 +266,9 @@ protected:
 	// IMF and SFR of Galaxy
 	TStellarAbundance *halo_abundance;
 	TStellarAbundance *disk_abundance;
+	
+	// Luminosity Function
+	//TLuminosityFunc *lf;
 };
 
 
@@ -278,8 +301,12 @@ public:
 	double log_p_FeH_fast(double DM, double FeH, double f_H=-1.) const;
 	
 	double p_FeH_fast(double DM, double FeH, int component) const;
-	double log_prior(double DM, double logM, double logtau, double FeH) const;
-	double log_prior(const double* x) const;
+	
+	double log_prior_synth(double DM, double logM, double logtau, double FeH) const;
+	double log_prior_synth(const double* x) const;
+	
+	double log_prior_emp(double DM, double Mr, double FeH) const;
+	double log_prior_emp(const double* x) const;
 	
 	// Convert from distance modulus to R and Z
 	void DM_to_RZ(double DM, double &R, double &Z) const;

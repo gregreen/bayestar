@@ -77,7 +77,8 @@ TGalacticModel::TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
                                double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
 	: R0(_R0), Z0(_Z0), H1(_H1), L1(_L1), f_thick(_f_thick), H2(_H2), L2(_L2),
 	  fh(_fh), qh(_qh), nh(_nh), R_br(_R_br), nh_outer(_nh_outer),
-	  mu_FeH_inf(_mu_FeH_inf), delta_mu_FeH(_delta_mu_FeH), H_mu_FeH(_H_mu_FeH)
+	  mu_FeH_inf(_mu_FeH_inf), delta_mu_FeH(_delta_mu_FeH), H_mu_FeH(_H_mu_FeH)//,
+	  //lf(NULL)
 {
 	fh_outer = fh * pow(R_br/R0, nh-nh_outer);
 	
@@ -88,6 +89,7 @@ TGalacticModel::TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
 TGalacticModel::~TGalacticModel() {
 	delete disk_abundance;
 	delete halo_abundance;
+	//if(lf != NULL) { delete lf; }
 }
 
 double TGalacticModel::rho_halo(double R, double Z) const {
@@ -164,6 +166,17 @@ double TGalacticModel::SFR(double tau, int component) const {
 		return halo_abundance->SFR(tau);
 	}
 }
+
+//double TGalacticModel::lnp_Mr(double Mr) const {
+//	assert(lf != NULL);
+//	return (*lf)(Mr);
+//}
+
+
+//void TGalacticModel::load_lf(std::string lf_fname) {
+//	lf = new TLuminosityFunc(lf_fname);
+//}
+
 
 
 
@@ -316,20 +329,34 @@ double TGalacticLOSModel::p_FeH_fast(double DM, double FeH, int component) const
 	}
 }
 
-double TGalacticLOSModel::log_prior(double DM, double logM, double logtau, double FeH) const {
+double TGalacticLOSModel::log_prior_synth(double DM, double logM, double logtau, double FeH) const {
 	double f_H = f_halo(DM);
 	double tau = pow(10, logtau);
 	double p = (1. - f_H) * IMF(logM, 0) * tau * SFR(tau, 0) * p_FeH_fast(DM, FeH, 0);
-	p += f_H * IMF(logM, 0) * SFR(tau, 0) * p_FeH_fast(DM, FeH, 0);
+	p += f_H * IMF(logM, 1) * SFR(tau, 1) * p_FeH_fast(DM, FeH, 1);
 	return log_dNdmu(DM) + log(p);
 }
 
-double TGalacticLOSModel::log_prior(const double *x) const {
+double TGalacticLOSModel::log_prior_synth(const double *x) const {
 	double f_H = f_halo(x[_DM]);
 	double tau = pow(10, x[_LOGTAU]);
 	double p = (1. - f_H) * IMF(x[_LOGMASS], 0) * tau * SFR(tau, 0) * p_FeH_fast(x[_DM], x[_FEH], 0);
-	p += f_H * IMF(x[_LOGMASS], 0) * SFR(tau, 0) * p_FeH_fast(x[_DM], x[_FEH], 0);
+	p += f_H * IMF(x[_LOGMASS], 1) * SFR(tau, 1) * p_FeH_fast(x[_DM], x[_FEH], 1);
 	return log_dNdmu(x[_DM]) + log(p);
+}
+
+double TGalacticLOSModel::log_prior_emp(double DM, double Mr, double FeH) const {
+	double f_H = f_halo(DM);
+	double p = (1. - f_H) * p_FeH_fast(DM, FeH, 0);
+	p += f_H * p_FeH_fast(DM, FeH, 1);
+	return log_dNdmu(DM) + log(p);// + lnp_Mr(Mr);
+}
+
+double TGalacticLOSModel::log_prior_emp(const double *x) const {
+	double f_H = f_halo(x[0]);
+	double p = (1. - f_H) * p_FeH_fast(x[0], x[2], 0);
+	p += f_H * p_FeH_fast(x[0], x[2], 1);
+	return log_dNdmu(x[0]) + log(p);// + lnp_Mr(x[1]);
 }
 
 double TGalacticLOSModel::get_log_dNdmu_norm() const { return log_dNdmu_norm; }
@@ -561,6 +588,11 @@ bool TStellarModel::load_seds(std::string seds_fname) {
 	}
 	std::cerr << "# Loaded " << N_FeH*N_Mr << " SEDs from " << seds_fname << std::endl;
 	
+	Mr_min_seds = Mr_min;
+	Mr_max_seds = Mr_max;
+	FeH_min_seds = FeH_min;
+	FeH_max_seds = FeH_max;
+	
 	return true;
 }
 
@@ -569,11 +601,21 @@ TSED TStellarModel::get_sed(double Mr, double FeH) {
 	return (*sed_interp)(Mr, FeH);
 }
 
+// x = {M_r, Fe/H}
+bool TStellarModel::get_sed(const double* x, TSED& sed) const {
+	if((x[0] <= Mr_min_seds) || (x[0] >= Mr_max_seds) || (x[1] <= FeH_min_seds) || (x[1] >= FeH_max_seds)) {
+		return false;
+	}
+	sed = (*sed_interp)(x[0], x[1]);
+	return true;
+}
+
+
 bool TStellarModel::in_model(double Mr, double FeH) {
 	return (Mr > Mr_min_seds) && (Mr < Mr_max_seds) && (FeH > FeH_min_seds) && (FeH < FeH_max_seds);
 }
 
-double TStellarModel::get_log_lf(double Mr) {
+double TStellarModel::get_log_lf(double Mr) const {
 	return (*log_lf_interp)(Mr) - log_lf_norm;
 }
 
@@ -849,3 +891,50 @@ bool TExtinctionModel::in_model(double RV) {
 	return (RV >= RV_min) && (RV <= RV_max);
 }
 
+
+
+/****************************************************************************************************************************
+ * 
+ * TLuminosityFunc
+ * 
+ ****************************************************************************************************************************/
+
+/*
+void TLuminosityFunc::load(const std::string &fn) {
+	std::ifstream in(fn.c_str());
+	if(!in) { std::cerr << "Could not read LF from '" << fn << "'\n"; abort(); }
+
+	dMr = -1;
+	log_lf_norm = 0.;
+	lf.clear();
+
+	std::string line;
+	double Mr, Phi;
+	while(std::getline(in, line))
+	{
+		if(!line.size()) { continue; }		// empty line
+		if(line[0] == '#') { continue; }	// comment
+		
+		std::istringstream ss(line);
+		ss >> Mr >> Phi;
+		
+		if(dMr == -1) {
+			Mr0 = Mr; dMr = 0;
+		} else if(dMr == 0) {
+			dMr = Mr - Mr0;
+		}
+		
+		lf.push_back(log(Phi));
+		log_lf_norm += Phi;
+	}
+	
+	double Mr1 = Mr0 + dMr*(lf.size()-1);
+	lf_interp = new TLinearInterp(Mr0, Mr1, lf.size());
+	for(unsigned int i=0; i<lf.size(); i++) { (*lf_interp)[i] = lf[i]; }
+	
+	log_lf_norm *= Mr1 / (double)(lf.size());
+	log_lf_norm = log(log_lf_norm);
+	
+	std::cerr << "# Loaded Phi(" << Mr0 << " <= Mr <= " <<  Mr0 + dMr*(lf.size()-1) << ") LF from " << fn << "\n";
+}
+*/

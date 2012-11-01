@@ -236,8 +236,10 @@ bool TSparseBinner::write(std::string fname, std::string group_name,
  * 
  ****************************************************************************************************************************/
 
-TMCMCParams::TMCMCParams(TGalacticLOSModel *_gal_model, TSyntheticStellarModel *_stellar_model, TExtinctionModel *_ext_model, TStellarData *_data, double _EBV_SFD, unsigned int _N_DM, double _DM_min, double _DM_max)
-	: gal_model(_gal_model), stellar_model(_stellar_model), ext_model(_ext_model), data(_data), EBV_SFD(_EBV_SFD), N_DM(_N_DM), DM_min(_DM_min), DM_max(_DM_max)
+TMCMCParams::TMCMCParams(TGalacticLOSModel *_gal_model, TSyntheticStellarModel *_synth_stellar_model, TStellarModel *_emp_stellar_model,
+			  TExtinctionModel *_ext_model, TStellarData *_data, double _EBV_SFD, unsigned int _N_DM, double _DM_min, double _DM_max)
+	: gal_model(_gal_model), synth_stellar_model(_synth_stellar_model), emp_stellar_model(_emp_stellar_model),
+          ext_model(_ext_model), data(_data), EBV_SFD(_EBV_SFD), N_DM(_N_DM), DM_min(_DM_min), DM_max(_DM_max)
 {
 	N_stars = data->star.size();
 	EBV_interp = new TLinearInterp(DM_min, DM_max, N_DM);
@@ -281,9 +283,9 @@ double TMCMCParams::get_EBV(double DM) {
 // Natural logarithm of posterior probability density for one star, given parameters x, where
 //
 //     x = {DM, Log_10(Mass_init), Log_10(Age), [Fe/H]}
-double logP_single_star(const double *x, double EBV, double RV,
-                        const TGalacticLOSModel &gal_model, const TSyntheticStellarModel &stellar_model,
-                        TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed) {
+double logP_single_star_synth(const double *x, double EBV, double RV,
+                              const TGalacticLOSModel &gal_model, const TSyntheticStellarModel &stellar_model,
+                              TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed) {
 	#define neginf -std::numeric_limits<double>::infinity()
 	double logP = 0.;
 	
@@ -314,7 +316,53 @@ double logP_single_star(const double *x, double EBV, double RV,
 	/*
 	 *  Priors
 	 */
-	logP += gal_model.log_prior(x);
+	logP += gal_model.log_prior_synth(x);
+	
+	//double lnp0 = -100.;
+	//tmp = exp(logP - lnp0);
+	//logP = lnp0 + log(tmp + exp(-tmp));	// p --> p + p0 exp(-p/p0)  (Smooth floor on outliers)
+	
+	#undef neginf
+	return logP;
+}
+
+// Natural logarithm of posterior probability density for one star, given parameters x, where
+//
+//     x = {DM, M_r, [Fe/H]}
+double logP_single_star_emp(const double *x, double EBV, double RV,
+                            const TGalacticLOSModel &gal_model, const TStellarModel &stellar_model,
+                            TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed) {
+	#define neginf -std::numeric_limits<double>::infinity()
+	double logP = 0.;
+	
+	/*
+	 *  Likelihood
+	 */
+	bool del_sed = false;
+	if(tmp_sed == NULL) {
+		del_sed = true;
+		tmp_sed = new TSED(true);
+	}
+	if(!stellar_model.get_sed(x+1, *tmp_sed)) {
+		if(del_sed) { delete tmp_sed; }
+		return neginf;
+	}
+	
+	double logL = 0.;
+	double tmp;
+	for(unsigned int i=0; i<NBANDS; i++) {
+		tmp = d.m[i] - x[_DM] - EBV * ext_model.get_A(RV, i);	// De-reddened absolute magnitude
+		tmp = (tmp_sed->absmag[i] - tmp) / d.err[i];
+		logL -= 0.5*tmp*tmp;
+	}
+	logP += logL - d.lnL_norm;
+	
+	if(del_sed) { delete tmp_sed; }
+	
+	/*
+	 *  Priors
+	 */
+	logP += gal_model.log_prior_emp(x) + stellar_model.get_log_lf(x[1]);
 	
 	//double lnp0 = -100.;
 	//tmp = exp(logP - lnp0);
@@ -341,7 +389,7 @@ double logP_EBV(TMCMCParams &p) {
 	return logP;
 }
 
-double logP_los(const double *x, unsigned int N, TMCMCParams &p, double *lnP_star) {
+double logP_los_synth(const double *x, unsigned int N, TMCMCParams &p, double *lnP_star) {
 	double logP = 0.;
 	
 	// Prior on RV
@@ -360,7 +408,7 @@ double logP_los(const double *x, unsigned int N, TMCMCParams &p, double *lnP_sta
 	const double *x_star;
 	for(unsigned int i=0; i<p.N_stars; i++) {
 		x_star = &(x[1 + p.N_DM + 4*i]);
-		tmp = logP_single_star(x_star, p.get_EBV(x_star[_DM]), RV, *p.gal_model, *p.stellar_model, *p.ext_model, p.data->star[i]);
+		tmp = logP_single_star_synth(x_star, p.get_EBV(x_star[_DM]), RV, *p.gal_model, *p.synth_stellar_model, *p.ext_model, p.data->star[i]);
 		logP += tmp;
 		if(lnP_star != NULL) { lnP_star[i] = tmp; }
 	}
@@ -376,12 +424,12 @@ double logP_los(const double *x, unsigned int N, TMCMCParams &p, double *lnP_sta
  * 
  ****************************************************************************************************************************/
 
-void sample_model(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
+void sample_model_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
-	TMCMCParams params(&galactic_model, &stellar_model, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
-	TMCMCParams params_tmp(&galactic_model, &stellar_model, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
+	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
+	TMCMCParams params_tmp(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
 	
 	// Random number generator
 	gsl_rng *r;
@@ -420,7 +468,7 @@ void sample_model(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &ste
 	
 	params.update_EBV_interp(x);
 	double *lnp_star = new double[params.N_stars];
-	double lnp_los = logP_los(x, length, params, lnp_star);
+	double lnp_los = logP_los_synth(x, length, params, lnp_star);
 	std::cerr << "# ln p(x_0) = " << lnp_los << std::endl;
 	
 	double *x_tmp = new double[length];
@@ -460,7 +508,7 @@ void sample_model(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &ste
 			if(!burn_in) { N_star++; }
 			
 			rand_gaussian_vector(&Theta_tmp[0], &x[1+N_DM+4*n], &sigma_Theta[0], 4, r);
-			lnp_tmp = logP_single_star(&Theta_tmp[0], params.get_EBV(Theta_tmp[_DM]), x[0], galactic_model, stellar_model, extinction_model, stellar_data.star[n]);
+			lnp_tmp = logP_single_star_synth(&Theta_tmp[0], params.get_EBV(Theta_tmp[_DM]), x[0], galactic_model, stellar_model, extinction_model, stellar_data.star[n]);
 			
 			accept = false;
 			if(lnp_tmp > lnp_star[n]) {
@@ -487,7 +535,7 @@ void sample_model(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &ste
 		for(unsigned int m=0; m<params.N_DM; m++) { x_tmp[1+m] += gsl_ran_gaussian_ziggurat(r, sigma_lnEBV); }
 		
 		params_tmp.update_EBV_interp(x_tmp);
-		lnp_tmp = logP_los(x_tmp, length, params_tmp, lnp_star_tmp);
+		lnp_tmp = logP_los_synth(x_tmp, length, params_tmp, lnp_star_tmp);
 		//if(isinf(lnp_tmp)) {
 		//	lnp_tmp = logP_los(x, length, params_tmp, lnp_star_tmp);
 		//}
@@ -541,7 +589,7 @@ void sample_model(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &ste
 	delete[] lnp_star_tmp;
 }
 
-void gen_rand_state(double *const x, unsigned int N, gsl_rng *r, TMCMCParams &params) {
+void gen_rand_state_synth(double *const x, unsigned int N, gsl_rng *r, TMCMCParams &params) {
 	assert(N == 1 + params.N_DM + 4*params.N_stars);
 	
 	// R_V
@@ -568,7 +616,7 @@ void gen_rand_state(double *const x, unsigned int N, gsl_rng *r, TMCMCParams &pa
 			logtau = log10(tau);
 			FeH = -1.0 + gsl_ran_gaussian_ziggurat(r, 1.);
 			
-			in_lib = params.stellar_model->get_sed(logMass, logtau, FeH, sed_tmp);
+			in_lib = params.synth_stellar_model->get_sed(logMass, logtau, FeH, sed_tmp);
 		}
 		x[i+1] = logMass;
 		x[i+2] = logtau;
@@ -576,23 +624,23 @@ void gen_rand_state(double *const x, unsigned int N, gsl_rng *r, TMCMCParams &pa
 	}
 }
 
-double logP_los_simple(const double *x, unsigned int N, TMCMCParams &params) {
+double logP_los_simple_synth(const double *x, unsigned int N, TMCMCParams &params) {
 	params.update_EBV_interp(x);
-	return logP_los(x, N, params, NULL);
+	return logP_los_synth(x, N, params, NULL);
 }
 
-void sample_model_affine(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
+void sample_model_affine_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
-	TMCMCParams params(&galactic_model, &stellar_model, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
+	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
 	TStats EBV_stats(N_DM);
 	
 	unsigned int N_steps = 100;
 	unsigned int N_samplers = 4;
 	
-	typename TAffineSampler<TMCMCParams, TStats>::pdf_t f_pdf = &logP_los_simple;
-	typename TAffineSampler<TMCMCParams, TStats>::rand_state_t f_rand_state = &gen_rand_state;
+	typename TAffineSampler<TMCMCParams, TStats>::pdf_t f_pdf = &logP_los_simple_synth;
+	typename TAffineSampler<TMCMCParams, TStats>::rand_state_t f_rand_state = &gen_rand_state_synth;
 	
 	std::cerr << "# Setting up sampler" << std::endl;
 	unsigned int ndim = 1 + params.N_DM + 4*params.N_stars;
@@ -632,7 +680,7 @@ void sample_model_affine(TGalacticLOSModel &galactic_model, TSyntheticStellarMod
 	*/
 }
 
-void gen_rand_state_indiv(double *const x, unsigned int N, gsl_rng *r, TMCMCParams &params) {
+void gen_rand_state_indiv_synth(double *const x, unsigned int N, gsl_rng *r, TMCMCParams &params) {
 	assert(N == 5);
 	
 	// Stars
@@ -657,26 +705,51 @@ void gen_rand_state_indiv(double *const x, unsigned int N, gsl_rng *r, TMCMCPara
 		logtau = 8. + gsl_ran_gaussian_ziggurat(r, 1.);
 		FeH = -1.0 + gsl_ran_gaussian_ziggurat(r, 1.);
 		
-		in_lib = params.stellar_model->get_sed(logMass, logtau, FeH, sed_tmp);
+		in_lib = params.synth_stellar_model->get_sed(logMass, logtau, FeH, sed_tmp);
 	}
 	x[2] = logMass;
 	x[3] = logtau;
 	x[4] = FeH;
 }
 
-double logP_indiv_simple(const double *x, unsigned int N, TMCMCParams &params) {
-	if(x[0] < 0.) { return -std::numeric_limits<double>::infinity(); }
-	return logP_single_star(x+1, x[0], 3.1, *params.gal_model, *params.stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMCParams &params) {
+	assert(N == 4);
+	
+	// Stars
+	TSED sed_tmp(true);
+	
+	// E(B-V)
+	x[0] = 1.5 * params.EBV_SFD * gsl_rng_uniform(r);
+	
+	// DM
+	x[1] = 6. + 12. * gsl_rng_uniform(r);
+	
+	// Stellar type
+	double Mr, FeH;
+	Mr = -0.5 + 15.5 * gsl_rng_uniform(r);
+	FeH = -2.45 + 2.4 * gsl_rng_uniform(r);
+	
+	x[2] = Mr;
+	x[3] = FeH;
 }
 
-void sample_indiv(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
+double logP_indiv_simple_synth(const double *x, unsigned int N, TMCMCParams &params) {
+	if(x[0] < 0.) { return -std::numeric_limits<double>::infinity(); }
+	return logP_single_star_synth(x+1, x[0], 3.1, *params.gal_model, *params.synth_stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+}
+
+double logP_indiv_simple_emp(const double *x, unsigned int N, TMCMCParams &params) {
+	if(x[0] < 0.) { return -std::numeric_limits<double>::infinity(); }
+	return logP_single_star_emp(x+1, x[0], 3.1, *params.gal_model, *params.emp_stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+}
+
+void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
-	TMCMCParams params(&galactic_model, &stellar_model, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
+	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
 	
-	std::string fname = "out.hdf5";
-	std::string dset_name = "Binned PDF";
+	std::string fname = "synth_out.hdf5";
 	std::string dim_name[5] = {"E(B-V)", "DM", "LogMass", "Logtau", "FeH"};
 	
 	//double min[5] = {0.0, 0.0, -1.0, 6.0, -2.5};
@@ -694,8 +767,8 @@ void sample_indiv(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &ste
 	double *GR = new double[ndim];
 	double GR_threshold = 1.1;
 	
-	typename TAffineSampler<TMCMCParams, TNullLogger>::pdf_t f_pdf = &logP_indiv_simple;
-	typename TAffineSampler<TMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_state_indiv;
+	typename TAffineSampler<TMCMCParams, TNullLogger>::pdf_t f_pdf = &logP_indiv_simple_synth;
+	typename TAffineSampler<TMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_state_indiv_synth;
 	
 	timespec t_start, t_write, t_end;
 	//bool write_success;
@@ -746,7 +819,7 @@ void sample_indiv(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &ste
 		group_name << "/star " << n;
 		//logger.write(fname, group_name.str(), dset_name, &dim_name[0], 1, 25000);
 		std::stringstream dim_name_all;
-		for(size_t i=0; i<5; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
+		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
 		sampler.get_chain().save(fname, group_name.str(), dim_name_all.str(), 1, 1000, 1000);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
@@ -766,6 +839,103 @@ void sample_indiv(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &ste
 	
 	delete[] GR;
 }
+
+void sample_indiv_emp(TGalacticLOSModel &galactic_model, TStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
+	unsigned int N_DM = 20;
+	double DM_min = 5.;
+	double DM_max = 20.;
+	TMCMCParams params(&galactic_model, NULL, &stellar_model, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
+	
+	std::string fname = "emp_out.hdf5";
+	std::string dim_name[4] = {"E(B-V)", "DM", "Mr", "FeH"};
+	
+	TNullLogger logger;
+	
+	unsigned int max_attempts = 3;
+	unsigned int N_steps = 500;
+	unsigned int N_samplers = 15;
+	unsigned int N_threads = 4;
+	unsigned int ndim = 4;
+	
+	double y[3] = {12., 1., -1.};
+	double p_tmp = logP_single_star_emp(&(y[0]), 0.1, 3.1, galactic_model, stellar_model, extinction_model, stellar_data.star[0]);
+	
+	double *GR = new double[ndim];
+	double GR_threshold = 1.1;
+	
+	typename TAffineSampler<TMCMCParams, TNullLogger>::pdf_t f_pdf = &logP_indiv_simple_emp;
+	typename TAffineSampler<TMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_state_indiv_emp;
+	
+	timespec t_start, t_write, t_end;
+	//bool write_success;
+	
+	std::cerr << std::endl;
+	std::remove(fname.c_str());
+	
+	for(size_t n=0; n<params.N_stars; n++) {
+		params.idx_star = n;
+		
+		clock_gettime(CLOCK_MONOTONIC, &t_start);
+		
+		std::cout << "Star #" << n+1 << " of " << params.N_stars << std::endl;
+		std::cout << "====================================" << std::endl;
+		
+		//std::cerr << "# Setting up sampler" << std::endl;
+		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+		sampler.set_scale(1.2);
+		sampler.set_replacement_bandwidth(0.2);
+		
+		//std::cerr << "# Burn-in" << std::endl;
+		sampler.step(N_steps, false, 0., 0.2, 0.);
+		sampler.clear();
+		
+		//std::cerr << "# Main run" << std::endl;
+		bool converged = false;
+		size_t attempt;
+		for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
+			sampler.step((1<<attempt)*N_steps, true, 0., 0.2, 0.);
+			
+			converged = true;
+			sampler.get_GR_diagnostic(GR);
+			for(size_t i=0; i<ndim; i++) {
+				if(GR[i] > GR_threshold) {
+					converged = false;
+					if(attempt != max_attempts-1) {
+						sampler.clear();
+						//logger.clear();
+					}
+					break;
+				}
+			}
+		}
+		
+		clock_gettime(CLOCK_MONOTONIC, &t_write);
+		
+		std::stringstream group_name;
+		group_name << "/star " << n;
+		//logger.write(fname, group_name.str(), dset_name, &dim_name[0], 1, 25000);
+		std::stringstream dim_name_all;
+		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
+		sampler.get_chain().save(fname, group_name.str(), dim_name_all.str(), 1, 1000, 1000);
+		
+		clock_gettime(CLOCK_MONOTONIC, &t_end);
+		
+		//std::cout << "Sampler stats:" << std::endl;
+		sampler.print_stats();
+		std::cout << std::endl;
+		
+		if(!converged) {
+			std::cerr << "# Failed to converge." << std::endl;
+		}
+		std::cerr << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
+		std::cerr << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+		std::cerr << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+		std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
+	}
+	
+	delete[] GR;
+}
+
 
 /*************************************************************************
  * 

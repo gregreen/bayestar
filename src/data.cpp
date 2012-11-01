@@ -239,7 +239,8 @@ double halo_FeH_draw(double FeH, void* params) {
 	return gal_model->p_FeH_fast(23., FeH, 1);
 }
 
-void draw_from_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TSyntheticStellarModel& stellar_model, TStellarData& stellar_data, TExtinctionModel& ext_model, double (&mag_limit)[5]) {
+void draw_from_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TSyntheticStellarModel& stellar_model,
+                     TStellarData& stellar_data, TExtinctionModel& ext_model, double (&mag_limit)[5]) {
 	unsigned int samples = 1000;
 	void* gal_model_ptr = static_cast<void*>(&gal_model);
 	
