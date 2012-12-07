@@ -247,6 +247,10 @@ TMCMCParams::TMCMCParams(TGalacticLOSModel *_gal_model, TSyntheticStellarModel *
 	// Defaults
 	lnp0 = -10.;
 	idx_star = 0;
+	
+	vary_RV = false;
+	RV_mean = 3.1;
+	RV_variance = 0.2*0.2;
 }
 
 TMCMCParams::~TMCMCParams() {
@@ -710,6 +714,14 @@ void gen_rand_state_indiv_synth(double *const x, unsigned int N, gsl_rng *r, TMC
 	x[2] = logMass;
 	x[3] = logtau;
 	x[4] = FeH;
+	
+	if(params.vary_RV) {
+		double RV = -1.;
+		while((RV <= 2.1) || (RV >= 5.)) {
+			RV = params.RV_mean + gsl_ran_gaussian_ziggurat(r, 1.5*params.RV_variance*params.RV_variance);
+		}
+		x[5] = RV;
+	}
 }
 
 void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMCParams &params) {
@@ -731,16 +743,48 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	
 	x[2] = Mr;
 	x[3] = FeH;
+	
+	if(params.vary_RV) {
+		double RV = -1.;
+		while((RV <= 2.1) || (RV >= 5.)) {
+			RV = params.RV_mean + gsl_ran_gaussian_ziggurat(r, 1.5*params.RV_variance*params.RV_variance);
+		}
+		x[4] = RV;
+	}
 }
 
 double logP_indiv_simple_synth(const double *x, unsigned int N, TMCMCParams &params) {
-	if(x[0] < 0.) { return -std::numeric_limits<double>::infinity(); }
-	return logP_single_star_synth(x+1, x[0], 3.1, *params.gal_model, *params.synth_stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+	if(x[0] < -0.1) { return -std::numeric_limits<double>::infinity(); }
+	double RV;
+	double logp = 0;
+	if(params.vary_RV) {
+		RV = x[5];
+		if((RV <= 2.1) || (RV >= 5.)) {
+			return -std::numeric_limits<double>::infinity();
+		}
+		logp = -0.5*(RV-params.RV_mean)*(RV-params.RV_mean)/params.RV_variance;
+	} else {
+		RV = params.RV_mean;
+	}
+	logp += logP_single_star_synth(x+1, x[0], RV, *params.gal_model, *params.synth_stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+	return logp;
 }
 
 double logP_indiv_simple_emp(const double *x, unsigned int N, TMCMCParams &params) {
-	if(x[0] < 0.) { return -std::numeric_limits<double>::infinity(); }
-	return logP_single_star_emp(x+1, x[0], 3.1, *params.gal_model, *params.emp_stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+	if(x[0] < -0.1) { return -std::numeric_limits<double>::infinity(); }
+	double RV;
+	double logp = 0;
+	if(params.vary_RV) {
+		RV = x[4];
+		if((RV <= 2.1) || (RV >= 5.)) {
+			return -std::numeric_limits<double>::infinity();
+		}
+		logp = -0.5*(RV-params.RV_mean)*(RV-params.RV_mean)/params.RV_variance;
+	} else {
+		RV = params.RV_mean;
+	}
+	logp += logP_single_star_emp(x+1, x[0], RV, *params.gal_model, *params.emp_stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+	return logp;
 }
 
 void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
@@ -748,9 +792,10 @@ void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 	double DM_min = 5.;
 	double DM_max = 20.;
 	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
+	params.vary_RV = true;
 	
 	std::string fname = "synth_out.hdf5";
-	std::string dim_name[5] = {"E(B-V)", "DM", "LogMass", "Logtau", "FeH"};
+	std::string dim_name[6] = {"E(B-V)", "DM", "LogMass", "Logtau", "FeH", "R_V"};
 	
 	//double min[5] = {0.0, 0.0, -1.0, 6.0, -2.5};
 	//double max[5] = {10., 25.,  1.2, 11.,  0.5};
@@ -759,10 +804,10 @@ void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 	TNullLogger logger;
 	
 	unsigned int max_attempts = 3;
-	unsigned int N_steps = 500;
+	unsigned int N_steps = 1000;
 	unsigned int N_samplers = 15;
 	unsigned int N_threads = 4;
-	unsigned int ndim = 5;
+	unsigned int ndim = 6;
 	
 	double *GR = new double[ndim];
 	double GR_threshold = 1.1;
@@ -820,7 +865,7 @@ void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 		//logger.write(fname, group_name.str(), dset_name, &dim_name[0], 1, 25000);
 		std::stringstream dim_name_all;
 		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
-		sampler.get_chain().save(fname, group_name.str(), dim_name_all.str(), 1, 1000, 1000);
+		sampler.get_chain().save(fname, group_name.str(), dim_name_all.str(), 1, 1000, 5000);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		
@@ -845,20 +890,18 @@ void sample_indiv_emp(TGalacticLOSModel &galactic_model, TStellarModel &stellar_
 	double DM_min = 5.;
 	double DM_max = 20.;
 	TMCMCParams params(&galactic_model, NULL, &stellar_model, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
+	params.vary_RV = true;
 	
 	std::string fname = "emp_out.hdf5";
-	std::string dim_name[4] = {"E(B-V)", "DM", "Mr", "FeH"};
+	std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
 	
 	TNullLogger logger;
 	
 	unsigned int max_attempts = 3;
-	unsigned int N_steps = 500;
+	unsigned int N_steps = 1000;
 	unsigned int N_samplers = 15;
 	unsigned int N_threads = 4;
-	unsigned int ndim = 4;
-	
-	double y[3] = {12., 1., -1.};
-	double p_tmp = logP_single_star_emp(&(y[0]), 0.1, 3.1, galactic_model, stellar_model, extinction_model, stellar_data.star[0]);
+	unsigned int ndim = 5;
 	
 	double *GR = new double[ndim];
 	double GR_threshold = 1.1;
@@ -882,7 +925,7 @@ void sample_indiv_emp(TGalacticLOSModel &galactic_model, TStellarModel &stellar_
 		
 		//std::cerr << "# Setting up sampler" << std::endl;
 		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
-		sampler.set_scale(1.2);
+		sampler.set_scale(1.5);
 		sampler.set_replacement_bandwidth(0.2);
 		
 		//std::cerr << "# Burn-in" << std::endl;
@@ -916,7 +959,7 @@ void sample_indiv_emp(TGalacticLOSModel &galactic_model, TStellarModel &stellar_
 		//logger.write(fname, group_name.str(), dset_name, &dim_name[0], 1, 25000);
 		std::stringstream dim_name_all;
 		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
-		sampler.get_chain().save(fname, group_name.str(), dim_name_all.str(), 1, 1000, 1000);
+		sampler.get_chain().save(fname, group_name.str(), dim_name_all.str(), 1, 1000, 5000);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		

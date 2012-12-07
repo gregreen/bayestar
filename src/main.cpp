@@ -173,12 +173,14 @@ void los_test() {
 void indiv_test() {
 	double EBV_SFD = 1.5;
 	
+	TStellarModel emplib("/home/greg/projects/bayestar/data/PSMrLF.dat", "/home/greg/projects/bayestar/data/PScolors.dat");
 	TSyntheticStellarModel synthlib("/home/greg/projects/bayestar/data/PS1templates.h5");
 	TExtinctionModel ext_model("/home/greg/projects/bayestar/data/PSExtinction.dat");
 	TStellarData stellar_data("/home/greg/projects/bayestar/input/input_0.in", 0);
 	TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
 	
-	sample_indiv_synth(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
+	//sample_indiv_synth(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
+	sample_indiv_emp(los_model, emplib, ext_model, stellar_data, EBV_SFD);
 }
 
 void mock_test() {

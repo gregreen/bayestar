@@ -305,6 +305,7 @@ void draw_from_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TSy
 			}
 			
 			// Determine whether the star meets the magnitude cuts
+			// TODO: Determine magnitudes and add in errors here, in order to produce faint-end bias
 			observed = true;
 			for(size_t k=0; k<NBANDS; k++) {
 				if(sed.absmag[k] + DM + EBV * ext_model.get_A(RV, k) > mag_limit[k]) {
@@ -323,6 +324,7 @@ void draw_from_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TSy
 		for(size_t k=0; k<NBANDS; k++) {
 			mag[k] = sed.absmag[k] + DM + EBV * ext_model.get_A(RV, k);
 			err[k] = 0.02 + 0.1*exp(mag[i]-mag_limit[i]-1.5);
+			// TODO: Add in error
 			std::cout << std::setw(9) << mag[k] << " ";
 		}
 		std::cout << std::endl;

@@ -117,7 +117,7 @@ struct TMCMCParams {
 	
 	// Model
 	TSyntheticStellarModel *synth_stellar_model;
-	TStellarModel *emp_stellar_model;	// TODO: Tie in empirical model
+	TStellarModel *emp_stellar_model;
 	TGalacticLOSModel *gal_model;
 	TExtinctionModel *ext_model;
 	double EBV_SFD;
@@ -138,6 +138,9 @@ struct TMCMCParams {
 	
 	// Index of star to fit, when sampling from individual stellar posteriors
 	unsigned int idx_star;
+	
+	bool vary_RV;
+	double RV_mean, RV_variance;
 };
 
 
