@@ -89,7 +89,7 @@ def start_file(base_fname, index):
 	return f
 
 
-def to_file(f, pix_index, nside, data):
+def to_file(f, pix_index, nside, nest, data):
 	close_file = False
 	if type(f) == str:
 		f = h5py.File(fname, 'a')
@@ -101,8 +101,10 @@ def to_file(f, pix_index, nside, data):
 	ds[:] = data[:]
 	
 	N_stars = data.shape[0]
-	tp = hp.pixelfunc.pix2ang(nside, pix_index) * 180. / np.pi
-	gal_lb = np.array([tp[1], 90. - tp[0]], dtype='f4')
+	t,p = hp.pixelfunc.pix2ang(nside, pix_index, nest=nest)
+	t *= 180. / np.pi
+	p *= 180. / np.pi
+	gal_lb = np.array([p, 90. - t], dtype='f8')
 	
 	ds.attrs['pix_index'] = pix_index
 	ds.attrs['N_stars'] = N_stars
@@ -216,7 +218,7 @@ def main():
 		
 		# Write object to file
 		outarr = np.empty(len(obj), dtype=[('obj_id','u8'),
-		                                   ('l','f4'), ('b','f4'), 
+		                                   ('l','f8'), ('b','f8'), 
 		                                   ('mean','f4',5), ('err','f4',5),
 		                                   ('nmag_ok','u4',5)])
 		outarr['obj_id'] = obj['obj_id']
@@ -226,12 +228,15 @@ def main():
 		outarr['err'] = obj['err']
 		outarr['nmag_ok'] = obj['nmag_ok']
 		
-		gal_lb = to_file(f, pix_index, values.nside, outarr)
+		gal_lb = to_file(f, pix_index, values.nside, nest, outarr)
 		
 		# Update stats
 		N_pix += 1
 		stars_in_pix = len(obj)
 		N_stars += stars_in_pix
+		
+		if values.visualize:
+			pix_max[pix_index] += N_stars
 		
 		if gal_lb[0] < l_min:
 			l_min = gal_lb[0]
@@ -249,7 +254,7 @@ def main():
 	
 	f.close()
 	
-	if sum(N_pix) != 0:
+	if N_pix != 0:
 		print '# of stars in footprint: %d.' % N_stars
 		print '# of pixels in footprint: %d.' % N_pix
 		print 'Stars per pixel:'
