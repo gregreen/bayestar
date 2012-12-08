@@ -89,19 +89,19 @@ def start_file(base_fname, index):
 	return f
 
 
-def to_file(f, pix_index, data):
+def to_file(f, pix_index, nside, data):
 	close_file = False
 	if type(f) == str:
 		f = h5py.File(fname, 'a')
 		close_file = True
 	
 	ds_name = 'photometry/pixel %d' % pix_index
-	ds = f.create_dataset(ds_name, self.data.shape, self.data.dtype,
-	                      chunks=True, compression='gzip', compression_opts=1)
-	ds[:] = self.data[:]
+	ds = f.create_dataset(ds_name, data.shape, data.dtype, chunks=True,
+	                      compression='gzip', compression_opts=1)
+	ds[:] = data[:]
 	
 	N_stars = data.shape[0]
-	tp = hp.pixelfunc.pix2ang(values.nside, pix_index) * 180. / np.pi
+	tp = hp.pixelfunc.pix2ang(nside, pix_index) * 180. / np.pi
 	gal_lb = np.array([tp[1], 90. - tp[0]], dtype='f4')
 	
 	ds.attrs['pix_index'] = pix_index
@@ -226,7 +226,7 @@ def main():
 		outarr['err'] = obj['err']
 		outarr['nmag_ok'] = obj['nmag_ok']
 		
-		gal_lb = to_file(f, pix_index, outarr)
+		gal_lb = to_file(f, pix_index, values.nside, outarr)
 		
 		# Update stats
 		N_pix += 1
