@@ -89,13 +89,13 @@ def start_file(base_fname, index):
 	return f
 
 
-def to_file(f, pixindex, data):
+def to_file(f, pix_index, data):
 	close_file = False
 	if type(f) == str:
 		f = h5py.File(fname, 'a')
 		close_file = True
 	
-	ds_name = 'photometry/pixel %d' % pixindex
+	ds_name = 'photometry/pixel %d' % pix_index
 	ds = f.create_dataset(ds_name, self.data.shape, self.data.dtype,
 	                      chunks=True, compression='gzip', compression_opts=1)
 	ds[:] = self.data[:]
@@ -104,7 +104,7 @@ def to_file(f, pixindex, data):
 	tp = hp.pixelfunc.pix2ang(values.nside, pix_index) * 180. / np.pi
 	gal_lb = np.array([tp[1], 90. - tp[0]], dtype='f4')
 	
-	ds.attrs['pixindex'] = pixindex
+	ds.attrs['pix_index'] = pix_index
 	ds.attrs['N_stars'] = N_stars
 	ds.attrs['gal_lb'] = gal_lb
 	
@@ -124,8 +124,8 @@ def main():
 	                    help='Healpix nside parameter (default: 512).')
 	parser.add_argument('-b', '--bounds', type=float, nargs=4, default=None,
 	                    help='Restrict pixels to region enclosed by: l_min, l_max, b_min, b_max.')
-	parser.add_argument('-min', '--min_stars', type=int, default=5,
-	                    help='Minimum # of stars in pixel.')
+	parser.add_argument('-min', '--min_stars', type=int, default=1,
+	                    help='Minimum # of stars in pixel (default: 1).')
 	parser.add_argument('-sdss', '--sdss', action='store_true',
 	                    help='Only select objects identified in the SDSS catalog as stars.')
 	parser.add_argument('-ext', '--maxAr', type=float, default=None,
@@ -161,7 +161,7 @@ def main():
 		if values.maxAr == None:
 			query = ("select obj_id, equgal(ra, dec) as (l, b), "
 			         "mean, err, mean_ap, nmag_ok "
-			         "from sdss, ucal_magsqw "
+			         "from sdss, ucal_magsqw_noref "
 			         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
 			         "& (nmag_ok[:,0] > 0) "
 			         "& (numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2) "
@@ -169,14 +169,14 @@ def main():
 		else:
 			query = ("select obj_id, equgal(ra, dec) as (l, b), "
 			         "mean, err, mean_ap, nmag_ok from sdss, "
-			         "ucal_magsqw(matchedto=sdss,nmax=1,dmax=5) "
+			         "ucal_magsqw_noref(matchedto=sdss,nmax=1,dmax=5) "
 			         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
 			         "& (nmag_ok[:,0] > 0) & "
 			         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2) & "
 			         "(type == 6) & (rExt <= %.4f)" % values.maxAr)
 	else:
 		query = ("select obj_id, equgal(ra, dec) as (l, b), mean, err, "
-		         "mean_ap, nmag_ok from ucal_magsqw "
+		         "mean_ap, nmag_ok from ucal_magsqw_noref "
 		         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
 		         "& (nmag_ok[:,0] > 0) & "
 		         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2)")
@@ -224,7 +224,7 @@ def main():
 		outarr['err'] = obj['err']
 		outarr['nmag_ok'] = obj['nmag_ok']
 		
-		gal_lb = to_file(f, pixindex, outarr)
+		gal_lb = to_file(f, pix_index, outarr)
 		
 		# Update stats
 		N_pix += 1
