@@ -132,6 +132,8 @@ def main():
 	                    help='Maximum allowed A_r.')
 	parser.add_argument('-r', '--ring', action='store_true',
 	                    help='Use healpix ring ordering scheme (default: nested).')
+	parser.add_argument('-vis', '--visualize', action='store_true',
+	                    help='Show number of stars in each pixel when query is done')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -161,7 +163,7 @@ def main():
 		if values.maxAr == None:
 			query = ("select obj_id, equgal(ra, dec) as (l, b), "
 			         "mean, err, mean_ap, nmag_ok "
-			         "from sdss, ucal_magsqw "
+			         "from sdss, ucal_magsqw_noref "
 			         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
 			         "& (nmag_ok[:,0] > 0) "
 			         "& (numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2) "
@@ -169,14 +171,14 @@ def main():
 		else:
 			query = ("select obj_id, equgal(ra, dec) as (l, b), "
 			         "mean, err, mean_ap, nmag_ok from sdss, "
-			         "ucal_magsqw(matchedto=sdss,nmax=1,dmax=5) "
+			         "ucal_magsqw_noref(matchedto=sdss,nmax=1,dmax=5) "
 			         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
 			         "& (nmag_ok[:,0] > 0) & "
 			         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2) & "
 			         "(type == 6) & (rExt <= %.4f)" % values.maxAr)
 	else:
 		query = ("select obj_id, equgal(ra, dec) as (l, b), mean, err, "
-		         "mean_ap, nmag_ok from ucal_magsqw "
+		         "mean_ap, nmag_ok from ucal_magsqw_noref "
 		         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
 		         "& (nmag_ok[:,0] > 0) & "
 		         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2)")
