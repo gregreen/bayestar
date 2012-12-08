@@ -132,6 +132,8 @@ def main():
 	                    help='Maximum allowed A_r.')
 	parser.add_argument('-r', '--ring', action='store_true',
 	                    help='Use healpix ring ordering scheme (default: nested).')
+	parser.add_argument('-vis', '--visualize', action='store_true',
+	                    help='Show number of stars in each pixel when query is done')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
