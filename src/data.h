@@ -34,6 +34,7 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
+#include <sstream>
 
 //#define __STDC_LIMIT_MACROS
 #include <stdint.h>
@@ -47,17 +48,26 @@ void seed_gsl_rng(gsl_rng **r);
 
 
 struct TStellarData {
+	struct TFileData {
+		uint64_t obj_id;
+		double l, b;
+		float mag[NBANDS];
+		float err[NBANDS];
+		uint32_t N_det[NBANDS];
+	};
+	
 	struct TMagnitudes {
 		uint64_t obj_id;
 		double l, b;
 		double m[NBANDS];
 		double err[NBANDS];
+		unsigned int N_det[NBANDS];
 		double lnL_norm;
 		
 		TMagnitudes() {}
 		
 		TMagnitudes(double (&_m)[NBANDS], double (&_err)[NBANDS]) {
-			lnL_norm = 0.9189385332;
+			lnL_norm = NBANDS * 0.9189385332;
 			for(unsigned int i=0; i<NBANDS; i++) {
 				m[i] = _m[i];
 				err[i] = _err[i];
@@ -66,13 +76,19 @@ struct TStellarData {
 		}
 		
 		TMagnitudes& operator=(const TMagnitudes& rhs) {
+			obj_id = rhs.obj_id;
+			l = rhs.l;
+			b = rhs.b;
 			for(unsigned int i=0; i<NBANDS; i++) {
 				m[i] = rhs.m[i];
 				err[i] = rhs.err[i];
+				N_det[i] = rhs.N_det[i];
 			}
 			lnL_norm = rhs.lnL_norm;
 			return *this;
 		}
+		
+		void set(TFileData dat, double err_floor=0.02);
 	};
 	
 	uint64_t healpix_index;
@@ -81,20 +97,13 @@ struct TStellarData {
 	double l, b;
 	std::vector<TMagnitudes> star;
 	
-	TStellarData(std::string infile, uint32_t _healpix_index) { load_data(infile, _healpix_index); }
+	TStellarData(std::string infile, uint32_t _healpix_index, double err_floor=0.02);
 	TStellarData(uint64_t _healpix_index, uint32_t _nside, bool _nested, double _l, double _b);
 	TStellarData() {}
 	
 	TMagnitudes& operator[](const unsigned int &index) { return star.at(index); }
 	
 	void clear() { star.clear(); }
-	
-	struct TFileData {
-		uint64_t obj_id;
-		float l, b;
-		float mag[NBANDS];
-		float err[NBANDS];
-	};
 	
 	// Read/write stellar photometry from/to HDF5 files
 	bool save(std::string fname, std::string group_name, int compression=1);

@@ -26,6 +26,14 @@
 #include "data.h"
 
 
+TStellarData::TStellarData(std::string infile, uint32_t _healpix_index, double err_floor) {
+	std::stringstream ss;
+	ss << "/pixel " << healpix_index;
+	load(infile, ss.str(), err_floor);
+}
+
+
+
 TStellarData::TStellarData(uint64_t _healpix_index, uint32_t _nside, bool _nested, double _l, double _b) {
 	healpix_index = _healpix_index;
 	nside = _nside;
@@ -36,7 +44,7 @@ TStellarData::TStellarData(uint64_t _healpix_index, uint32_t _nside, bool _neste
 
 
 bool TStellarData::save(std::string fname, std::string group_name, int compression) {
-	if((compression<0) || (compression > 9)) {
+	if((compression < 0) || (compression > 9)) {
 		std::cerr << "! Invalid gzip compression level: " << compression << std::endl;
 		return false;
 	}
@@ -110,7 +118,7 @@ bool TStellarData::save(std::string fname, std::string group_name, int compressi
 	H5::DataSpace att_dspace(1, &dim);
 	
 	H5::PredType att_dtype = H5::PredType::NATIVE_UINT64;
-	H5::Attribute att_healpix_index = group->createAttribute("healpix index", att_dtype, att_dspace);
+	H5::Attribute att_healpix_index = group->createAttribute("healpix_index", att_dtype, att_dspace);
 	att_healpix_index.write(att_dtype, &healpix_index);
 	
 	att_dtype = H5::PredType::NATIVE_UINT32;
@@ -133,6 +141,110 @@ bool TStellarData::save(std::string fname, std::string group_name, int compressi
 	delete data;
 	delete group;
 	delete file;
+	
+	return true;
+}
+
+
+void TStellarData::TMagnitudes::set(TStellarData::TFileData dat, double err_floor) {
+	obj_id = dat.obj_id;
+	l = dat.l;
+	b = dat.b;
+	lnL_norm = NBANDS * 0.9189385332;
+	for(unsigned int i=0; i<NBANDS; i++) {
+		m[i] = dat.mag[i];
+		err[i] = sqrt(dat.err[i]*dat.err[i] + err_floor*err_floor);
+		lnL_norm += log(err[i]);
+		N_det[i] = dat.N_det[i];
+	}
+}
+
+
+bool TStellarData::load(std::string fname, std::string group_name, double err_floor) {
+	//H5::Exception::dontPrint();
+	
+	H5::H5File *file = NULL;
+	try {
+		file = new H5::H5File(fname.c_str(), H5F_ACC_RDONLY);
+	} catch(H5::FileIException not_found_error) {
+		std::cerr << "File not found: " << fname << std::endl;
+		return false;
+	}
+	
+	H5::Group *group = NULL;
+	try {
+		group = new H5::Group(file->openGroup(group_name.c_str()));
+	} catch(H5::FileIException not_found_error) {
+		std::cerr << "Group not found: " << group_name << std::endl;
+		return false;
+	}
+	
+	H5::DataSet dataset = file->openDataSet("photometry");
+	
+	/*
+	 *  Photometry
+	 */
+	
+	// Datatype
+	hsize_t nbands = NBANDS;
+	H5::ArrayType floatarrtype(H5::PredType::NATIVE_FLOAT, 1, &nbands);
+	H5::ArrayType uint32arrtype(H5::PredType::NATIVE_UINT32, 1, &nbands);
+	H5::CompType dtype(sizeof(TFileData));
+	dtype.insertMember("obj_id", HOFFSET(TFileData, obj_id), H5::PredType::NATIVE_UINT64);
+	dtype.insertMember("l", HOFFSET(TFileData, l), H5::PredType::NATIVE_DOUBLE);
+	dtype.insertMember("b", HOFFSET(TFileData, b), H5::PredType::NATIVE_DOUBLE);
+	dtype.insertMember("mag", HOFFSET(TFileData, mag), floatarrtype);
+	dtype.insertMember("err", HOFFSET(TFileData, err), floatarrtype);
+	dtype.insertMember("N_det", HOFFSET(TFileData, N_det), uint32arrtype);
+	
+	// Dataspace
+	hsize_t length;
+	H5::DataSpace dataspace = dataset.getSpace();
+	dataspace.getSimpleExtentDims(&length);
+	
+	// Read in dataset
+	TFileData* data_buf = new TFileData[length];
+	dataset.read(data_buf, dtype);
+	std::cerr << "# Read in dimensions." << std::endl;
+	
+	TMagnitudes mag_tmp;
+	for(size_t i=0; i<length; i++) {
+		mag_tmp.set(data_buf[i], err_floor);
+		star.push_back(mag_tmp);
+	}
+	
+	/*
+	 *  Attributes
+	 */
+	
+	hsize_t dim = 1;
+	H5::DataSpace att_dspace(1, &dim);
+	
+	H5::Attribute att = dataset.openAttribute("healpix_index");
+	H5::DataType att_dtype = H5::PredType::NATIVE_UINT64;
+	att.read(att_dtype, reinterpret_cast<void*>(&healpix_index));
+	
+	att = dataset.openAttribute("nested");
+	att_dtype = H5::PredType::NATIVE_HBOOL;
+	att.read(att_dtype, reinterpret_cast<void*>(&nested));
+	
+	att = dataset.openAttribute("nside");
+	att_dtype = H5::PredType::NATIVE_UINT32;
+	att.read(att_dtype, reinterpret_cast<void*>(&nside));
+	
+	att = dataset.openAttribute("l");
+	att_dtype = H5::PredType::NATIVE_DOUBLE;
+	att.read(att_dtype, reinterpret_cast<void*>(&l));
+	
+	att = dataset.openAttribute("b");
+	att_dtype = H5::PredType::NATIVE_DOUBLE;
+	att.read(att_dtype, reinterpret_cast<void*>(&b));
+	
+	delete data_buf;
+	delete group;
+	delete file;
+	
+	return true;
 }
 
 
@@ -304,13 +416,21 @@ void draw_from_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TSy
 				in_lib = stellar_model.get_sed(logMass, logtau, FeH, sed);
 			}
 			
-			// Determine whether the star meets the magnitude cuts
-			// TODO: Determine magnitudes and add in errors here, in order to produce faint-end bias
+			// Generate magnitudes
 			observed = true;
+			unsigned int N_nonobs = 0;
 			for(size_t k=0; k<NBANDS; k++) {
-				if(sed.absmag[k] + DM + EBV * ext_model.get_A(RV, k) > mag_limit[k]) {
-					observed = false;
-					break;
+				mag[k] = sed.absmag[k] + DM + EBV * ext_model.get_A(RV, k);
+				err[k] = 0.02 + 0.1*exp(mag[i]-mag_limit[i]-1.5);
+				mag[k] += gsl_ran_gaussian_ziggurat(r, err[k]);
+				
+				// Require detection in g band and 3 other bands
+				if(mag[k] > mag_limit[k]) {
+					N_nonobs++;
+					if((k == 0) || N_nonobs > 1) {
+						observed = false;
+						break;
+					}
 				}
 			}
 		}
@@ -322,9 +442,6 @@ void draw_from_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TSy
 		std::cout << std::setw(9) << logtau << " ";
 		std::cout << std::setw(9) << FeH << " ";
 		for(size_t k=0; k<NBANDS; k++) {
-			mag[k] = sed.absmag[k] + DM + EBV * ext_model.get_A(RV, k);
-			err[k] = 0.02 + 0.1*exp(mag[i]-mag_limit[i]-1.5);
-			// TODO: Add in error
 			std::cout << std::setw(9) << mag[k] << " ";
 		}
 		std::cout << std::endl;
