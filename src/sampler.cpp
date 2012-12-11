@@ -29,209 +29,6 @@
 
 /****************************************************************************************************************************
  * 
- * TSparseBinner
- * 
- ****************************************************************************************************************************/
-
-TSparseBinner::TSparseBinner(double *_min, double *_max, unsigned int *_N_bins, unsigned int _N) {
-	N = _N;
-	min = new double[N];
-	max = new double[N];
-	N_bins = new unsigned int[N];
-	dx = new double[N];
-	multiplier = new uint64_t[N];
-	multiplier[0] = 1;
-	max_index = 1;
-	for(unsigned int i=0; i<N; i++) {
-		min[i] = _min[i];
-		max[i] = _max[i];
-		N_bins[i] = _N_bins[i];
-		dx[i] = (max[i] - min[i]) / (double)(N_bins[i]);
-		if(i != 0) { multiplier[i] = multiplier[i-1] * N_bins[i]; }
-		max_index *= N_bins[i];
-	}
-}
-
-TSparseBinner::~TSparseBinner() {
-	delete[] min;
-	delete[] max;
-	delete[] dx;
-	delete[] N_bins;
-	delete[] multiplier;
-}
-
-uint64_t TSparseBinner::coord_to_index(double* coord) {
-	uint64_t index = 0;
-	uint64_t k;
-	for(unsigned int i=0; i<N; i++) {
-		if((coord[i] >= max[i]) || (coord[i] < min[i])) { return UINT64_MAX; }
-		k = (coord[i] - min[i]) / dx[i];
-		index += multiplier[i] * k;
-	}
-	return index;
-}
-
-bool TSparseBinner::index_to_coord(uint64_t index, double* coord) {
-	if(index >= max_index) { return false; }
-	uint64_t k = index % N_bins[0];
-	coord[0] = min[0] + ((double)k + 0.5) * dx[0];
-	for(unsigned int i=1; i<N; i++) {
-		index = (index - k) / N_bins[i-1];
-		k = index % N_bins[i];
-		coord[i] = min[i] + ((double)k + 0.5) * dx[i];
-	}
-	return true;
-}
-
-void TSparseBinner::add_point(double* x, double weight) {
-	uint64_t index = coord_to_index(x);
-	if(index != UINT64_MAX) { bins[index] += weight; }
-}
-
-void TSparseBinner::operator()(double* x, double weight) {
-	add_point(x, weight);
-}
-
-double TSparseBinner::get_bin(double* x) {
-	uint64_t index;
-	if((index = coord_to_index(x)) != UINT64_MAX) {
-		return bins[index];
-	} else {
-		return -1.;
-	}
-}
-
-void TSparseBinner::clear() {
-	bins.clear();
-}
-
-bool TSparseBinner::write(std::string fname, std::string group_name,
-			  std::string dset_name, std::string *dim_name,
-			  int compression, hsize_t chunk) {
-	if((compression<0) || (compression > 9)) {
-		std::cerr << "! Invalid gzip compression level: " << compression << std::endl;
-		return false;
-	}
-	
-	H5::Exception::dontPrint();
-	H5::H5File *file = NULL;
-	try {
-		file = new H5::H5File(fname.c_str(), H5F_ACC_RDWR);
-	} catch(H5::FileIException) {
-		file = new H5::H5File(fname.c_str(), H5F_ACC_TRUNC);
-	}
-	H5::Group *group = NULL;
-	try {
-		group = new H5::Group(file->openGroup(group_name.c_str()));
-	} catch(H5::FileIException not_found_error) {
-		group = new H5::Group(file->createGroup(group_name.c_str()));
-	}
-	
-	
-	/*
-	 *  Bins
-	 */
-	
-	// Datatype
-	H5::CompType mtype(sizeof(TIndexValue));
-	mtype.insertMember("index", HOFFSET(TIndexValue, index), H5::PredType::NATIVE_UINT64);
-	mtype.insertMember("value", HOFFSET(TIndexValue, value), H5::PredType::NATIVE_FLOAT);
-	
-	// Dataspace and dataset creation property list 
-	int rank = 1;
-	hsize_t fdim = bins.size();
-	if(fdim < chunk) { chunk = fdim; }
-	H5::DataSpace dspace(rank, &fdim);
-	
-	TIndexValue fillvalue;
-	fillvalue.index = 0;
-	fillvalue.value = -1.;
-	
-	H5::DSetCreatPropList plist;
-	plist.setChunk(rank, &chunk);	// Chunking (required for compression)
-	plist.setDeflate(compression);	// gzip compression level
-	plist.setFillValue(mtype, &fillvalue);
-	
-	// Dataset
-	
-	//std::stringstream dset_path;
-	//dset_path << group_name << "/" << dset_name;
-	H5::DataSet* dataset = NULL;
-	try {
-		dataset = new H5::DataSet(group->createDataSet(dset_name.c_str(), mtype, dspace, plist));
-	} catch(H5::GroupIException dset_creation_err) {
-		std::cerr << "! Unable to create dataset '" << dset_name << "'." << std::endl;
-		delete dataset;
-		delete group;
-		delete file;
-		return false;
-	}
-	
-	// Generate data
-	TIndexValue *data = new TIndexValue[fdim];
-	std::map<uint64_t, double>::iterator it;
-	std::map<uint64_t, double>::iterator it_end = bins.end();
-	size_t i = 0;
-	for(it = bins.begin(); it != it_end; ++it, i++) {
-		data[i].index = it->first;
-		data[i].value = it->second;
-		if(i > fdim) {
-			std::cerr << "! Loop ran over end of data!" << std::endl;
-			break;
-		}
-	}
-	
-	dataset->write(data, mtype);
-	
-	
-	/*
-	 *  Attribute
-	 */
-	
-	// Datatype
-	H5::CompType att_type(sizeof(TDimDesc));
-	hid_t tid = H5Tcopy(H5T_C_S1);
-	H5Tset_size(tid, H5T_VARIABLE);
-	att_type.insertMember("name", HOFFSET(TDimDesc, name), tid);
-	att_type.insertMember("min", HOFFSET(TDimDesc, min), H5::PredType::NATIVE_FLOAT);
-	att_type.insertMember("max", HOFFSET(TDimDesc, max), H5::PredType::NATIVE_FLOAT);
-	att_type.insertMember("N_bins", HOFFSET(TDimDesc, N_bins), H5::PredType::NATIVE_UINT64);
-	
-	// Dataspace
-	int att_rank = 1;
-	hsize_t att_dim = N;
-	H5::DataSpace att_space(att_rank, &att_dim);
-	
-	// Dataset
-	H5::Attribute att = dataset->createAttribute("dimensions", att_type, att_space);
-	
-	TDimDesc *att_data = new TDimDesc[N];
-	for(size_t i=0; i<N; i++) {
-		att_data[i].name = new char[sizeof(dim_name[i])];
-		std::strcpy(att_data[i].name, dim_name[i].c_str());
-		att_data[i].min = min[i];
-		att_data[i].max = max[i];
-		att_data[i].N_bins = N_bins[i];
-	}
-	
-	att.write(att_type, att_data);
-	
-	
-	for(size_t i=0; i<N; i++) { delete[] att_data[i].name; }
-	delete[] att_data;
-	
-	delete[] data;
-	delete dataset;
-	delete group;
-	delete file;
-	
-	return true;
-}
-
-
-
-/****************************************************************************************************************************
- * 
  * TMCMCParams
  * 
  ****************************************************************************************************************************/
@@ -247,6 +44,8 @@ TMCMCParams::TMCMCParams(TGalacticLOSModel *_gal_model, TSyntheticStellarModel *
 	// Defaults
 	lnp0 = -10.;
 	idx_star = 0;
+	
+	EBV_floor = 0.;
 	
 	vary_RV = false;
 	RV_mean = 3.1;
@@ -272,8 +71,6 @@ double TMCMCParams::get_EBV(double DM) {
 	if(DM <= DM_min) { return EBV_min; } else if(DM >= DM_max) { return EBV_max; }
 	return (*EBV_interp)(DM);
 }
-
-
 
 
 
@@ -725,7 +522,7 @@ void gen_rand_state_indiv_synth(double *const x, unsigned int N, gsl_rng *r, TMC
 }
 
 void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMCParams &params) {
-	assert(N == 4);
+	if(params.vary_RV) { assert(N == 5); } else { assert(N == 4); }
 	
 	// Stars
 	TSED sed_tmp(true);
@@ -754,7 +551,7 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 }
 
 double logP_indiv_simple_synth(const double *x, unsigned int N, TMCMCParams &params) {
-	if(x[0] < -0.1) { return -std::numeric_limits<double>::infinity(); }
+	if(x[0] < params.EBV_floor) { return -std::numeric_limits<double>::infinity(); }
 	double RV;
 	double logp = 0;
 	if(params.vary_RV) {
@@ -771,7 +568,7 @@ double logP_indiv_simple_synth(const double *x, unsigned int N, TMCMCParams &par
 }
 
 double logP_indiv_simple_emp(const double *x, unsigned int N, TMCMCParams &params) {
-	if(x[0] < -0.1) { return -std::numeric_limits<double>::infinity(); }
+	if(x[0] < params.EBV_floor) { return -std::numeric_limits<double>::infinity(); }
 	double RV;
 	double logp = 0;
 	if(params.vary_RV) {
@@ -787,12 +584,16 @@ double logP_indiv_simple_emp(const double *x, unsigned int N, TMCMCParams &param
 	return logp;
 }
 
-void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
+void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD, double RV_sigma) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
 	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
-	params.vary_RV = true;
+	
+	if(RV_sigma > 0.) {
+		params.vary_RV = true;
+		params.RV_variance = RV_sigma*RV_sigma;
+	}
 	
 	std::string fname = "synth_out.hdf5";
 	std::string dim_name[6] = {"E(B-V)", "DM", "LogMass", "Logtau", "FeH", "R_V"};
@@ -807,7 +608,9 @@ void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 	unsigned int N_steps = 1000;
 	unsigned int N_samplers = 15;
 	unsigned int N_threads = 4;
-	unsigned int ndim = 6;
+	unsigned int ndim;
+	
+	if(params.vary_RV) { ndim = 6; } else { ndim = 5; }
 	
 	double *GR = new double[ndim];
 	double GR_threshold = 1.1;
@@ -885,23 +688,39 @@ void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 	delete[] GR;
 }
 
-void sample_indiv_emp(TGalacticLOSModel &galactic_model, TStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
+void sample_indiv_emp(TGalacticLOSModel& galactic_model, TStellarModel& stellar_model,
+                      TExtinctionModel& extinction_model, TStellarData& stellar_data,
+                      double EBV_SFD, TImgStack& img_stack, double RV_sigma) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
 	TMCMCParams params(&galactic_model, NULL, &stellar_model, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
-	params.vary_RV = true;
+	
+	if(RV_sigma > 0.) {
+		params.vary_RV = true;
+		params.RV_variance = RV_sigma*RV_sigma;
+	}
 	
 	std::string fname = "emp_out.hdf5";
 	std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
 	
+	double min[2] = {DM_min, 0.};
+	double max[2] = {DM_max, 5.};
+	unsigned int N_bins[2] = {120, 500};
+	TRect rect(min, max, N_bins);
+	
+	img_stack.resize(params.N_stars);
+	img_stack.set_rect(rect);
+	
 	TNullLogger logger;
 	
 	unsigned int max_attempts = 3;
-	unsigned int N_steps = 1000;
+	unsigned int N_steps = 500;
 	unsigned int N_samplers = 15;
 	unsigned int N_threads = 4;
-	unsigned int ndim = 5;
+	unsigned int ndim;
+	
+	if(params.vary_RV) { ndim = 5; } else { ndim = 4; }
 	
 	double *GR = new double[ndim];
 	double GR_threshold = 1.1;
@@ -959,7 +778,14 @@ void sample_indiv_emp(TGalacticLOSModel &galactic_model, TStellarModel &stellar_
 		//logger.write(fname, group_name.str(), dset_name, &dim_name[0], 1, 25000);
 		std::stringstream dim_name_all;
 		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
-		sampler.get_chain().save(fname, group_name.str(), dim_name_all.str(), 1, 1000, 5000);
+		
+		TChain chain = sampler.get_chain();
+		chain.save(fname, group_name.str(), dim_name_all.str(), 3, 500, 500);
+		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 50.);
+		
+		std::stringstream img_name;
+		img_name << group_name.str() << "/DM_EBV";
+		save_mat_image(*(img_stack.img[n]), rect, fname, img_name.str(), "DM", "E(B-V)", 3);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		
@@ -1000,21 +826,21 @@ inline void seed_gsl_rng(gsl_rng **r) {
 #endif
 
 
-void rand_vector(double *x, double *min, double *max, size_t N, gsl_rng *r) {
+void rand_vector(double*const x, double* min, double* max, size_t N, gsl_rng* r) {
 	for(size_t i=0; i<N; i++) {
 		x[i] = min[i] + gsl_rng_uniform(r) * (max[i] - min[i]);
 	}
 }
 
-void rand_vector(double *x, size_t N, gsl_rng *r, double A) {
+void rand_vector(double*const x, size_t N, gsl_rng* r, double A) {
 	for(size_t i=0; i<N; i++) { x[i] = A*gsl_rng_uniform(r); }
 }
 
-void rand_gaussian_vector(double *x, double mu, double sigma, size_t N, gsl_rng *r) {
+void rand_gaussian_vector(double*const x, double mu, double sigma, size_t N, gsl_rng* r) {
 	for(size_t i=0; i<N; i++) { x[i] = mu + gsl_ran_gaussian_ziggurat(r, sigma); }
 }
 
-void rand_gaussian_vector(double *x, double *mu, double *sigma, size_t N, gsl_rng *r) {
+void rand_gaussian_vector(double*const x, double* mu, double* sigma, size_t N, gsl_rng* r) {
 	for(size_t i=0; i<N; i++) { x[i] = mu[i] + gsl_ran_gaussian_ziggurat(r, sigma[i]); }
 }
 

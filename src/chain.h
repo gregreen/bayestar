@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sstream>
 #include <cstring>
+#include <stdint.h>
 #include <vector>
 #include <map>
 #include <algorithm>
@@ -27,7 +28,10 @@
 
 #include <H5Cpp.h>
 
-#include <boost/cstdint.hpp>
+//#include <boost/cstdint.hpp>
+
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 #include "stats.h"
 
@@ -82,6 +86,23 @@ struct TGaussianMixture {
 	void expectation_maximization(const double *x, const double *w, unsigned int N, unsigned int iterations=10);
 };
 
+
+class TRect {
+public:
+	double dx[2];
+	uint32_t N_bins[2];
+	double min[2];
+	double max[2];
+	
+	TRect(double _min[2], double _max[2], uint32_t _N_bins[2]);
+	~TRect();
+	
+	bool get_index(double x1, double x2, unsigned int &i1, unsigned int &i2) const;
+	
+	TRect& operator =(const TRect& rhs);
+};
+
+
 /*************************************************************************
  *   Chain Class Prototype
  *************************************************************************/
@@ -112,10 +133,11 @@ public:
 	~TChain();
 	
 	// Mutators
-	void add_point(double* element, double L_i, double w_i);			// Add a point to the end of the chain
-	void clear();									// Remove all the points from the chain
-	void set_capacity(unsigned int _capacity);					// Set the capacity of the vectors used in the chain
-	double append(const TChain& chain, bool reweight=false, bool use_peak=true, double nsigma_max=1., double nsigma_peak=0.1, double chain_frac=0.05, double threshold=1.e-5);	// Append a second chain to this one
+	void add_point(double* element, double L_i, double w_i);		// Add a point to the end of the chain
+	void clear();								// Remove all the points from the chain
+	void set_capacity(unsigned int _capacity);				// Set the capacity of the vectors used in the chain
+	double append(const TChain& chain, bool reweight=false, bool use_peak=true, double nsigma_max=1.,
+	              double nsigma_peak=0.1, double chain_frac=0.05, double threshold=1.e-5);	// Append a second chain to this one
 	
 	// Accessors
 	unsigned int get_capacity() const;			// Return the capacity of the vectors used in the chain
@@ -128,20 +150,28 @@ public:
 	// Computations on chain
 	
 	// Estimate the Bayesian Evidence of the posterior using the bounded Harmonic Mean Approximation
-	double get_ln_Z_harmonic(bool use_peak=true, double nsigma_max=1., double nsigma_peak=0.1, double chain_frac=0.1) const;
+	double get_ln_Z_harmonic(bool use_peak=true, double nsigma_max=1.,
+	                         double nsigma_peak=0.1, double chain_frac=0.1) const;
 	
 	// Estimate coordinates with peak density by binning
 	void density_peak(double* const peak, double nsigma) const;
 	
-	// Find a point in space with high density by picking a random point, drawing an ellipsoid, taking the mean coordinate within the ellipsoid, and then iterating
-	void find_center(double* const center, gsl_matrix *const cov, gsl_matrix *const inv_cov, double* det_cov, double dmax=1., unsigned int iterations=5) const;
+	// Find a point in space with high density by picking a random point, drawing an ellipsoid,
+	// taking the mean coordinate within the ellipsoid, and then iterating
+	void find_center(double* const center, gsl_matrix *const cov, gsl_matrix *const inv_cov,
+	                 double* det_cov, double dmax=1., unsigned int iterations=5) const;
 	
 	void fit_gaussian_mixture(TGaussianMixture *gm, unsigned int iterations=10);
 	
+	// Return an image, optionally with smoothing
+	void get_image(cv::Mat &mat, const TRect &grid,
+	               unsigned int dim1, unsigned int dim2, bool norm=true,
+	               double sigma1=-1., double sigma2=-1., double nsigma=5.) const;
+	
 	// File IO
 	// Save the chain to an HDF5 file
-	bool save(std::string fname, std::string group_name,
-                  std::string dim_name, int compression=1, hsize_t chunk=10000, int subsample=-1) const;
+	bool save(std::string fname, std::string group_name, std::string dim_name,
+	          int compression=1, hsize_t chunk=10000, int subsample=-1) const;
 	bool load(std::string filename, bool reserve_extra=false);	// Load the chain from file
 	
 	// Operators
@@ -149,6 +179,18 @@ public:
 	void operator +=(const TChain& rhs);		// Calls append
 	TChain& operator =(const TChain& rhs);		// Assignment operator
 };
+
+
+// Save an image stored in an OpenCV matrix, with dimensions corresponding to
+// those encoded in the TRect class, to an HDF5 file
+bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string internal_path,
+                    std::string dim1, std::string dim2,
+                    int compression=1);//, hsize_t chunk=0);
+
+// Load an image stored in an HDF5 file to an OpenCV matrix, and read
+// dimensions of image into TRect class
+bool load_mat_image(cv::Mat &img, TRect &rect, std::string fname,
+                    std::string group_name, std::string dim_name);
 
 
 #ifndef __SEED_GSL_RNG_
@@ -167,10 +209,12 @@ inline void seed_gsl_rng(gsl_rng **r) {
 // Sets inv_A to the inverse of A, and returns the determinant of A. If inv_A is NULL, then
 // A is inverted in place. If worspaces p and LU are provided, the function does not have to
 // allocate its own workspaces.
-double invert_matrix(gsl_matrix* A, gsl_matrix* inv_A=NULL, gsl_permutation* p=NULL, gsl_matrix* LU=NULL);
+double invert_matrix(gsl_matrix* A, gsl_matrix* inv_A=NULL,
+                     gsl_permutation* p=NULL, gsl_matrix* LU=NULL);
 
 // Find B s.t. B B^T = A. This is useful for generating vectors from a multivariate normal distribution.
-void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A=NULL, gsl_eigen_symmv_workspace* esv=NULL, gsl_vector *eival=NULL, gsl_matrix *eivec=NULL, gsl_matrix* sqrt_eival=NULL);
+void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A=NULL, gsl_eigen_symmv_workspace* esv=NULL,
+                 gsl_vector *eival=NULL, gsl_matrix *eivec=NULL, gsl_matrix* sqrt_eival=NULL);
 
 // Draw a normal varariate from a covariance matrix. The square-root of the covariance (as defined in sqrt_matrix) must be provided.
 void draw_from_cov(double* x, const gsl_matrix* sqrt_cov, unsigned int N, gsl_rng* r);

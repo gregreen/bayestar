@@ -28,6 +28,7 @@
 #include "model.h"
 #include "data.h"
 #include "sampler.h"
+#include "los_sampler.h"
 
 using namespace std;
 
@@ -180,13 +181,13 @@ void indiv_test() {
 	TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
 	
 	//sample_indiv_synth(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
-	sample_indiv_emp(los_model, emplib, ext_model, stellar_data, EBV_SFD);
+	//sample_indiv_emp(los_model, emplib, ext_model, stellar_data, EBV_SFD);
 }
 
 void mock_test() {
-	size_t nstars = 10;
+	size_t nstars = 25;
 	double EBV_SFD = 1.5;
-	double RV = 3.1;
+	double RV = 3.3;
 	double l = 90.;
 	double b = 10.;
 	uint64_t healpix_index = 1519628;
@@ -203,7 +204,7 @@ void mock_test() {
 	std::cout << std::endl;
 	double mag_lim[5];
 	for(size_t i=0; i<5; i++) { mag_lim[i] = 22.5; }
-	draw_from_model(nstars, RV, los_model, synthlib, stellar_data, ext_model, mag_lim);
+	draw_from_emp_model(nstars, RV, los_model, emplib, stellar_data, ext_model, mag_lim);
 	
 	std::stringstream group_name;
 	group_name << healpix_index;
@@ -211,7 +212,37 @@ void mock_test() {
 	stellar_data.save("mock.hdf5", group_name.str());
 	
 	//sample_indiv_synth(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
-	sample_indiv_emp(los_model, emplib, ext_model, stellar_data, EBV_SFD);
+	
+	TImgStack img_stack(stellar_data.star.size());
+	
+	sample_indiv_emp(los_model, emplib, ext_model, stellar_data, EBV_SFD, img_stack);
+	
+	// Fit line-of-sight extinction profile
+	unsigned int N_regions = 20;
+	sample_los_extinction(img_stack, N_regions, 1.e-50, 5.);
+	
+	TLOSMCMCParams params(&img_stack, 1.e-15, -1.);
+	
+	/*
+	double Delta_EBV[6] = {10000.01, 10000.02, 10000.05, 1.0, 0.05, 10000000000.02};
+	
+	gsl_rng *r;
+	seed_gsl_rng(&r);
+	gen_rand_los_extinction(&(Delta_EBV[0]), N_regions+1, r, params);
+	for(size_t i=0; i<=N_regions; i++) {
+		std::cerr << i << ": " << Delta_EBV[i] << std::endl;
+	}
+	
+	double *line_int = new double[img_stack.N_images];
+	los_integral(img_stack, line_int, &(Delta_EBV[0]), N_regions);
+	for(size_t i=0; i<img_stack.N_images; i++) {
+		std::cerr << i << " --> " << line_int[i] << std::endl;
+	}
+	delete[] line_int;
+	
+	std::cerr << "ln(p) = " << lnp_los_extinction(&(Delta_EBV[0]), N_regions, params) << std::endl;
+	*/
+	
 }
 
 int main(int argc, char **argv) {

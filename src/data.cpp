@@ -137,6 +137,7 @@ bool TStellarData::save(std::string fname, std::string group_name, int compressi
 	H5::Attribute att_b = group->createAttribute("b", att_dtype, att_dspace);
 	att_l.write(H5::PredType::NATIVE_FLOAT, &b);
 	
+	file->close();
 	
 	delete data;
 	delete group;
@@ -217,8 +218,8 @@ bool TStellarData::load(std::string fname, std::string group_name, double err_fl
 	 *  Attributes
 	 */
 	
-	hsize_t dim = 1;
-	H5::DataSpace att_dspace(1, &dim);
+	//hsize_t dim = 1;
+	//H5::DataSpace att_dspace(1, &dim);
 	
 	H5::Attribute att = dataset.openAttribute("healpix_index");
 	H5::DataType att_dtype = H5::PredType::NATIVE_UINT64;
@@ -351,7 +352,12 @@ double halo_FeH_draw(double FeH, void* params) {
 	return gal_model->p_FeH_fast(23., FeH, 1);
 }
 
-void draw_from_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TSyntheticStellarModel& stellar_model,
+double Mr_draw(double Mr, void* params) {
+	TStellarModel *stellar_model = static_cast<TStellarModel*>(params);
+	return stellar_model->get_log_lf(Mr);
+}
+
+void draw_from_synth_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TSyntheticStellarModel& stellar_model,
                      TStellarData& stellar_data, TExtinctionModel& ext_model, double (&mag_limit)[5]) {
 	unsigned int samples = 1000;
 	void* gal_model_ptr = static_cast<void*>(&gal_model);
@@ -465,6 +471,119 @@ void draw_from_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TSy
 	*/
 	
 }
+
+
+
+void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TStellarModel& stellar_model,
+                     TStellarData& stellar_data, TExtinctionModel& ext_model, double (&mag_limit)[5]) {
+	unsigned int samples = 1000;
+	void* gal_model_ptr = static_cast<void*>(&gal_model);
+	void* stellar_model_ptr = static_cast<void*>(&stellar_model);
+	
+	double DM_min = 0.;
+	double DM_max = 25.;
+	TDraw1D draw_DM(&log_dNdmu_draw, DM_min, DM_max, gal_model_ptr, samples, true);
+	
+	double FeH_min = -2.5;
+	double FeH_max = 1.;
+	TDraw1D draw_FeH_disk(&disk_FeH_draw, FeH_min, FeH_max, gal_model_ptr, samples, false);
+	TDraw1D draw_FeH_halo(&halo_FeH_draw, FeH_min, FeH_max, gal_model_ptr, samples, false);
+	
+	double Mr_min = -1.;
+	double Mr_max = mag_limit[1];
+	TDraw1D draw_Mr(&Mr_draw, Mr_min, Mr_max, stellar_model_ptr, samples, true);
+	
+	stellar_data.clear();
+	gal_model.get_lb(stellar_data.l, stellar_data.b);
+	
+	gsl_rng *r;
+	seed_gsl_rng(&r);
+	double EBV, DM, Mr, FeH;
+	double f_halo;
+	bool halo, in_lib, observed;
+	TSED sed;
+	double mag[NBANDS];
+	double err[NBANDS];
+	std::cout << "Component E(B-V)    DM        Mr        [Fe/H]    g         r         i         z         y        " << std::endl;
+	std::cout << "===================================================================================================" << std::endl;
+	std::cout.flags(std::ios::left);
+	std::cout.precision(3);
+	for(size_t i=0; i<nstars; i++) {
+		observed = false;
+		while(!observed) {
+			// Draw DM
+			DM = draw_DM();
+			
+			// Draw E(B-V)
+			//EBV = gsl_ran_chisq(r, 1.);
+			
+			EBV = 0.;
+			if(DM > 5.) { EBV += 0.5; }
+			if(DM > 12.) { EBV += 1.5; }
+			
+			// Draw stellar type
+			f_halo = gal_model.f_halo(DM);
+			halo = (gsl_rng_uniform(r) < f_halo);
+			in_lib = false;
+			while(!in_lib) {
+				if(halo) {
+					FeH = draw_FeH_halo();
+				} else {
+					FeH = draw_FeH_disk();
+				}
+				Mr = draw_Mr();
+				in_lib = stellar_model.get_sed(Mr, FeH, sed);
+			}
+			
+			// Generate magnitudes
+			observed = true;
+			unsigned int N_nonobs = 0;
+			for(size_t k=0; k<NBANDS; k++) {
+				mag[k] = sed.absmag[k] + DM + EBV * ext_model.get_A(RV, k);
+				err[k] = 0.02 + 0.1*exp(mag[i]-mag_limit[i]-1.5);
+				mag[k] += gsl_ran_gaussian_ziggurat(r, err[k]);
+				
+				// Require detection in g band and 3 other bands
+				if(mag[k] > mag_limit[k]) {
+					N_nonobs++;
+					if((k == 0) || N_nonobs > 1) {
+						observed = false;
+						break;
+					}
+				}
+			}
+		}
+		
+		std::cout << (halo ? "halo" : "disk") << "      ";
+		std::cout << std::setw(9) << EBV << " ";
+		std::cout << std::setw(9) << DM << " ";
+		std::cout << std::setw(9) << Mr << " ";
+		std::cout << std::setw(9) << FeH << " ";
+		for(size_t k=0; k<NBANDS; k++) {
+			std::cout << std::setw(9) << mag[k] << " ";
+		}
+		std::cout << std::endl;
+		
+		TStellarData::TMagnitudes mag_tmp(mag, err);
+		mag_tmp.obj_id = i;
+		mag_tmp.l = stellar_data.l;
+		mag_tmp.b = stellar_data.b;
+		stellar_data.star.push_back(mag_tmp);
+		
+	}
+	std::cout << std::endl;
+	
+	gsl_rng_free(r);
+	
+	/*std::vector<bool> filled;
+	DM_of_P.get_filled(filled);
+	for(std::vector<bool>::iterator it = filled.begin(); it != filled.end(); ++it) {
+		std::cout << *it << std::endl;
+	}
+	*/
+	
+}
+
 
 /*************************************************************************
  * 

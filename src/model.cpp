@@ -610,6 +610,13 @@ bool TStellarModel::get_sed(const double* x, TSED& sed) const {
 	return true;
 }
 
+bool TStellarModel::get_sed(double Mr, double FeH, TSED& sed) const {
+	if((Mr <= Mr_min_seds) || (Mr >= Mr_max_seds) || (FeH <= FeH_min_seds) || (FeH >= FeH_max_seds)) {
+		return false;
+	}
+	sed = (*sed_interp)(Mr, FeH);
+	return true;
+}
 
 bool TStellarModel::in_model(double Mr, double FeH) {
 	return (Mr > Mr_min_seds) && (Mr < Mr_max_seds) && (FeH > FeH_min_seds) && (FeH < FeH_max_seds);

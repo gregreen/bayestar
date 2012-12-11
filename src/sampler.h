@@ -26,9 +26,6 @@
 #ifndef _SAMPLER_H__
 #define _SAMPLER_H__
 
-#include "model.h"
-#include "data.h"
-
 #include <iostream>
 #include <iomanip>
 #include <map>
@@ -47,66 +44,17 @@
 #include <H5Cpp.h>
 #include <H5Exception.h>
 
+#include "model.h"
+#include "data.h"
+
 #include "affine_sampler.h"
 #include "chain.h"
+#include "binner.h"
+#include "los_sampler.h"
 
 //#ifndef GSL_RANGE_CHECK_OFF
 //#define GSL_RANGE_CHECK_OFF
 //#endif // GSL_RANGE_CHECK_OFF
-
-
-// Class for binning sparse data with minimal memory usage. This is especially useful
-// when the domain of the function being binned is of high dimension.
-class TSparseBinner {
-public:
-	TSparseBinner(double *_min, double *_max, unsigned int *_N_bins, unsigned int _N);
-	~TSparseBinner();
-	
-	// Save the binned data to an HDF5 file
-	bool write(std::string fname, std::string dset_fname,
-	           std::string group_fname, std::string *dim_name,
-	           int compression=9, hsize_t chunk=1000);
-	
-	// Add weight to a point in space
-	void add_point(double *x, double weight);
-	void operator()(double *x, double weight);
-	
-	// Determine the weight of a particular bin;
-	double get_bin(double *x);
-	
-	// Clear the binner
-	void clear();
-	
-private:
-	// Variables describing bounds of region to be binned
-	double *min, *max, *dx;
-	unsigned int *N_bins;	// # of bins along each axis
-	uint64_t *multiplier;	// used in calculating index of element in array
-	uint64_t max_index;	// Total # of bins in volume
-	unsigned int N;		// Dimensionality of posterior
-	
-	// Bins are stored as index/weight pairs in a stdlib map
-	std::map<uint64_t, double> bins;
-	
-	// Translate a coordinate into a bin number
-	uint64_t coord_to_index(double *x);
-	
-	// Translate a bin number to a coordinate
-	bool index_to_coord(uint64_t index, double* coord);
-	
-	// Needed in order to write to HDF5
-	struct TIndexValue {
-		uint64_t index;
-		float value;
-	};
-	
-	// Needed in order to write attributes to HDF5
-	struct TDimDesc {
-		char* name;
-		float min, max;
-		unsigned int N_bins;
-	};
-};
 
 
 // Wrapper for parameters needed by the sampler
@@ -120,7 +68,7 @@ struct TMCMCParams {
 	TStellarModel *emp_stellar_model;
 	TGalacticLOSModel *gal_model;
 	TExtinctionModel *ext_model;
-	double EBV_SFD;
+	double EBV_SFD, EBV_floor;
 	double DM_min, DM_max;
 	unsigned int N_DM, N_stars;
 	
@@ -158,17 +106,20 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 // Sampling routines
 void sample_model_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
 void sample_model_affine_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
-void sample_indiv_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
 
-void sample_indiv_emp(TGalacticLOSModel& galactic_model, TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
+void sample_indiv_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model,
+                        TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD, double RV_sigma=-1.);
+void sample_indiv_emp(TGalacticLOSModel& galactic_model, TStellarModel& stellar_model,
+                      TExtinctionModel& extinction_model, TStellarData& stellar_data,
+                      double EBV_SFD, TImgStack &img_stack, double RV_sigma=-1.);
 
 // Auxiliary functions
 void seed_gsl_rng(gsl_rng **r);
 
-void rand_vector(double *x, double *min, double *max, size_t N, gsl_rng *r);
-void rand_vector(double* x, size_t N, gsl_rng* r, double A=1.);
-void rand_gaussian_vector(double* x, double mu, double sigma, size_t N, gsl_rng* r);
-void rand_gaussian_vector(double *x, double *mu, double *sigma, size_t N, gsl_rng *r);
+void rand_vector(double *const x, double *min, double *max, size_t N, gsl_rng *r);
+void rand_vector(double *const x, size_t N, gsl_rng* r, double A=1.);
+void rand_gaussian_vector(double *const x, double mu, double sigma, size_t N, gsl_rng* r);
+void rand_gaussian_vector(double *const x, double *mu, double *sigma, size_t N, gsl_rng *r);
 
 
 #endif // _SAMPLER_H__

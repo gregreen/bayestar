@@ -777,6 +777,69 @@ bool TChain::load(std::string filename, bool reserve_extra) {
 	return stats_success;
 }
 
+void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsigned int dim2,
+                       bool norm, double sigma1, double sigma2, double nsigma) const {
+	assert((dim1 >= 0) && (dim1 < N) && (dim2 >= 0) && (dim2 < N) && (dim1 != dim2));
+	
+	mat = cv::Mat::zeros(grid.N_bins[0], grid.N_bins[1], CV_64F);
+	
+	unsigned int i1, i2;
+	for(size_t i=0; i<length; i++) {
+		if(grid.get_index(x[N*i+dim1], x[N*i+dim2], i1, i2)) {
+			mat.at<double>(i1, i2) += w[i];
+			//std::cerr << mat.at<double>(i1, i2) << std::endl;
+		}
+	}
+	
+	if(norm) { mat /= total_weight; }
+	
+	if((sigma1 >= 0.) && (sigma2 >= 0.)) {
+		double s1 = sigma1 / grid.dx[0];
+		double s2 = sigma2 / grid.dx[1];
+		int w1 = 2*ceil(nsigma*s1)+1;
+		int w2 = 2*ceil(nsigma*s2)+1;
+		
+		cv::GaussianBlur(mat, mat, cv::Size(w1,w2), s1, s2, cv::BORDER_REPLICATE);
+	}
+}
+
+
+TRect::TRect(double _min[2], double _max[2], unsigned int _N_bins[2]) {
+	for(size_t i=0; i<2; i++) {
+		min[i] = _min[i];
+		max[i] = _max[i];
+		N_bins[i] = _N_bins[i];
+		dx[i] = (max[i] - min[i]) / (double)N_bins[i];
+	}
+}
+
+TRect::~TRect() { }
+
+bool TRect::get_index(double x1, double x2, unsigned int& i1, unsigned int& i2) const {
+	if((x1 < min[0]) || (x1 >= max[0]) || (x2 < min[1]) || (x2 >= max[1])) {
+		return false;
+	}
+	
+	i1 = (x1 - min[0]) / dx[0];
+	i2 = (x2 - min[1]) / dx[1];
+	
+	return true;
+}
+
+TRect& TRect::operator=(const TRect& rhs) {
+	if(&rhs != this) {
+		for(size_t i=0; i<2; i++) {
+			min[i] = rhs.min[i];
+			max[i] = rhs.max[i];
+			N_bins[i] = rhs.N_bins[i];
+			dx[i] = rhs.dx[i];
+		}
+	}
+	return *this;
+}
+
+
+
 
 /*
  * TGaussianMixture member functions
@@ -1057,7 +1120,102 @@ void TGaussianMixture::print() {
 
 
 /*
- * Auxiliary Functions
+ * Image I/O
+ */
+
+bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string internal_path,
+                    std::string dim1, std::string dim2, int compression) {
+	assert((img.dims == 2) && (img.rows == rect.N_bins[0]) && (img.cols == rect.N_bins[1]));
+	
+	if((compression<0) || (compression > 9)) {
+		std::cerr << "! Invalid gzip compression level: " << compression << std::endl;
+		return false;
+	}
+	
+	H5::Exception::dontPrint();
+	
+	H5::H5File *file = NULL;
+	try {
+		file = new H5::H5File(fname.c_str(), H5F_ACC_RDWR);
+	} catch(H5::FileIException file_exists_err) {
+		file = new H5::H5File(fname.c_str(), H5F_ACC_TRUNC);
+	}
+	
+	/*
+	 *  Image Data
+	 */
+	
+	// Creation property list
+	H5::DSetCreatPropList plist;
+	int rank = 2;
+	hsize_t dim[2] = {rect.N_bins[0], rect.N_bins[1]};
+	plist.setDeflate(compression);	// gzip compression level
+	float fillvalue = 0;
+	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
+	plist.setChunk(rank, &(dim[0]));
+	H5::DataSpace dspace(rank, &(dim[0]));
+	
+	H5::DataSet* dataset;
+	try {
+		dataset = new H5::DataSet(file->createDataSet(internal_path, H5::PredType::NATIVE_FLOAT, dspace, plist));
+	} catch(H5::FileIException create_dset_err) {
+		std::cerr << "Unable to create dataset '" << internal_path << "'." << std::endl;
+		delete file;
+		return false;
+	}
+	
+	float *buf = new float[rect.N_bins[0]*rect.N_bins[1]];
+	for(size_t j=0; j<rect.N_bins[0]; j++) {
+		for(size_t k=0; k<rect.N_bins[1]; k++) {
+			buf[rect.N_bins[1]*j + k] = img.at<double>(j,k);
+			/*float tmp = img.at<double>(j,k);
+			if(tmp > 0.) {
+				std::cerr << j << ", " << k << " --> " << j + rect.N_bins[0]*k << " --> " << tmp << std::endl;
+			}*/
+		}
+	}
+	dataset->write(buf, H5::PredType::NATIVE_FLOAT);
+	
+	/*
+	 *  Attributes
+	 */
+	
+	hsize_t att_dim = 2;
+	H5::DataSpace att_dspace(1, &att_dim);
+	
+	H5::PredType att_dtype = H5::PredType::NATIVE_UINT32;
+	H5::Attribute att_N = dataset->createAttribute("N_pix", att_dtype, att_dspace);
+	att_N.write(att_dtype, &(rect.N_bins));
+	
+	att_dtype = H5::PredType::NATIVE_DOUBLE;
+	H5::Attribute att_min = dataset->createAttribute("min", att_dtype, att_dspace);
+	att_min.write(att_dtype, &(rect.min));
+	
+	att_dtype = H5::PredType::NATIVE_DOUBLE;
+	H5::Attribute att_max = dataset->createAttribute("max", att_dtype, att_dspace);
+	att_max.write(att_dtype, &(rect.min));
+	
+	att_dim = 1;
+	H5::StrType vls_type(0, H5T_VARIABLE);
+	H5::DataSpace att_space_str(H5S_SCALAR);
+	H5::Attribute att_name_1 = dataset->createAttribute("dim_name_1", vls_type, att_space_str);
+	att_name_1.write(vls_type, dim1);
+	H5::Attribute att_name_2 = dataset->createAttribute("dim_name_2",  vls_type, att_space_str);
+	att_name_2.write(vls_type, dim2);
+	
+	file->close();
+	
+	delete[] buf;
+	delete dataset;
+	delete file;
+	
+	return true;
+	
+}
+
+
+/*
+ * Linear Algebra Functions
  * 
  */
 

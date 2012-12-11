@@ -6,6 +6,8 @@ project(bayestar)
 #
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 
+find_package(OpenCV REQUIRED)
+
 ### GSL
 find_package(GSL REQUIRED)
 include_directories(${GSL_INCLUDE_DIR})
@@ -22,7 +24,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_LIMIT_MACROS")
 #
 # Executable
 #
-add_executable(bayestar src/main.cpp src/model.cpp src/sampler.cpp src/interpolation.cpp src/stats.cpp src/chain.cpp src/data.cpp)
+add_executable(bayestar src/main.cpp src/model.cpp src/sampler.cpp src/interpolation.cpp src/stats.cpp src/chain.cpp src/data.cpp src/binner.cpp src/los_sampler.cpp)
 
 #
 # Link libraries
@@ -30,4 +32,6 @@ add_executable(bayestar src/main.cpp src/model.cpp src/sampler.cpp src/interpola
 target_link_libraries(bayestar rt)
 target_link_libraries(bayestar hdf5 hdf5_cpp)
 target_link_libraries(bayestar ${GSL_LIBRARIES})
+
+target_link_libraries(bayestar opencv_core opencv_imgproc)# ${OpenCV_LIBS})
 #target_link_libraries(bayestar ${OpenMP_LIBRARIES})
