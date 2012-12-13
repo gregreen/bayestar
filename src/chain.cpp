@@ -526,31 +526,14 @@ bool TChain::save(std::string fname, std::string group_name,
 	
 	H5::Exception::dontPrint();
 	
-	H5::H5File *file = NULL;
-	try {
-		file = new H5::H5File(fname.c_str(), H5F_ACC_RDWR);
-	} catch(H5::FileIException file_exists_err) {
-		file = new H5::H5File(fname.c_str(), H5F_ACC_TRUNC);
-	}
+	H5::H5File *file = H5Utils::openFile(fname);
+	if(file == NULL) { return false; }
 	
-	H5::Group *parent_group = NULL;
-	try {
-		parent_group = new H5::Group(file->openGroup(group_name.c_str()));
-	} catch(H5::FileIException not_found_error ) {
-		parent_group = new H5::Group(file->createGroup(group_name.c_str()));
-	}
-	
-	H5::Group *group = NULL;
-	try {
-		group = new H5::Group(parent_group->createGroup("chain"));
-	} catch( H5::GroupIException group_exc ) {
-		std::cerr << "! Could not create group for chain." << std::endl;
+	H5::Group *group = H5Utils::openGroup(file, group_name);
+	if(group == NULL) {
 		delete file;
-		delete parent_group;
-		delete group;
 		return false;
 	}
-	
 	
 	/*
 	 *  Attributes
@@ -584,7 +567,6 @@ bool TChain::save(std::string fname, std::string group_name,
 	
 	// Creation property list to be used for all three datasets
 	H5::DSetCreatPropList plist;
-	int rank = 1;
 	plist.setDeflate(compression);	// gzip compression level
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
@@ -626,17 +608,19 @@ bool TChain::save(std::string fname, std::string group_name,
 	// Dataspace
 	hsize_t dim;
 	if(subsample > 0) {
-		dim = N * subsample;
+		dim = subsample;
 	} else {
-		dim = x.size();
+		dim = length;
 	}
 	// Chunking (required for compression)
-	if(dim < chunk) {
-		plist.setChunk(rank, &dim);
-	} else {
-		plist.setChunk(rank, &chunk);
-	}
-	H5::DataSpace x_dspace(rank, &dim);
+	int rank = 2;
+	hsize_t coord_dim[2] = {dim, N};
+	//if(dim < chunk) {
+	plist.setChunk(rank, &(coord_dim[0]));
+	//} else {
+	//	plist.setChunk(rank, &chunk);
+	//}
+	H5::DataSpace x_dspace(rank, &(coord_dim[0]));
 	
 	// Dataset
 	//std::stringstream x_dset_path;
@@ -644,7 +628,7 @@ bool TChain::save(std::string fname, std::string group_name,
 	H5::DataSet* x_dataset = new H5::DataSet(group->createDataSet("coords", H5::PredType::NATIVE_FLOAT, x_dspace, plist));
 	
 	// Write
-	float *buf = new float[dim];
+	float *buf = new float[N*dim];
 	if(subsample > 0) {
 		size_t tmp_idx;
 		for(size_t i=0; i<subsample; i++) {
@@ -669,11 +653,12 @@ bool TChain::save(std::string fname, std::string group_name,
 	} else {
 		dim = w.size();
 	}
-	if(dim < chunk) {
-		plist.setChunk(rank, &dim);
-	} else {
-		plist.setChunk(rank, &chunk);
-	}
+	rank = 1;
+	//if(dim < chunk) {
+	plist.setChunk(rank, &dim);
+	//} else {
+	//	plist.setChunk(rank, &chunk);
+	//}
 	H5::DataSpace w_dspace(rank, &dim);
 	
 	// Dataset
@@ -697,11 +682,11 @@ bool TChain::save(std::string fname, std::string group_name,
 	
 	// Dataspace
 	//dim = L.size();
-	if(dim < chunk) {
-		plist.setChunk(rank, &dim);
-	} else {
-		plist.setChunk(rank, &chunk);
-	}
+	//if(dim < chunk) {
+	plist.setChunk(rank, &dim);
+	//} else {
+	//	plist.setChunk(rank, &chunk);
+	//}
 	H5::DataSpace L_dspace(rank, &dim);
 	
 	// Dataset
@@ -731,7 +716,6 @@ bool TChain::save(std::string fname, std::string group_name,
 	delete w_dataset;
 	delete L_dataset;
 	
-	delete parent_group;
 	delete group;
 	delete file;
 	
@@ -1123,8 +1107,8 @@ void TGaussianMixture::print() {
  * Image I/O
  */
 
-bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string internal_path,
-                    std::string dim1, std::string dim2, int compression) {
+bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string group_name,
+                    std::string dset_name, std::string dim1, std::string dim2, int compression) {
 	assert((img.dims == 2) && (img.rows == rect.N_bins[0]) && (img.cols == rect.N_bins[1]));
 	
 	if((compression<0) || (compression > 9)) {
@@ -1134,11 +1118,13 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string in
 	
 	H5::Exception::dontPrint();
 	
-	H5::H5File *file = NULL;
-	try {
-		file = new H5::H5File(fname.c_str(), H5F_ACC_RDWR);
-	} catch(H5::FileIException file_exists_err) {
-		file = new H5::H5File(fname.c_str(), H5F_ACC_TRUNC);
+	H5::H5File *file = H5Utils::openFile(fname);
+	if(file == NULL) { return false; }
+	
+	H5::Group *group = H5Utils::openGroup(file, group_name);
+	if(group == NULL) {
+		delete file;
+		return false;
 	}
 	
 	/*
@@ -1157,9 +1143,10 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string in
 	
 	H5::DataSet* dataset;
 	try {
-		dataset = new H5::DataSet(file->createDataSet(internal_path, H5::PredType::NATIVE_FLOAT, dspace, plist));
+		dataset = new H5::DataSet(group->createDataSet(dset_name, H5::PredType::NATIVE_FLOAT, dspace, plist));
 	} catch(H5::FileIException create_dset_err) {
-		std::cerr << "Unable to create dataset '" << internal_path << "'." << std::endl;
+		std::cerr << "Unable to create dataset '" << dset_name << "'." << std::endl;
+		delete group;
 		delete file;
 		return false;
 	}
@@ -1207,6 +1194,7 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string in
 	
 	delete[] buf;
 	delete dataset;
+	delete group;
 	delete file;
 	
 	return true;

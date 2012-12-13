@@ -57,18 +57,13 @@ bool TStellarData::save(std::string fname, std::string group_name, int compressi
 	
 	H5::Exception::dontPrint();
 	
-	H5::H5File *file = NULL;
-	try {
-		file = new H5::H5File(fname.c_str(), H5F_ACC_RDWR);
-	} catch(H5::FileIException file_exists_err) {
-		file = new H5::H5File(fname.c_str(), H5F_ACC_TRUNC);
-	}
+	H5::H5File *file = H5Utils::openFile(fname);
+	if(file == NULL) { return false; }
 	
-	H5::Group *group = NULL;
-	try {
-		group = new H5::Group(file->openGroup(group_name.c_str()));
-	} catch(H5::FileIException not_found_error ) {
-		group = new H5::Group(file->createGroup(group_name.c_str()));
+	H5::Group *group = H5Utils::openGroup(file, group_name);
+	if(group == NULL) {
+		delete file;
+		return false;
 	}
 	
 	/*
@@ -164,19 +159,12 @@ void TStellarData::TMagnitudes::set(TStellarData::TFileData dat, double err_floo
 bool TStellarData::load(std::string fname, std::string group_name, double err_floor) {
 	//H5::Exception::dontPrint();
 	
-	H5::H5File *file = NULL;
-	try {
-		file = new H5::H5File(fname.c_str(), H5F_ACC_RDONLY);
-	} catch(H5::FileIException not_found_error) {
-		std::cerr << "File not found: " << fname << std::endl;
-		return false;
-	}
+	H5::H5File *file = H5Utils::openFile(fname);
+	if(file == NULL) { return false; }
 	
-	H5::Group *group = NULL;
-	try {
-		group = new H5::Group(file->openGroup(group_name.c_str()));
-	} catch(H5::FileIException not_found_error) {
-		std::cerr << "Group not found: " << group_name << std::endl;
+	H5::Group *group = H5Utils::openGroup(file, group_name);
+	if(group == NULL) {
+		delete file;
 		return false;
 	}
 	
@@ -504,8 +492,8 @@ void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model,
 	TSED sed;
 	double mag[NBANDS];
 	double err[NBANDS];
-	std::cout << "Component E(B-V)    DM        Mr        [Fe/H]    g         r         i         z         y        " << std::endl;
-	std::cout << "===================================================================================================" << std::endl;
+	std::cout << "#         Component E(B-V)    DM        Mr        [Fe/H]    g         r         i         z         y        " << std::endl;
+	std::cout << "=============================================================================================================" << std::endl;
 	std::cout.flags(std::ios::left);
 	std::cout.precision(3);
 	for(size_t i=0; i<nstars; i++) {
@@ -519,7 +507,7 @@ void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model,
 			
 			EBV = 0.;
 			if(DM > 5.) { EBV += 0.5; }
-			if(DM > 12.) { EBV += 1.5; }
+			if(DM > 10.) { EBV += 3.5; }
 			
 			// Draw stellar type
 			f_halo = gal_model.f_halo(DM);
@@ -541,6 +529,7 @@ void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model,
 			for(size_t k=0; k<NBANDS; k++) {
 				mag[k] = sed.absmag[k] + DM + EBV * ext_model.get_A(RV, k);
 				err[k] = 0.02 + 0.1*exp(mag[i]-mag_limit[i]-1.5);
+				if(err[k] > 1.5) { err[k] = 1.5; }
 				mag[k] += gsl_ran_gaussian_ziggurat(r, err[k]);
 				
 				// Require detection in g band and 3 other bands
@@ -554,6 +543,7 @@ void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model,
 			}
 		}
 		
+		std::cout << std::setw(9) << i+1 << " ";
 		std::cout << (halo ? "halo" : "disk") << "      ";
 		std::cout << std::setw(9) << EBV << " ";
 		std::cout << std::setw(9) << DM << " ";

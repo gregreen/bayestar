@@ -73,7 +73,9 @@ struct TLOSMCMCParams {
 };
 
 
-void sample_los_extinction(TImgStack& img_stack, unsigned int N_regions=20, double p0=1.e-5, double EBV_max=-1.);
+void sample_los_extinction(std::string out_fname, TImgStack& img_stack,
+                           unsigned int N_regions, double p0,
+                           double EBV_max, uint64_t healpix_index);
 
 void los_integral(TImgStack& img_stack, double* ret,
                   const double* Delta_EBV, unsigned int N_regions);

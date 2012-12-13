@@ -42,6 +42,8 @@
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 
+#include "h5utils.h"
+
 
 // Auxiliary functions
 void seed_gsl_rng(gsl_rng **r);

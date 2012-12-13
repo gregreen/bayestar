@@ -196,7 +196,7 @@ class TChain:
 # Batch processing of Markov chains
 ########################################################################
 
-def get_chains(fname):
+def get_stellar_chains(fname):
 	'''
 	Load all the stellar Markov chains from an hdf5 file.
 	'''
@@ -228,6 +228,14 @@ def get_chains(fname):
 	ret.sort()
 	
 	return ret
+
+def get_los_chains(fname):
+	'''
+	
+	'''
+	
+	pass
+
 
 
 def grid_pdfs(chain, bounds, samples, axes=(0,1), subsample=None):

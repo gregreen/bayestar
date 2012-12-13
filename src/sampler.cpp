@@ -688,7 +688,7 @@ void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 	delete[] GR;
 }
 
-void sample_indiv_emp(TGalacticLOSModel& galactic_model, TStellarModel& stellar_model,
+void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, TStellarModel& stellar_model,
                       TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       double EBV_SFD, TImgStack& img_stack, double RV_sigma) {
 	unsigned int N_DM = 20;
@@ -701,11 +701,10 @@ void sample_indiv_emp(TGalacticLOSModel& galactic_model, TStellarModel& stellar_
 		params.RV_variance = RV_sigma*RV_sigma;
 	}
 	
-	std::string fname = "emp_out.hdf5";
 	std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
 	
-	double min[2] = {DM_min, 0.};
-	double max[2] = {DM_max, 5.};
+	double min[2] = {5., 0.};
+	double max[2] = {18., 5.};
 	unsigned int N_bins[2] = {120, 500};
 	TRect rect(min, max, N_bins);
 	
@@ -732,7 +731,6 @@ void sample_indiv_emp(TGalacticLOSModel& galactic_model, TStellarModel& stellar_
 	//bool write_success;
 	
 	std::cerr << std::endl;
-	std::remove(fname.c_str());
 	
 	for(size_t n=0; n<params.N_stars; n++) {
 		params.idx_star = n;
@@ -773,19 +771,22 @@ void sample_indiv_emp(TGalacticLOSModel& galactic_model, TStellarModel& stellar_
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_write);
 		
+		// Group in which star will be saved.
 		std::stringstream group_name;
+		group_name << "/pixel " << stellar_data.healpix_index;
 		group_name << "/star " << n;
-		//logger.write(fname, group_name.str(), dset_name, &dim_name[0], 1, 25000);
+		
+		// Save thinned chain
+		TChain chain = sampler.get_chain();
+		std::stringstream chain_name;
+		chain_name << group_name.str() << "/chain";
 		std::stringstream dim_name_all;
 		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
+		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 500, 500);
 		
-		TChain chain = sampler.get_chain();
-		chain.save(fname, group_name.str(), dim_name_all.str(), 3, 500, 500);
+		// Save binned p(DM, EBV) surface
 		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 50.);
-		
-		std::stringstream img_name;
-		img_name << group_name.str() << "/DM_EBV";
-		save_mat_image(*(img_stack.img[n]), rect, fname, img_name.str(), "DM", "E(B-V)", 3);
+		save_mat_image(*(img_stack.img[n]), rect, out_fname, group_name.str(), "DM_EBV", "DM", "E(B-V)", 5);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		

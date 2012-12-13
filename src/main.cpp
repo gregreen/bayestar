@@ -186,6 +186,7 @@ void indiv_test() {
 
 void mock_test() {
 	size_t nstars = 25;
+	unsigned int N_regions = 10;
 	double EBV_SFD = 1.5;
 	double RV = 3.3;
 	double l = 90.;
@@ -215,15 +216,17 @@ void mock_test() {
 	
 	TImgStack img_stack(stellar_data.star.size());
 	
-	sample_indiv_emp(los_model, emplib, ext_model, stellar_data, EBV_SFD, img_stack);
+	std::string out_fname = "emp_out.h5";
+	remove(out_fname.c_str());
+	sample_indiv_emp(out_fname, los_model, emplib, ext_model, stellar_data, EBV_SFD, img_stack);
 	
 	// Fit line-of-sight extinction profile
-	unsigned int N_regions = 20;
-	sample_los_extinction(img_stack, N_regions, 1.e-50, 5.);
-	
-	TLOSMCMCParams params(&img_stack, 1.e-15, -1.);
+	sample_los_extinction(out_fname, img_stack, N_regions, 1.e-50, 5., healpix_index);
 	
 	/*
+	TLOSMCMCParams params(&img_stack, 1.e-100, -1.);
+	
+	
 	double Delta_EBV[6] = {10000.01, 10000.02, 10000.05, 1.0, 0.05, 10000000000.02};
 	
 	gsl_rng *r;
@@ -242,7 +245,6 @@ void mock_test() {
 	
 	std::cerr << "ln(p) = " << lnp_los_extinction(&(Delta_EBV[0]), N_regions, params) << std::endl;
 	*/
-	
 }
 
 int main(int argc, char **argv) {

@@ -27,6 +27,7 @@
 #include <gsl/gsl_sf_gamma.h>
 
 #include <H5Cpp.h>
+#include "h5utils.h"
 
 //#include <boost/cstdint.hpp>
 
@@ -183,8 +184,8 @@ public:
 
 // Save an image stored in an OpenCV matrix, with dimensions corresponding to
 // those encoded in the TRect class, to an HDF5 file
-bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string internal_path,
-                    std::string dim1, std::string dim2,
+bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string group_name,
+                    std::string dset_name, std::string dim1, std::string dim2,
                     int compression=1);//, hsize_t chunk=0);
 
 // Load an image stored in an HDF5 file to an OpenCV matrix, and read

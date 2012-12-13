@@ -27,16 +27,14 @@
 #include "los_sampler.h"
 
 
-void sample_los_extinction(TImgStack& img_stack, unsigned int N_regions, double p0, double EBV_max) {
+void sample_los_extinction(std::string out_fname, TImgStack& img_stack, unsigned int N_regions, double p0, double EBV_max, uint64_t healpix_index) {
 	TLOSMCMCParams params(&img_stack, p0, EBV_max);
-	
-	std::string fname = "emp_out.hdf5";
 	
 	TNullLogger logger;
 	
 	unsigned int max_attempts = 3;
 	unsigned int N_steps = 500;
-	unsigned int N_samplers = 15;
+	unsigned int N_samplers = 2;
 	unsigned int N_threads = 4;
 	unsigned int ndim = N_regions + 1;
 	
@@ -57,18 +55,18 @@ void sample_los_extinction(TImgStack& img_stack, unsigned int N_regions, double 
 	
 	//std::cerr << "# Setting up sampler" << std::endl;
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
-	sampler.set_scale(1.5);
-	sampler.set_replacement_bandwidth(0.5);
+	sampler.set_scale(1.2);
+	sampler.set_replacement_bandwidth(0.1);
 	
 	//std::cerr << "# Burn-in" << std::endl;
-	sampler.step(N_steps, false, 0., 0.2, 0.);
+	sampler.step(N_steps, false, 0., 0.1, 0.);
 	sampler.clear();
 	
 	//std::cerr << "# Main run" << std::endl;
 	bool converged = false;
 	size_t attempt;
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-		sampler.step((1<<attempt)*N_steps, true, 0., 0.2, 0.);
+		sampler.step((1<<attempt)*N_steps, true, 0., 0.1, 0.);
 		
 		converged = true;
 		sampler.get_GR_diagnostic(GR);
@@ -87,7 +85,11 @@ void sample_los_extinction(TImgStack& img_stack, unsigned int N_regions, double 
 	clock_gettime(CLOCK_MONOTONIC, &t_write);
 	
 	TChain chain = sampler.get_chain();
-	chain.save(fname, "los", "Delta E(B-V)", 3, 500, 500);
+	
+	std::stringstream group_name;
+	group_name << "/pixel " << healpix_index;
+	group_name << "/los extinction";
+	chain.save(out_fname, group_name.str(), "Delta E(B-V)", 3, 500, 500);
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
 	
@@ -179,7 +181,7 @@ void gen_rand_los_extinction(double *const Delta_EBV, unsigned int N, gsl_rng *r
 		Delta_EBV[i] = 0.5 * mu * gsl_ran_chisq(r, 2.);
 		sum_EBV += Delta_EBV[i];
 	}
-	Delta_EBV[0] += 0.5;
+	//Delta_EBV[0] += 0.5;
 	
 	// Ensure that reddening is not more than allowed
 	if(sum_EBV >= 0.95 * EBV_ceil) {

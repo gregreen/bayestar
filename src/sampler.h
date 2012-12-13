@@ -44,6 +44,8 @@
 #include <H5Cpp.h>
 #include <H5Exception.h>
 
+#include "h5utils.h"
+
 #include "model.h"
 #include "data.h"
 
@@ -109,7 +111,7 @@ void sample_model_affine_synth(TGalacticLOSModel& galactic_model, TSyntheticStel
 
 void sample_indiv_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model,
                         TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD, double RV_sigma=-1.);
-void sample_indiv_emp(TGalacticLOSModel& galactic_model, TStellarModel& stellar_model,
+void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, TStellarModel& stellar_model,
                       TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       double EBV_SFD, TImgStack &img_stack, double RV_sigma=-1.);
 
