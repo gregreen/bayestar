@@ -197,7 +197,7 @@ void mock_test() {
 	bool nested = true;
 	
 	TStellarModel emplib(DATADIR "PSMrLF.dat", DATADIR "PScolors.dat");
-	TSyntheticStellarModel synthlib(DATADIR "PS1templates.h5");
+	//TSyntheticStellarModel synthlib(DATADIR "PS1templates.h5");
 	TExtinctionModel ext_model(DATADIR "PSExtinction.dat");
 	TGalacticLOSModel los_model(l, b);
 	//los_model.load_lf("/home/greg/projects/bayestar/data/PSMrLF.dat");

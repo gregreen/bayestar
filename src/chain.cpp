@@ -1180,7 +1180,7 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string gr
 	
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	H5::Attribute att_max = dataset->createAttribute("max", att_dtype, att_dspace);
-	att_max.write(att_dtype, &(rect.min));
+	att_max.write(att_dtype, &(rect.max));
 	
 	att_dim = 1;
 	H5::StrType vls_type(0, H5T_VARIABLE);
