@@ -6,6 +6,29 @@ project(bayestar)
 #
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 
+#
+# configure a header file to pass some of the CMake settings to the source
+# code
+#
+#set(DATADIR "${CMAKE_INSTALL_PREFIX}/data/")
+set(DATADIR "${CMAKE_SOURCE_DIR}/data/")
+configure_file(
+	"${PROJECT_SOURCE_DIR}/src/bayestar_config.h.in"
+	"${PROJECT_BINARY_DIR}/src/bayestar_config.h"  
+	ESCAPE_QUOTES
+)
+include_directories("${PROJECT_BINARY_DIR}/src")
+
+#
+# Intel Compiler Flags
+#
+#IF(NOT CMAKE_COMPILER_IS_GNUCXX)
+#	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ipo -axHOST -no-prec-div ") 
+#ELSE(NOT CMAKE_COMPILER_IS_GNUCXX)
+#	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ffast-math ")
+#ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
+
+### OpenCV
 find_package(OpenCV REQUIRED)
 
 ### GSL

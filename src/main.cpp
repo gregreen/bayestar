@@ -29,6 +29,7 @@
 #include "data.h"
 #include "sampler.h"
 #include "los_sampler.h"
+#include "bayestar_config.h"
 
 using namespace std;
 
@@ -186,7 +187,7 @@ void indiv_test() {
 
 void mock_test() {
 	size_t nstars = 25;
-	unsigned int N_regions = 10;
+	unsigned int N_regions = 20;
 	double EBV_SFD = 1.5;
 	double RV = 3.3;
 	double l = 90.;
@@ -195,9 +196,9 @@ void mock_test() {
 	uint32_t nside = 512;
 	bool nested = true;
 	
-	TStellarModel emplib("/home/greg/projects/bayestar/data/PSMrLF.dat", "/home/greg/projects/bayestar/data/PScolors.dat");
-	TSyntheticStellarModel synthlib("/home/greg/projects/bayestar/data/PS1templates.h5");
-	TExtinctionModel ext_model("/home/greg/projects/bayestar/data/PSExtinction.dat");
+	TStellarModel emplib(DATADIR "PSMrLF.dat", DATADIR "PScolors.dat");
+	TSyntheticStellarModel synthlib(DATADIR "PS1templates.h5");
+	TExtinctionModel ext_model(DATADIR "PSExtinction.dat");
 	TGalacticLOSModel los_model(l, b);
 	//los_model.load_lf("/home/greg/projects/bayestar/data/PSMrLF.dat");
 	TStellarData stellar_data(healpix_index, nside, nested, l, b);

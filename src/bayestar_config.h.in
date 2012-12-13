@@ -1,0 +1,8 @@
+#ifndef _BAYESTAR_CONFIG_H__
+#define _BAYESTAR_CONFIG_H__
+
+
+#define DATADIR "${DATADIR}"
+
+
+#endif // _BAYESTAR_CONFIG_H__

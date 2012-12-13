@@ -34,7 +34,7 @@ void sample_los_extinction(std::string out_fname, TImgStack& img_stack, unsigned
 	
 	unsigned int max_attempts = 3;
 	unsigned int N_steps = 500;
-	unsigned int N_samplers = 2;
+	unsigned int N_samplers = 10;
 	unsigned int N_threads = 4;
 	unsigned int ndim = N_regions + 1;
 	
@@ -58,15 +58,19 @@ void sample_los_extinction(std::string out_fname, TImgStack& img_stack, unsigned
 	sampler.set_scale(1.2);
 	sampler.set_replacement_bandwidth(0.1);
 	
-	//std::cerr << "# Burn-in" << std::endl;
-	sampler.step(N_steps, false, 0., 0.1, 0.);
+	// Burn-in
+	std::cerr << "# Burn-in" << std::endl;
+	sampler.step(N_steps/10, false, 0., 0.1, 0.);
+	sampler.step(N_steps/10, false, 0., 1., 0.);
+	sampler.step(N_steps*6/10, false, 0., 0.1, 0.);
+	sampler.step(N_steps*2/10, false, 0., 1., 0.);
 	sampler.clear();
 	
-	//std::cerr << "# Main run" << std::endl;
+	std::cerr << "# Main run" << std::endl;
 	bool converged = false;
 	size_t attempt;
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-		sampler.step((1<<attempt)*N_steps, true, 0., 0.1, 0.);
+		sampler.step((1<<attempt)*N_steps, true, 0., 0.5, 0.);
 		
 		converged = true;
 		sampler.get_GR_diagnostic(GR);
@@ -74,6 +78,7 @@ void sample_los_extinction(std::string out_fname, TImgStack& img_stack, unsigned
 			if(GR[i] > GR_threshold) {
 				converged = false;
 				if(attempt != max_attempts-1) {
+					sampler.step(N_steps/10, false, 0., 1., 0.);
 					sampler.clear();
 					//logger.clear();
 				}
