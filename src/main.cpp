@@ -186,7 +186,7 @@ void indiv_test() {
 }
 
 void mock_test() {
-	size_t nstars = 20;
+	size_t nstars = 100;
 	unsigned int N_regions = 20;
 	double EBV_SFD = 2.5;
 	double RV = 3.1;

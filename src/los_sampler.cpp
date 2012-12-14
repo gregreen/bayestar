@@ -34,13 +34,13 @@ void sample_los_extinction(std::string out_fname, TImgStack& img_stack,
 	TNullLogger logger;
 	
 	unsigned int max_attempts = 3;
-	unsigned int N_steps = 1000;
+	unsigned int N_steps = 2000;
 	unsigned int N_samplers = 15;
 	unsigned int N_threads = 4;
 	unsigned int ndim = N_regions + 1;
 	
 	double *GR = new double[ndim];
-	double GR_threshold = 1.1;
+	double GR_threshold = 1.2;
 	
 	typename TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
 	typename TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction;
