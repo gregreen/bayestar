@@ -112,7 +112,7 @@ public:
 	~TAffineSampler();
 	
 	// Mutators
-	void step(bool record_step=true, double p_replacement=0.1, double p_mixture=0.1);	// Advance each sampler in ensemble by one step
+	void step(bool record_step=true, double p_replacement=0.1, double p_mixture=0.1, bool unbalanced=false);	// Advance each sampler in ensemble by one step
 	void set_scale(double a);			// Set dimensionless step scale
 	void set_replacement_bandwidth(double _h);	// Set smoothing scale to be used for replacement steps, in units of the covariance
 	void flush(bool record_steps=true);		// Clear the weights in the ensemble and record the outstanding component states
@@ -161,7 +161,7 @@ public:
 	~TParallelAffineSampler();
 	
 	// Mutators
-	void step(unsigned int N_steps, bool record_steps, double cycle=0, double p_replacement=0.1, double p_mixture=0.1);		// Take the given number of steps in each affine sampler
+	void step(unsigned int N_steps, bool record_steps, double cycle=0, double p_replacement=0.1, double p_mixture=0.1, bool unbalanced=false);		// Take the given number of steps in each affine sampler
 	void set_scale(double a) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_scale(a); } };				// Set the dimensionless step size a
 	void set_replacement_bandwidth(double h) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_replacement_bandwidth(h); } };	// Set the dimensionless step size a
 	void init_gaussian_mixture_target(unsigned int nclusters, unsigned int iterations=100) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->init_gaussian_mixture_target(nclusters, iterations); } };
@@ -504,7 +504,7 @@ void TAffineSampler<TParams, TLogger>::init_gaussian_mixture_target(unsigned int
  *************************************************************************/
 
 template<class TParams, class TLogger>
-void TAffineSampler<TParams, TLogger>::step(bool record_step, double p_replacement, double p_mixture) {
+void TAffineSampler<TParams, TLogger>::step(bool record_step, double p_replacement, double p_mixture, bool unbalanced) {
 	double scale, alpha, p;
 	unsigned int step_type;
 	bool ensemble_cov_updated = false;
@@ -541,6 +541,8 @@ void TAffineSampler<TParams, TLogger>::step(bool record_step, double p_replaceme
 			} else {
 				if(step_type == 0) {
 					alpha = (double)(N - 1) * log(scale) + Y[j].pi - X[j].pi;
+				} else if(unbalanced) {
+					alpha = Y[j].pi - X[j].pi;	// Ignore detailed balance. Use carefully - does not sample from target!
 				} else {
 					alpha = Y[j].pi - X[j].pi + log(Y[j].replacement_factor);
 					//std::cout << "alpha = " << alpha << std::endl;
@@ -696,9 +698,9 @@ TParallelAffineSampler<TParams, TLogger>::~TParallelAffineSampler() {
 }
 
 template<class TParams, class TLogger>
-void TParallelAffineSampler<TParams, TLogger>::step(unsigned int N_steps, bool record_steps, double cycle, double p_replacement, double p_mixture) {
+void TParallelAffineSampler<TParams, TLogger>::step(unsigned int N_steps, bool record_steps, double cycle, double p_replacement, double p_mixture, bool unbalanced) {
 	//omp_set_num_threads(N_samplers);
-	#pragma omp parallel firstprivate(record_steps, N_steps, cycle, p_replacement, p_mixture) num_threads(N_samplers)
+	#pragma omp parallel firstprivate(record_steps, N_steps, cycle, p_replacement, p_mixture, unbalanced) num_threads(N_samplers)
 	{
 		unsigned int thread_ID = omp_get_thread_num();
 		double base_a = sampler[thread_ID]->get_scale();
@@ -710,7 +712,7 @@ void TParallelAffineSampler<TParams, TLogger>::step(unsigned int N_steps, bool r
 					sampler[thread_ID]->set_scale(base_a);
 				}
 			}
-			sampler[thread_ID]->step(record_steps, p_replacement, p_mixture);
+			sampler[thread_ID]->step(record_steps, p_replacement, p_mixture, unbalanced);
 		}
 		sampler[thread_ID]->flush(record_steps);
 		#pragma omp critical (append_stats)

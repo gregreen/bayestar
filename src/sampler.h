@@ -113,7 +113,8 @@ void sample_indiv_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarMode
                         TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD, double RV_sigma=-1.);
 void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, TStellarModel& stellar_model,
                       TExtinctionModel& extinction_model, TStellarData& stellar_data,
-                      double EBV_SFD, TImgStack &img_stack, double RV_sigma=-1.);
+                      TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
+                      double EBV_SFD, double RV_sigma=-1.);
 
 // Auxiliary functions
 void seed_gsl_rng(gsl_rng **r);

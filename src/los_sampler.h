@@ -59,6 +59,7 @@ struct TImgStack {
 	TImgStack(size_t _N_images, TRect &_rect);
 	~TImgStack();
 	
+	void cull(const std::vector<bool> &keep);
 	void resize(size_t _N_images);
 	void set_rect(TRect &_rect);
 };
@@ -68,14 +69,15 @@ struct TLOSMCMCParams {
 	double p0, lnp0;
 	double EBV_max;
 	
-	TLOSMCMCParams(TImgStack* _img_stack, double _p0, double _EBV_max=-1.);
+	TLOSMCMCParams(TImgStack* _img_stack, double _p0, double _EBV_max = -1.);
 	~TLOSMCMCParams();
+	
+	void set_p0(double _p0);
 };
 
 
 void sample_los_extinction(std::string out_fname, TImgStack& img_stack,
-                           unsigned int N_regions, double p0,
-                           double EBV_max, uint64_t healpix_index);
+                           unsigned int N_regions, double p0, double EBV_max, uint64_t healpix_index);
 
 void los_integral(TImgStack& img_stack, double* ret,
                   const double* Delta_EBV, unsigned int N_regions);

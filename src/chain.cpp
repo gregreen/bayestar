@@ -249,15 +249,6 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 	double detSigma;
 	stats.get_cov_matrix(Sigma, invSigma, &detSigma);
 	
-	//std::cout << std::endl << use_peak << "\t" << nsigma_max << "\t" << nsigma_peak << "\t" << chain_frac << std::endl;
-	
-	/*std::cout << "Covariance:" << std::endl;
-	for(unsigned int i=0; i<N; i++) {
-		std::cout << std::endl;
-		for(unsigned int j=0; j<N; j++) { std::cout << gsl_matrix_get(Sigma, i, j) << "\t"; }
-	}
-	std::cout << std::endl << std::endl;*/
-	
 	// Determine the center of the prior volume to use
 	double* mu = new double[N];
 	if(use_peak) {	// Use the peak density as the center
@@ -266,9 +257,6 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 	} else {	// Get the mean from the stats class
 		for(unsigned int i=0; i<N; i++) { mu[i] = stats.mean(i); }
 	}
-	//std::cout << std::endl << "mu = ";
-	//for(unsigned int i=0; i<N; i++) { std::cout << mu[i] << "\t"; }
-	//std::cout << std::endl;
 	
 	// Sort elements in chain by distance from center, filtering out values of L which are not finite
 	std::vector<TChainSort> sorted_indices;
@@ -285,10 +273,6 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 	}
 	unsigned int npoints = (unsigned int)(chain_frac * (double)filt_length);
 	std::partial_sort(sorted_indices.begin(), sorted_indices.begin() + npoints, sorted_indices.end());
-	/*for(unsigned int i=0; i<20; i++) {
-		std::cout << sorted_indices[i].index << "\t" << sorted_indices[i].dist2 << std::endl;
-	}*/
-	//std::cout << "filtered: " << length - filt_length << std::endl;
 	
 	// Determine <1/L> inside the prior volume
 	double sum_invL = 0.;
@@ -299,12 +283,10 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 	//std::cout << "index_0 = " << sorted_indices[0].index << std::endl;
 	for(unsigned int i=0; i<npoints; i++) {
 		if(sorted_indices[i].dist2 > nsigma_max * nsigma_max) {
-			//std::cout << "Counted only " << i << " elements in chain." << std::endl;
 			nsigma = nsigma_max;
 			break;
 		}
 		tmp_index = sorted_indices[i].index;
-		//std::cout << "\t" << tmp_index << "\t" << L[tmp_index] << std::endl;
 		tmp_invL = w[tmp_index] / exp(L[tmp_index] - L_0);
 		if(isnan(tmp_invL)) {
 			std::cout << "\t\tL, L_0 = " << L[tmp_index] << ", " << L_0 << std::endl;
@@ -315,13 +297,9 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 		}
 		sum_invL += tmp_invL;
 	}
-	//std::cout << "sum_invL = e^(" << -L_0 << ") * " << sum_invL << " = " << exp(-L_0) * sum_invL << std::endl;
-	//std::cout << "nsigma = " << nsigma << std::endl;
 	
 	// Determine the volume normalization (the prior volume)
 	double V = sqrt(detSigma) * 2. * pow(SQRTPI * nsigma, (double)N) / (double)(N) / gsl_sf_gamma((double)(N)/2.);
-	//std::cout << "V = " << V << std::endl;
-	//std::cout << "total_weight = " << total_weight << std::endl << std::endl;
 	
 	// Return an estimate of ln(Z)
 	double lnZ = log(V) - log(sum_invL) + log(total_weight) + L_0;
@@ -353,17 +331,12 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 		std::cout << std::endl;
 	}
 	
-	//std::cout << "mu =";
-	//for(unsigned int i=0; i<N; i++) { std::cout << " " << mu[i]; }
-	//std::cout << std::endl;
-	
 	// Cleanup
 	gsl_matrix_free(Sigma);
 	gsl_matrix_free(invSigma);
 	delete[] mu;
 	
 	return lnZ;
-	//return V / sum_invL * total_weight;
 }
 
 
@@ -374,11 +347,9 @@ void TChain::density_peak(double* const peak, double nsigma) const {
 	uint64_t* index_width = new uint64_t[N];
 	uint64_t* mult = new uint64_t[N];
 	mult[0] = 1;
-	//std::cout << std::endl;
 	for(unsigned int i=0; i<N; i++) {
 		index_width[i] = (uint64_t)ceil((x_max[i] - x_min[i]) / (nsigma * sqrt(stats.cov(i,i))));
 		width[i] = (x_max[i] - x_min[i]) / (double)(index_width[i]);
-		//std::cout << x_min[i] << "\t" << x_max[i] << "\t" << width[i] << "\t" << index_width[i] << std::endl;
 		if(i != 0) { mult[i] = mult[i-1] * index_width[i-1]; }
 	}
 	
@@ -397,24 +368,18 @@ void TChain::density_peak(double* const peak, double nsigma) const {
 	double w_max = -std::numeric_limits<double>::infinity();
 	for(it = bins.begin(); it != it_end; ++it) {
 		if(it->second > w_max) {
-			//std::cout << "\t" << it->second << "\t" << it->first << std::endl;
 			w_max = it->second;
 			index = it->first;
 		}
 	}
 	
 	// Convert the index to a coordinate
-	//std::cout << index << std::endl;
 	uint64_t coord_index;
 	for(unsigned int i=0; i<N; i++) {
 		coord_index = index % index_width[i];
 		index = (index - coord_index) / index_width[i];
-		//std::cout << "\t" << coord_index;
 		peak[i] = x_min[i] + ((double)coord_index + 0.5) * width[i];
-		//std::cout << "\t" << peak[i];
 	}
-	//std::cout << std::endl;
-	//std::cout << index << std::endl;
 	
 	delete[] width;
 	delete[] index_width;
@@ -437,17 +402,6 @@ void TChain::find_center(double* const center, gsl_matrix *const cov, gsl_matrix
 	const double *x_tmp = get_element(index_tmp);
 	for(unsigned int i=0; i<N; i++) { center[i] = x_tmp[i]; }
 	
-	//std::cout << "center #0:";
-	//for(unsigned int n=0; n<N; n++) { std::cout << " " << center[n]; }
-	//std::cout << std::endl;
-	
-	/*double *E_k = new double[N];
-	double *E_ij = new double[N*N];
-	for(unsigned int n1=0; n1<N; n1++) {
-		E_k[n1] = 0.;
-		for(unsigned int n2=0; n2<N; n2++) { E_ij[n1 + N*n2] = 0.; }
-	}*/
-	
 	// Iterate
 	double *sum = new double[N];
 	double weight;
@@ -460,52 +414,15 @@ void TChain::find_center(double* const center, gsl_matrix *const cov, gsl_matrix
 			if(metric_dist2(inv_cov, x_tmp, center, N) < dmax*dmax) {
 				for(unsigned int n=0; n<N; n++) { sum[n] += w[k] * x_tmp[n]; }
 				weight += w[k];
-				
-				// Calculate the covariance
-				/*if(i == iterations - 1) {
-					for(unsigned int n1=0; n1<N; n1++) {
-						E_k[n1] += w[k] * x_tmp[n1];
-						for(unsigned int n2=0; n2<N; n2++) { E_ij[n1 + N*n2] += w[k] * x_tmp[n1] * x_tmp[n2]; }
-					}
-				}*/
 			}
 		}
-		//std::cout << "center #" << i+1 << ":";
-		for(unsigned int n=0; n<N; n++) { center[n] = sum[n] / (double)weight; }//std::cout << " " << center[n]; }
-		//std::cout << " (" << weight << ")" << std::endl;
+		for(unsigned int n=0; n<N; n++) { center[n] = sum[n] / (double)weight; }
 		
 		dmax *= 0.9;
 	}
 	
-	for(unsigned int n=0; n<N; n++) { std::cout << " " << center[n]; }
-	std::cout << std::endl;
-	
-	// Calculate the covariance matrix of the enclosed points
-	/*double tmp;
-	for(unsigned int i=0; i<N; i++) {
-		for(unsigned int j=i; j<N; j++) {
-			tmp = (E_ij[i + N*j] - E_k[i]*E_k[j]/(double)weight) / (double)weight;
-			gsl_matrix_set(cov, i, j, tmp);
-			if(i != j) { gsl_matrix_set(cov, j, i, tmp); }
-		}
-	}*/
-	
-	// Get the inverse of the covariance
-	/*int s;
-	gsl_permutation* p = gsl_permutation_alloc(N);
-	gsl_matrix* LU = gsl_matrix_alloc(N, N);
-	gsl_matrix_memcpy(LU, cov);
-	gsl_linalg_LU_decomp(LU, p, &s);
-	gsl_linalg_LU_invert(LU, p, inv_cov);
-	
-	// Get the determinant of the covariance
-	*det_cov = gsl_linalg_LU_det(LU, s);
-	
-	// Cleanup
-	gsl_matrix_free(LU);
-	gsl_permutation_free(p);
-	delete[] E_k;
-	delete[] E_ij;*/
+	//for(unsigned int n=0; n<N; n++) { std::cout << " " << center[n]; }
+	//std::cout << std::endl;
 	
 	gsl_rng_free(r);
 	delete[] sum;

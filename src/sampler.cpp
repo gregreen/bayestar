@@ -690,7 +690,8 @@ void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 
 void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, TStellarModel& stellar_model,
                       TExtinctionModel& extinction_model, TStellarData& stellar_data,
-                      double EBV_SFD, TImgStack& img_stack, double RV_sigma) {
+                      TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
+                      double EBV_SFD, double RV_sigma) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
@@ -704,7 +705,7 @@ void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, 
 	std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
 	
 	double min[2] = {5., 0.};
-	double max[2] = {18., 5.};
+	double max[2] = {20., 5.};
 	unsigned int N_bins[2] = {120, 500};
 	TRect rect(min, max, N_bins);
 	
@@ -714,8 +715,8 @@ void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, 
 	TNullLogger logger;
 	
 	unsigned int max_attempts = 3;
-	unsigned int N_steps = 500;
-	unsigned int N_samplers = 15;
+	unsigned int N_steps = 750;
+	unsigned int N_samplers = 20;
 	unsigned int N_threads = 4;
 	unsigned int ndim;
 	
@@ -731,6 +732,7 @@ void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, 
 	//bool write_success;
 	
 	std::cerr << std::endl;
+	unsigned int N_nonconv = 0;
 	
 	for(size_t n=0; n<params.N_stars; n++) {
 		params.idx_star = n;
@@ -785,8 +787,11 @@ void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, 
 		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 500, 500);
 		
 		// Save binned p(DM, EBV) surface
-		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 50.);
+		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 500.);
 		save_mat_image(*(img_stack.img[n]), rect, out_fname, group_name.str(), "DM_EBV", "DM", "E(B-V)", 5);
+		
+		lnZ.push_back(chain.get_ln_Z_harmonic(true, 10., 0.05, 0.02));
+		conv.push_back(converged);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		
@@ -795,13 +800,21 @@ void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, 
 		std::cout << std::endl;
 		
 		if(!converged) {
+			N_nonconv++;
 			std::cerr << "# Failed to converge." << std::endl;
 		}
 		std::cerr << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
+		std::cerr << "# ln Z: " << lnZ.back() << std::endl;
 		std::cerr << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
 		std::cerr << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
 		std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
 	}
+	
+	std::cerr << "====================================" << std::endl;
+	std::cerr << std::endl;
+	std::cerr << "# Failed to converge " << N_nonconv << " of " << params.N_stars << " times (" << std::setprecision(2) << 100.*(double)N_nonconv/(double)(params.N_stars) << " %)." << std::endl;
+	std::cerr << std::endl;
+	std::cerr << "====================================" << std::endl;
 	
 	delete[] GR;
 }

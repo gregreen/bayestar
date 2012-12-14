@@ -186,10 +186,10 @@ void indiv_test() {
 }
 
 void mock_test() {
-	size_t nstars = 25;
+	size_t nstars = 20;
 	unsigned int N_regions = 20;
-	double EBV_SFD = 1.5;
-	double RV = 3.3;
+	double EBV_SFD = 2.5;
+	double RV = 3.1;
 	double l = 90.;
 	double b = 10.;
 	uint64_t healpix_index = 1519628;
@@ -215,14 +215,18 @@ void mock_test() {
 	
 	//sample_indiv_synth(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
 	
+	// Prepare data structures for stellar parameters
 	TImgStack img_stack(stellar_data.star.size());
+	std::vector<bool> conv;
+	std::vector<double> lnZ;
 	
 	std::string out_fname = "emp_out.h5";
 	remove(out_fname.c_str());
-	sample_indiv_emp(out_fname, los_model, emplib, ext_model, stellar_data, EBV_SFD, img_stack);
+	sample_indiv_emp(out_fname, los_model, emplib, ext_model, stellar_data, img_stack, conv, lnZ, EBV_SFD);
 	
 	// Fit line-of-sight extinction profile
-	sample_los_extinction(out_fname, img_stack, N_regions, 1.e-50, 5., healpix_index);
+	img_stack.cull(conv);
+	sample_los_extinction(out_fname, img_stack, N_regions, 1.e-50, 2.*EBV_SFD, healpix_index);
 	
 	/*
 	TLOSMCMCParams params(&img_stack, 1.e-100, -1.);

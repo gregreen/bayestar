@@ -506,8 +506,8 @@ void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model,
 			//EBV = gsl_ran_chisq(r, 1.);
 			
 			EBV = 0.;
-			if(DM > 5.) { EBV += 0.1; }
-			if(DM > 10.) { EBV += 0.5; }
+			if(DM > 10.) { EBV += 1.5; }
+			//if(DM > 10.) { EBV += 0.5; }
 			
 			// Draw stellar type
 			f_halo = gal_model.f_halo(DM);
