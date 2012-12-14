@@ -26,10 +26,7 @@
 #include <gsl/gsl_eigen.h>
 #include <gsl/gsl_sf_gamma.h>
 
-#include <H5Cpp.h>
 #include "h5utils.h"
-
-//#include <boost/cstdint.hpp>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>

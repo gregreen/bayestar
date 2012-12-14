@@ -34,7 +34,7 @@ void sample_los_extinction(std::string out_fname, TImgStack& img_stack,
 	TNullLogger logger;
 	
 	unsigned int max_attempts = 3;
-	unsigned int N_steps = 2000;
+	unsigned int N_steps = 500;
 	unsigned int N_samplers = 15;
 	unsigned int N_threads = 4;
 	unsigned int ndim = N_regions + 1;
@@ -57,7 +57,7 @@ void sample_los_extinction(std::string out_fname, TImgStack& img_stack,
 	//std::cerr << "# Setting up sampler" << std::endl;
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 	sampler.set_scale(1.1);
-	sampler.set_replacement_bandwidth(0.70);
+	sampler.set_replacement_bandwidth(0.75);
 	
 	// Burn-in
 	std::cerr << "# Burn-in ..." << std::endl;
@@ -174,7 +174,7 @@ double lnp_los_extinction(const double* EBV, unsigned int N, TLOSMCMCParams& par
 		if(Delta_EBV < 0.) {return neginf; }
 		
 		// Favor lower differential reddening
-		lnp -= Delta_EBV * Delta_EBV / (2. * 0.5 * 0.5);
+		//lnp -= Delta_EBV * Delta_EBV / (2. * 0.5 * 0.5);
 	}
 	
 	// Compute line integrals through probability surfaces
