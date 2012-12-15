@@ -34,7 +34,7 @@ void sample_los_extinction(std::string out_fname, TImgStack& img_stack,
 	TNullLogger logger;
 	
 	unsigned int max_attempts = 3;
-	unsigned int N_steps = 500;
+	unsigned int N_steps = 250;
 	unsigned int N_samplers = 15;
 	unsigned int N_threads = 4;
 	unsigned int ndim = N_regions + 1;
