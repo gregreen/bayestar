@@ -43,6 +43,24 @@ namespace H5Utils {
 	H5::H5File* openFile(std::string fname, int accessmode = (READ | WRITE));
 	H5::Group* openGroup(H5::H5File* file, std::string name, int accessmode = 0);
 	
+	template<class T>
+	bool add_watermark(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const T &value);
+	
+	template<>
+	bool add_watermark<bool>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const bool &value);
+	
+	template<>
+	bool add_watermark<float>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const float &value);
+	
+	template<>
+	bool add_watermark<double>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const double &value);
+	
+	template<>
+	bool add_watermark<uint64_t>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const uint64_t &value);
+	
+	template<>
+	bool add_watermark<std::string>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const std::string &value);
+	
 }
 
 #endif // _H5UTILS_H__

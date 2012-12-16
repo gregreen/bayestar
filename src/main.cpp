@@ -268,6 +268,8 @@ int main(int argc, char **argv) {
 		cerr << "===================================================" << endl << endl;
 	}
 	
+	string watermark = GIT_BUILD_VERSION;
+	H5Utils::add_watermark<string>(output_fname, "/", "bayestar git commit", watermark);
 	
 	/*
 	 *  Cleanup

@@ -106,7 +106,7 @@ H5::Group* H5Utils::openGroup(H5::H5File* file, std::string name, int accessmode
 	std::stringstream path;
 	std::string gp_name;
 	while(std::getline(ss, gp_name, '/')) {
-		if(gp_name != "") {
+		//if(gp_name != "") {
 			path << "/" << gp_name;
 			if(group != NULL) { delete group; }
 			try {
@@ -114,8 +114,87 @@ H5::Group* H5Utils::openGroup(H5::H5File* file, std::string name, int accessmode
 			} catch(const H5::FileIException& err_does_not_exist) {
 				group = new H5::Group(file->createGroup(path.str().c_str()));
 			}
-		}
+		//}
 	}
 	
 	return group;
+}
+
+
+/*
+ * Add an attribute to a group in the given file.
+ */
+
+template<class T>
+bool add_watermark_helper(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const T &value,
+                          const H5::DataType *dtype, const H5::StrType *strtype, const H5::DataSpace &dspace) {
+	if((strtype == NULL) && (dtype == NULL)) { return false; }
+	
+	H5::H5File *file = H5Utils::openFile(filename);
+	if(file == NULL) { return false; }
+	
+	H5::Group *group = H5Utils::openGroup(file, group_name);
+	if(group == NULL) {
+		delete file;
+		return false;
+	}
+	
+	if(strtype == NULL) {
+		H5::Attribute att = group->createAttribute(attribute_name, *dtype, dspace);
+		att.write(*dtype, reinterpret_cast<const void*>(&value));
+	} else {
+		H5::Attribute att = group->createAttribute(attribute_name, *strtype, dspace);
+		att.write(*strtype, reinterpret_cast<const void*>(&value));
+	}
+	
+	delete group;
+	delete file;
+	
+	return true;
+}
+
+template<class T>
+bool add_watermark_helper(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const T &value, const H5::DataType *dtype) {
+	int rank = 1;
+	hsize_t dim = 1;
+	H5::DataSpace dspace(rank, &dim);
+	
+	add_watermark_helper(filename, group_name, attribute_name, value, dtype, NULL, dspace);
+}
+
+template<>
+bool H5Utils::add_watermark<bool>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const bool &value) {
+	H5::DataType dtype = H5::PredType::NATIVE_UCHAR;
+	return add_watermark_helper<bool>(filename, group_name, attribute_name, value, &dtype);
+}
+
+template<>
+bool H5Utils::add_watermark<float>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const float &value) {
+	H5::DataType dtype = H5::PredType::NATIVE_FLOAT;
+	return add_watermark_helper<float>(filename, group_name, attribute_name, value, &dtype);
+}
+
+template<>
+bool H5Utils::add_watermark<double>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const double &value) {
+	H5::DataType dtype = H5::PredType::NATIVE_DOUBLE;
+	return add_watermark_helper<double>(filename, group_name, attribute_name, value, &dtype);
+}
+
+template<>
+bool H5Utils::add_watermark<uint64_t>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const uint64_t &value) {
+	H5::DataType dtype = H5::PredType::NATIVE_UINT64;
+	return add_watermark_helper<uint64_t>(filename, group_name, attribute_name, value, &dtype);
+}
+
+template<>
+bool H5Utils::add_watermark<std::string>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const std::string &value) {
+	H5::StrType strtype(0, H5T_VARIABLE);
+	H5::DataSpace dspace(H5S_SCALAR);
+	return add_watermark_helper<std::string>(filename, group_name, attribute_name, value, NULL, &strtype, dspace);
+}
+
+template<class T>
+bool H5Utils::add_watermark(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const T &value) {
+	// Unknown type
+	return false;
 }
