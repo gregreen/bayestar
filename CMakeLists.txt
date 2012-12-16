@@ -6,6 +6,22 @@ project(bayestar)
 #
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 
+# Git version
+IF(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
+  FIND_PACKAGE(Git)
+  IF(GIT_FOUND)
+    EXECUTE_PROCESS(
+      COMMAND ${GIT_EXECUTABLE} rev-parse HEAD
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+      OUTPUT_VARIABLE "GIT_BUILD_VERSION"
+      ERROR_QUIET
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    MESSAGE( STATUS "Git version: ${GIT_BUILD_VERSION}" )
+  ELSE(GIT_FOUND)
+    SET(GIT_BUILD_VERSION 0)
+  ENDIF(GIT_FOUND)
+ENDIF(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
+
 #
 # configure a header file to pass some of the CMake settings to the source
 # code
@@ -36,6 +52,10 @@ find_package(GSL REQUIRED)
 include_directories(${GSL_INCLUDE_DIR})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DHAVE_INLINE=1 -DGSL_RANGE_CHECK=0")
 
+### Boost
+find_package(Boost REQUIRED COMPONENTS program_options)
+include_directories(${Boost_INCLUDE_DIRS})
+
 ### OpenMP support
 #find_package(OpenMP REQUIRED)
 IF(NOT CMAKE_COMPILER_IS_GNUCXX)
@@ -59,6 +79,6 @@ add_executable(bayestar src/main.cpp src/model.cpp src/sampler.cpp src/interpola
 target_link_libraries(bayestar rt)
 target_link_libraries(bayestar hdf5 hdf5_cpp)
 target_link_libraries(bayestar ${GSL_LIBRARIES})
-
+target_link_libraries(bayestar ${Boost_LIBRARIES})
 target_link_libraries(bayestar opencv_core opencv_imgproc)# ${OpenCV_LIBS})
 #target_link_libraries(bayestar ${OpenMP_LIBRARIES})

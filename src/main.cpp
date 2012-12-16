@@ -25,6 +25,8 @@
 #include <iostream>
 #include <iomanip>
 
+#include <boost/program_options.hpp>
+
 #include "model.h"
 #include "data.h"
 #include "sampler.h"
@@ -33,157 +35,6 @@
 
 using namespace std;
 
-void print_model() {
-	double l = 180.;
-	double b = 90.;
-	TGalacticLOSModel los_model(l, b);
-	double R, Z;
-	cout << "(l, b) = (" << l << ", " << b << ")" << endl << endl;
-	cout << "DM        ln(dNdmu) rho_disk  rho_halo  f_halo    R         Z" << endl;
-	cout << "=====================================================================" << endl;
-	for(double DM=5; DM<20; DM += 0.5) {
-		los_model.DM_to_RZ(DM, R, Z);
-		cout.flags(ios::left);
-		cout.precision(4);
-		cout << setw(9) << DM << " ";
-		cout.precision(3);
-		cout << setw(9) << los_model.log_dNdmu(DM) << " ";
-		cout << setw(9) << los_model.rho_disk(R, Z) << " ";
-		cout << setw(9) << los_model.rho_halo(R, Z) << " ";
-		cout << setw(9) << los_model.f_halo(DM) << " ";
-		cout << setw(9) << R << " ";
-		cout << setw(9) << Z << endl;
-	}
-	cout << endl;
-	
-	TStellarModel stellar_model("/home/greg/projects/bayestar/data/PSMrLF.dat", "/home/greg/projects/bayestar/data/PScolors.dat");
-	cout << endl;
-	cout << "Mr        ln(dn/dMr) Mg     Mr     Mi     Mz     My" << endl;
-	cout << "=======================================================" << endl;
-	for(double Mr=-1; Mr < 28; Mr += 1) {
-		cout.flags(ios::left);
-		cout.precision(3);
-		cout << setw(9) << Mr << " ";
-		cout << setw(10) << stellar_model.get_log_lf(Mr) << " ";
-		TSED sed = stellar_model.get_sed(Mr, -0.5);
-		for(unsigned int i=0; i<5; i++) {
-			cout << setw(6) << sed.absmag[i] << " ";
-		}
-		cout << endl;
-	}
-	cout << endl;
-	
-	TSyntheticStellarModel synthlib("/home/greg/projects/bayestar/data/PS1templates.h5");
-	double logtau = 9.0;
-	double FeH = -0.5;
-	cout << endl;
-	cout << "logM      IMF       SFR       Mg      Mr      Mi      Mz      My" << endl;
-	cout << "===================================================================" << endl;
-	for(double logM=-1.; logM < 1.; logM += 0.1) {
-		cout.flags(ios::left);
-		cout.precision(3);
-		cout << setw(9) << logM << " ";
-		cout << setw(9) << los_model.IMF(logM, 0) << " ";
-		cout << setw(9) << los_model.SFR(pow(10, logtau), 0) << " ";
-		
-		cout.precision(4);
-		TSED sed;
-		if(synthlib.get_sed(logM, logtau, FeH, sed)) {
-			for(unsigned int i=0; i<5; i++) {
-				cout << setw(7) << sed.absmag[i] << " ";
-			}
-		} else {
-			for(unsigned int i=0; i<5; i++) {
-				cout << setw(7) << "-----   ";
-			}
-		}
-		cout << endl;
-	}
-	cout << endl;
-	
-	cout << "          -----SFR-----------" << endl;
-	cout << "logtau    Disk      Halo     " << endl;
-	cout << "=============================" << endl;
-	double tau;
-	for(logtau = 6.; logtau < log10(16.e9); logtau += 0.05) {
-		tau = pow(10, logtau);
-		cout.flags(ios::left);
-		cout.precision(3);
-		cout << setw(9) << logtau << " ";
-		cout << setw(9) << tau * los_model.SFR(pow(10, logtau), 0) << " ";
-		cout << setw(9) << tau * los_model.SFR(pow(10, logtau), 1);
-		cout << endl;
-	}
-	cout << endl;
-	
-	double min[2] = {-1., -1.};
-	double max[2] = {1., 1.};
-	unsigned int N_bins[2] = {20, 20};
-	TSparseBinner binner(&(min[0]), &(max[0]), &(N_bins[0]), 2);
-	double coord[2];
-	for(double x=-0.95; x<1.; x+=0.1) {
-		coord[0] = x;
-		for(double y=-0.95; y<1.; y+=0.1) {
-			coord[1] = y;
-			binner(coord, x*y);
-		}
-	}
-	
-	cout << "         || ";
-	for(double x=-0.95; x<1.; x+=0.1) {
-		cout << setprecision(4) << setw(8) << x << " ";
-	}
-	cout << endl << "============";
-	for(double x=-0.95; x<1.; x+=0.1) {
-		cout << "=========";
-	}
-	cout << endl;
-	for(double y=-0.95; y<1.; y+=0.1) {
-		coord[1] = y;
-		cout << setprecision(4) << setw(8) << y << " || ";
-		for(double x=-0.95; x<1.; x+=0.1) {
-			coord[0] = x;
-			cout << setprecision(4) << setw(8) << binner.get_bin(coord) << " ";
-		}
-		cout << endl;
-	}
-	cout << endl;
-	
-	TExtinctionModel ext_model("/home/greg/projects/bayestar/data/PSExtinction.dat");
-	cout << "R_V      g       r       i       z       y    " << endl;
-	for(double RV = 2.1; RV < 6.; RV += 0.1) {
-		cout << setprecision(2) << setw(6) << RV;
-		for(unsigned int i=0; i<NBANDS; i++) {
-			cout << " " << setprecision(4) << setw(7) << ext_model.get_A(RV, i);
-		}
-		cout << endl;
-	}
-	cout << endl;
-}
-
-void los_test() {
-	double EBV_SFD = 0.5;
-	
-	TSyntheticStellarModel synthlib("/home/greg/projects/bayestar/data/PS1templates.h5");
-	TExtinctionModel ext_model("/home/greg/projects/bayestar/data/PSExtinction.dat");
-	TStellarData stellar_data("/home/greg/projects/bayestar/input/input_0.in", 0);
-	TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
-	
-	sample_model_affine_synth(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
-}
-
-void indiv_test() {
-	double EBV_SFD = 1.5;
-	
-	TStellarModel emplib("/home/greg/projects/bayestar/data/PSMrLF.dat", "/home/greg/projects/bayestar/data/PScolors.dat");
-	TSyntheticStellarModel synthlib("/home/greg/projects/bayestar/data/PS1templates.h5");
-	TExtinctionModel ext_model("/home/greg/projects/bayestar/data/PSExtinction.dat");
-	TStellarData stellar_data("/home/greg/projects/bayestar/input/input_0.in", 0);
-	TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
-	
-	//sample_indiv_synth(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
-	//sample_indiv_emp(los_model, emplib, ext_model, stellar_data, EBV_SFD);
-}
 
 void mock_test() {
 	size_t nstars = 100;
@@ -209,7 +60,7 @@ void mock_test() {
 	draw_from_emp_model(nstars, RV, los_model, emplib, stellar_data, ext_model, mag_lim);
 	
 	std::stringstream group_name;
-	group_name << healpix_index;
+	group_name << "pixel " << healpix_index;
 	remove("mock.hdf5");
 	stellar_data.save("mock.hdf5", group_name.str());
 	
@@ -222,11 +73,13 @@ void mock_test() {
 	
 	std::string out_fname = "emp_out.h5";
 	remove(out_fname.c_str());
-	sample_indiv_emp(out_fname, los_model, emplib, ext_model, stellar_data, img_stack, conv, lnZ, EBV_SFD);
+	TMCMCOptions star_options(500, 20, 0.2, 4);
+	sample_indiv_emp(out_fname, star_options, los_model, emplib, ext_model, stellar_data, img_stack, conv, lnZ, EBV_SFD);
 	
 	// Fit line-of-sight extinction profile
 	img_stack.cull(conv);
-	sample_los_extinction(out_fname, img_stack, N_regions, 1.e-50, 2.*EBV_SFD, healpix_index);
+	TMCMCOptions los_options(250, 15, 0.1, 4);
+	sample_los_extinction(out_fname, los_options, img_stack, N_regions, 1.e-50, 2.*EBV_SFD, healpix_index);
 	
 	/*
 	TLOSMCMCParams params(&img_stack, 1.e-100, -1.);
@@ -253,9 +106,175 @@ void mock_test() {
 }
 
 int main(int argc, char **argv) {
-	mock_test();
-	//indiv_test();
-	//print_model();
+	//mock_test();
+	
+	/*
+	 *  Default commandline arguments
+	 */
+	
+	std::string input_fname = "NONE";
+	std::string output_fname = "NONE";
+	
+	double err_floor = 20;
+	
+	bool synthetic = false;
+	unsigned int star_steps = 500;
+	unsigned int star_samplers = 20;
+	double star_p_replacement = 0.2;
+	double sigma_RV = -1.;
+	
+	unsigned int N_regions = 20;
+	unsigned int los_steps = 250;
+	unsigned int los_samplers = 15;
+	double los_p_replacement = 0.1;
+	
+	unsigned int N_threads = 4;
+	
+	
+	/*
+	 *  Parse commandline arguments
+	 */
+	
+	namespace po = boost::program_options;
+	po::options_description desc(std::string("Usage: ") + argv[0] + " [Input filename] [Output filename] \n\nOptions");
+	desc.add_options()
+		("help", "Display this help message")
+		("version", "Display version number")
+		("input", po::value<std::string>(&input_fname), "Input HDF5 filename (contains stellar photometry)")
+		("output", po::value<std::string>(&output_fname), "Output HDF5 filename (MCMC output and smoothed probability surfaces)")
+		("err-floor", po::value<double>(&err_floor), "Error to add in quadrature (in millimags)")
+		
+		("synthetic", "Use synthetic photometric library (default: use empirical library)")
+		("star-steps", po::value<unsigned int>(&star_steps), "# of MCMC steps per star (per sampler)")
+		("star-samplers", po::value<unsigned int>(&star_samplers), "# of samplers per dimension (stellar fit)")
+		("star-p-replacement", po::value<double>(&star_p_replacement), "Probability of taking replacement step (stellar fit)")
+		("sigma-RV", po::value<double>(&sigma_RV), "Variation in R_V (per star)")
+		
+		("los-steps", po::value<unsigned int>(&los_steps), "# of MCMC steps in l.o.s. fit (per sampler)")
+		("los-samplers", po::value<unsigned int>(&los_samplers), "# of samplers per dimension (l.o.s. fit)")
+		("los-p-replacement", po::value<double>(&los_p_replacement), "Probability of taking replacement step (l.o.s. fit)")
+		
+		("threads", po::value<unsigned int>(&N_threads), "# of threads to run on (default: 4)")
+	;
+	po::positional_options_description pd;
+	pd.add("input", 1).add("output", 1);
+	
+	po::variables_map vm;
+	po::store(po::command_line_parser(argc, argv).options(desc).positional(pd).run(), vm);
+	po::notify(vm);
+	
+	if(vm.count("help")) { cout << desc << endl; return -1; }
+	if(vm.count("version")) { cout << "git commit " << GIT_BUILD_VERSION << endl; return -1; }
+	
+	if(vm.count("synthetic")) { synthetic = true; }
+	
+	// Convert error floor to mags
+	err_floor /= 1000.;
+	
+	if(input_fname == "NONE") {
+		cout << "Input filename required." << endl << endl;
+		cout << desc << endl;
+		return -1;
+	}
+	if(output_fname == "NONE") {
+		cout << "Output filename required." << endl << endl;
+		cout << desc << endl;
+		return -1;
+	}
+	
+	
+	/*
+	 *  MCMC Options
+	 */
+	
+	TMCMCOptions star_options(star_steps, star_samplers, star_p_replacement, N_threads);
+	TMCMCOptions los_options(los_steps, los_samplers, los_p_replacement, N_threads);
+	
+	
+	/*
+	 *  Construct models
+	 */
+	
+	TStellarModel *emplib = NULL;
+	TSyntheticStellarModel *synthlib = NULL;
+	if(synthetic) {
+		synthlib = new TSyntheticStellarModel(DATADIR "PS1templates.h5");
+	} else {
+		emplib = new TStellarModel(DATADIR "PSMrLF.dat", DATADIR "PScolors.dat");
+	}
+	TExtinctionModel ext_model(DATADIR "PSExtinction.dat");
+	
+	
+	/*
+	 *  Execute
+	 */
+	
+	omp_set_num_threads(N_threads);
+	
+	// Get list of pixels in input file
+	vector<unsigned int> healpix_index;
+	get_input_pixels(input_fname, healpix_index);
+	cerr << "# " << healpix_index.size() << " pixels in input file." << endl;
+	
+	// TODO: Put this into input file
+	double EBV_SFD = 5.;
+	
+	// Remove the output file
+	remove(output_fname.c_str());
+	
+	// Run each pixel
+	timespec t_start, t_mid, t_end;
+	double t_tot, t_star;
+	for(vector<unsigned int>::iterator it = healpix_index.begin(); it != healpix_index.end(); ++it) {
+		clock_gettime(CLOCK_MONOTONIC, &t_start);
+		
+		cerr << "# Healpix pixel " << *it << endl;
+		
+		TStellarData stellar_data(input_fname, *it, err_floor);
+		TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
+		
+		cerr << "# (l, b) = " << stellar_data.l << ", " << stellar_data.b << endl;
+		
+		// Prepare data structures for stellar parameters
+		TImgStack img_stack(stellar_data.star.size());
+		std::vector<bool> conv;
+		std::vector<double> lnZ;
+		
+		if(synthetic) {
+			sample_indiv_synth(output_fname, star_options, los_model, *synthlib, ext_model,
+			                   stellar_data, img_stack, conv, lnZ, EBV_SFD, sigma_RV);
+		} else {
+			sample_indiv_emp(output_fname, star_options, los_model, *emplib, ext_model,
+			                 stellar_data, img_stack, conv, lnZ, EBV_SFD, sigma_RV);
+		}
+		
+		clock_gettime(CLOCK_MONOTONIC, &t_mid);
+		
+		// Fit line-of-sight extinction profile
+		img_stack.cull(conv);
+		sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-50, 2.*EBV_SFD, *it);
+		
+		clock_gettime(CLOCK_MONOTONIC, &t_end);
+		t_tot = (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec);
+		t_star = (t_mid.tv_sec - t_start.tv_sec) + 1.e-9*(t_mid.tv_nsec - t_start.tv_nsec);
+		
+		cerr << endl;
+		cerr << "===================================================" << endl;
+		cerr << "# Time elapsed for pixel: ";
+		cerr << setprecision(2) << t_tot;
+		cerr << " s (" << setprecision(2) << t_tot / (double)(stellar_data.star.size()) << " s / star)" << endl;
+		cerr << "# Percentage of time spent on l.o.s. fit: ";
+		cerr << setprecision(2) << 100. * (t_tot - t_star) / t_tot << " %" << endl;
+		cerr << "===================================================" << endl << endl;
+	}
+	
+	
+	/*
+	 *  Cleanup
+	 */
+	
+	if(synthlib != NULL) { delete synthlib; }
+	if(emplib != NULL) { delete emplib; }
 	
 	return 0;
 }

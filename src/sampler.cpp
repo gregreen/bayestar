@@ -584,7 +584,10 @@ double logP_indiv_simple_emp(const double *x, unsigned int N, TMCMCParams &param
 	return logp;
 }
 
-void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD, double RV_sigma) {
+void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
+                        TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
+                        TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
+                        double EBV_SFD, double RV_sigma) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
@@ -598,16 +601,20 @@ void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 	std::string fname = "synth_out.hdf5";
 	std::string dim_name[6] = {"E(B-V)", "DM", "LogMass", "Logtau", "FeH", "R_V"};
 	
-	//double min[5] = {0.0, 0.0, -1.0, 6.0, -2.5};
-	//double max[5] = {10., 25.,  1.2, 11.,  0.5};
-	//unsigned int N_bins[5] = {1000, 500, 100, 100, 100};
-	//TSparseBinner logger(&min[0], &max[0], &N_bins[0], 5);
+	double min[2] = {5., 0.};
+	double max[2] = {20., 5.};
+	unsigned int N_bins[2] = {120, 500};
+	TRect rect(min, max, N_bins);
+	
+	img_stack.resize(params.N_stars);
+	img_stack.set_rect(rect);
+	
 	TNullLogger logger;
 	
 	unsigned int max_attempts = 3;
-	unsigned int N_steps = 1000;
-	unsigned int N_samplers = 15;
-	unsigned int N_threads = 4;
+	unsigned int N_steps = options.steps;
+	unsigned int N_samplers = options.samplers;
+	unsigned int N_threads = options.N_threads;
 	unsigned int ndim;
 	
 	if(params.vary_RV) { ndim = 6; } else { ndim = 5; }
@@ -663,12 +670,25 @@ void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_write);
 		
+		// Group in which star will be saved
 		std::stringstream group_name;
+		group_name << "/pixel " << stellar_data.healpix_index;
 		group_name << "/star " << n;
-		//logger.write(fname, group_name.str(), dset_name, &dim_name[0], 1, 25000);
+		
+		// Save thinned chain
+		TChain chain = sampler.get_chain();
+		std::stringstream chain_name;
+		chain_name << group_name.str() << "/chain";
 		std::stringstream dim_name_all;
 		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
-		sampler.get_chain().save(fname, group_name.str(), dim_name_all.str(), 1, 1000, 5000);
+		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 500, 500);
+		
+		// Save binned p(DM, EBV) surface
+		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 500.);
+		save_mat_image(*(img_stack.img[n]), rect, out_fname, group_name.str(), "DM_EBV", "DM", "E(B-V)", 5);
+		
+		lnZ.push_back(chain.get_ln_Z_harmonic(true, 10., 0.05, 0.02));
+		conv.push_back(converged);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		
@@ -688,8 +708,8 @@ void sample_indiv_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 	delete[] GR;
 }
 
-void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, TStellarModel& stellar_model,
-                      TExtinctionModel& extinction_model, TStellarData& stellar_data,
+void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
+                      TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
                       double EBV_SFD, double RV_sigma) {
 	unsigned int N_DM = 20;
@@ -715,9 +735,9 @@ void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, 
 	TNullLogger logger;
 	
 	unsigned int max_attempts = 3;
-	unsigned int N_steps = 750;
-	unsigned int N_samplers = 20;
-	unsigned int N_threads = 4;
+	unsigned int N_steps = options.steps;
+	unsigned int N_samplers = options.samplers;
+	unsigned int N_threads = options.N_threads;
 	unsigned int ndim;
 	
 	if(params.vary_RV) { ndim = 5; } else { ndim = 4; }
@@ -748,14 +768,14 @@ void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, 
 		sampler.set_replacement_bandwidth(0.2);
 		
 		//std::cerr << "# Burn-in" << std::endl;
-		sampler.step(N_steps, false, 0., 0.2, 0.);
+		sampler.step(N_steps, false, 0., options.p_replacement, 0.);
 		sampler.clear();
 		
 		//std::cerr << "# Main run" << std::endl;
 		bool converged = false;
 		size_t attempt;
 		for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-			sampler.step((1<<attempt)*N_steps, true, 0., 0.2, 0.);
+			sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
 			
 			converged = true;
 			sampler.get_GR_diagnostic(GR);
@@ -773,7 +793,7 @@ void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, 
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_write);
 		
-		// Group in which star will be saved.
+		// Group in which star will be saved
 		std::stringstream group_name;
 		group_name << "/pixel " << stellar_data.healpix_index;
 		group_name << "/star " << n;

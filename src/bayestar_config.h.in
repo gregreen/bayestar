@@ -3,6 +3,7 @@
 
 
 #define DATADIR "${DATADIR}"
+#define GIT_BUILD_VERSION "${GIT_BUILD_VERSION}"
 
 
 #endif // _BAYESTAR_CONFIG_H__

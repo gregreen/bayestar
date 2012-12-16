@@ -27,16 +27,16 @@
 #include "los_sampler.h"
 
 
-void sample_los_extinction(std::string out_fname, TImgStack& img_stack,
+void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgStack& img_stack,
                            unsigned int N_regions, double p0, double EBV_max, uint64_t healpix_index) {
 	TLOSMCMCParams params(&img_stack, p0, EBV_max);
 	
 	TNullLogger logger;
 	
 	unsigned int max_attempts = 3;
-	unsigned int N_steps = 250;
-	unsigned int N_samplers = 15;
-	unsigned int N_threads = 4;
+	unsigned int N_steps = options.steps;
+	unsigned int N_samplers = options.samplers;
+	unsigned int N_threads = options.N_threads;
 	unsigned int ndim = N_regions + 1;
 	
 	double *GR = new double[ndim];

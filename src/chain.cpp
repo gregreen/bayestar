@@ -446,6 +446,14 @@ bool TChain::save(std::string fname, std::string group_name,
 	H5::H5File *file = H5Utils::openFile(fname);
 	if(file == NULL) { return false; }
 	
+	/*
+	try {
+		file->unlink(group_name);
+	} catch(...) {
+		// pass
+	}
+	*/
+	
 	H5::Group *group = H5Utils::openGroup(file, group_name);
 	if(group == NULL) {
 		delete file;
