@@ -48,7 +48,7 @@
 
 #include <boost/cstdint.hpp>
 
-#include <opencv2/flann/flann.hpp>
+//#include <opencv2/flann/flann.hpp>
 
 #include "chain.h"
 #include "stats.h"
