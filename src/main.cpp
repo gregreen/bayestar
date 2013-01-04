@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
 	
 	unsigned int N_regions = 20;
 	unsigned int los_steps = 250;
-	unsigned int los_samplers = 15;
+	unsigned int los_samplers = 20;
 	double los_p_replacement = 0.1;
 	
 	unsigned int N_threads = 4;
@@ -150,6 +150,7 @@ int main(int argc, char **argv) {
 		("star-p-replacement", po::value<double>(&star_p_replacement), "Probability of taking replacement step (stellar fit)")
 		("sigma-RV", po::value<double>(&sigma_RV), "Variation in R_V (per star)")
 		
+		("regions", po::value<unsigned int>(&N_regions), "# of piecewise-linear regions in l.o.s. extinction profile (default: 20)")
 		("los-steps", po::value<unsigned int>(&los_steps), "# of MCMC steps in l.o.s. fit (per sampler)")
 		("los-samplers", po::value<unsigned int>(&los_samplers), "# of samplers per dimension (l.o.s. fit)")
 		("los-p-replacement", po::value<double>(&los_p_replacement), "Probability of taking replacement step (l.o.s. fit)")
@@ -179,6 +180,11 @@ int main(int argc, char **argv) {
 	if(output_fname == "NONE") {
 		cout << "Output filename required." << endl << endl;
 		cout << desc << endl;
+		return -1;
+	}
+	
+	if(120 % N_regions != 0) {
+		cout << "# of regions in extinction profile must divide 120 without remainder." << endl;
 		return -1;
 	}
 	
@@ -252,7 +258,7 @@ int main(int argc, char **argv) {
 		
 		// Fit line-of-sight extinction profile
 		img_stack.cull(conv);
-		sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-50, 2.*EBV_SFD, *it);
+		sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-150, 2.*EBV_SFD, *it);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		t_tot = (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec);

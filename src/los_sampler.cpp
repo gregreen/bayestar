@@ -100,7 +100,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	std::stringstream group_name;
 	group_name << "/pixel " << healpix_index;
 	group_name << "/los extinction";
-	chain.save(out_fname, group_name.str(), "Delta E(B-V)", 3, 500, 500);
+	chain.save(out_fname, group_name.str(), "Delta E(B-V)", 3, 500, converged);
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
 	
@@ -174,7 +174,7 @@ double lnp_los_extinction(const double* EBV, unsigned int N, TLOSMCMCParams& par
 		if(Delta_EBV < 0.) {return neginf; }
 		
 		// Favor lower differential reddening
-		//lnp -= Delta_EBV * Delta_EBV / (2. * 0.5 * 0.5);
+		lnp -= Delta_EBV * Delta_EBV / (2. * 0.5 * 0.5);
 	}
 	
 	// Compute line integrals through probability surfaces
@@ -210,13 +210,13 @@ void gen_rand_los_extinction(double *const EBV, unsigned int N, gsl_rng *r, TLOS
 	double EBV_ceil = params.img_stack->rect->max[1];
 	double mu = EBV_ceil / (double)N;
 	for(size_t i=0; i<N; i++) {
-		EBV[i] = 0.5 * mu * gsl_rng_uniform(r);//gsl_ran_chisq(r, 2.);
+		EBV[i] = 0.1 * mu * gsl_ran_chisq(r, 1.);
 		if(i > 0) { EBV[i] += EBV[i-1]; }
 	}
 	
 	// Ensure that reddening is not more than allowed
 	if(EBV[N-1] >= 0.95 * EBV_ceil) {
-		double factor = 0.9 * EBV_ceil / EBV[N-1];
+		double factor = 0.95 * EBV_ceil / EBV[N-1];
 		for(size_t i=0; i<N; i++) {
 			EBV[i] *= factor;
 		}

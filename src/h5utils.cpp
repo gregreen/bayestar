@@ -50,7 +50,7 @@ int H5Utils::DONOTCREATE = (1 << 2);
  * is returned.
  * 
  */
-H5::H5File* H5Utils::openFile(std::string fname, int accessmode) {
+H5::H5File* H5Utils::openFile(const std::string& fname, int accessmode) {
 	H5::H5File* file = NULL;
 	
 	// Read/Write access
@@ -89,7 +89,7 @@ H5::H5File* H5Utils::openFile(std::string fname, int accessmode) {
  * does not yet exist.
  * 
  */
-H5::Group* H5Utils::openGroup(H5::H5File* file, std::string name, int accessmode) {
+H5::Group* H5Utils::openGroup(H5::H5File* file, const std::string& name, int accessmode) {
 	H5::Group* group = NULL;
 	
 	// User does not want to create group
@@ -120,9 +120,50 @@ H5::Group* H5Utils::openGroup(H5::H5File* file, std::string name, int accessmode
 	return group;
 }
 
+/* 
+ * 
+ * Opens an attribute, creating it if it does not exist.
+ * 
+ */
+
+H5::Attribute H5Utils::openAttribute(H5::Group* group, const std::string& name, H5::DataType& dtype, H5::DataSpace& dspace) {
+	try {
+		return group->openAttribute(name);
+	} catch(H5::AttributeIException err_att_does_not_exist) {
+		return group->createAttribute(name, dtype, dspace);
+	}
+}
+
+H5::Attribute H5Utils::openAttribute(H5::DataSet* dataset, const std::string& name, H5::DataType& dtype, H5::DataSpace& dspace) {
+	try {
+		return dataset->openAttribute(name);
+	} catch(H5::AttributeIException err_att_does_not_exist) {
+		return dataset->createAttribute(name, dtype, dspace);
+	}
+}
+
+H5::Attribute H5Utils::openAttribute(H5::Group* group, const std::string& name, H5::StrType& strtype, H5::DataSpace& dspace) {
+	try {
+		return group->openAttribute(name);
+	} catch(H5::AttributeIException err_att_does_not_exist) {
+		return group->createAttribute(name, strtype, dspace);
+	}
+}
+
+H5::Attribute H5Utils::openAttribute(H5::DataSet* dataset, const std::string& name, H5::StrType& strtype, H5::DataSpace& dspace) {
+	try {
+		return dataset->openAttribute(name);
+	} catch(H5::AttributeIException err_att_does_not_exist) {
+		return dataset->createAttribute(name, strtype, dspace);
+	}
+}
+
+
 
 /*
+ * 
  * Add an attribute to a group in the given file.
+ * 
  */
 
 template<class T>

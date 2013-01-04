@@ -670,24 +670,27 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_write);
 		
+		// Compute evidence
+		TChain chain = sampler.get_chain();
+		double lnZ_tmp = chain.get_ln_Z_harmonic(true, 10., 0.05, 0.02);
+		
 		// Group in which star will be saved
 		std::stringstream group_name;
 		group_name << "/pixel " << stellar_data.healpix_index;
 		group_name << "/star " << n;
 		
 		// Save thinned chain
-		TChain chain = sampler.get_chain();
 		std::stringstream chain_name;
 		chain_name << group_name.str() << "/chain";
 		std::stringstream dim_name_all;
 		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
-		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 500, 500);
+		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 500, converged, lnZ_tmp);
 		
 		// Save binned p(DM, EBV) surface
 		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 500.);
 		save_mat_image(*(img_stack.img[n]), rect, out_fname, group_name.str(), "DM_EBV", "DM", "E(B-V)", 5);
 		
-		lnZ.push_back(chain.get_ln_Z_harmonic(true, 10., 0.05, 0.02));
+		lnZ.push_back(lnZ_tmp);
 		conv.push_back(converged);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
@@ -793,24 +796,27 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_write);
 		
+		// Compute evidence
+		TChain chain = sampler.get_chain();
+		double lnZ_tmp = chain.get_ln_Z_harmonic(true, 10., 0.05, 0.02);
+		
 		// Group in which star will be saved
 		std::stringstream group_name;
 		group_name << "/pixel " << stellar_data.healpix_index;
 		group_name << "/star " << n;
 		
 		// Save thinned chain
-		TChain chain = sampler.get_chain();
 		std::stringstream chain_name;
 		chain_name << group_name.str() << "/chain";
 		std::stringstream dim_name_all;
 		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
-		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 500, 500);
+		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 500, converged, lnZ_tmp);
 		
 		// Save binned p(DM, EBV) surface
 		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 500.);
 		save_mat_image(*(img_stack.img[n]), rect, out_fname, group_name.str(), "DM_EBV", "DM", "E(B-V)", 5);
 		
-		lnZ.push_back(chain.get_ln_Z_harmonic(true, 10., 0.05, 0.02));
+		lnZ.push_back(lnZ_tmp);
 		conv.push_back(converged);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
