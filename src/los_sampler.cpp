@@ -42,8 +42,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	double *GR = new double[ndim];
 	double GR_threshold = 1.2;
 	
-	typename TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
-	typename TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction;
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction;
 	
 	timespec t_start, t_write, t_end;
 	

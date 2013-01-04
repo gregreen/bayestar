@@ -440,8 +440,8 @@ void sample_model_affine_synth(TGalacticLOSModel &galactic_model, TSyntheticStel
 	unsigned int N_steps = 100;
 	unsigned int N_samplers = 4;
 	
-	typename TAffineSampler<TMCMCParams, TStats>::pdf_t f_pdf = &logP_los_simple_synth;
-	typename TAffineSampler<TMCMCParams, TStats>::rand_state_t f_rand_state = &gen_rand_state_synth;
+	TAffineSampler<TMCMCParams, TStats>::pdf_t f_pdf = &logP_los_simple_synth;
+	TAffineSampler<TMCMCParams, TStats>::rand_state_t f_rand_state = &gen_rand_state_synth;
 	
 	std::cerr << "# Setting up sampler" << std::endl;
 	unsigned int ndim = 1 + params.N_DM + 4*params.N_stars;
@@ -622,8 +622,8 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 	double *GR = new double[ndim];
 	double GR_threshold = 1.1;
 	
-	typename TAffineSampler<TMCMCParams, TNullLogger>::pdf_t f_pdf = &logP_indiv_simple_synth;
-	typename TAffineSampler<TMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_state_indiv_synth;
+	TAffineSampler<TMCMCParams, TNullLogger>::pdf_t f_pdf = &logP_indiv_simple_synth;
+	TAffineSampler<TMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_state_indiv_synth;
 	
 	timespec t_start, t_write, t_end;
 	//bool write_success;
@@ -748,8 +748,8 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	double *GR = new double[ndim];
 	double GR_threshold = 1.1;
 	
-	typename TAffineSampler<TMCMCParams, TNullLogger>::pdf_t f_pdf = &logP_indiv_simple_emp;
-	typename TAffineSampler<TMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_state_indiv_emp;
+	TAffineSampler<TMCMCParams, TNullLogger>::pdf_t f_pdf = &logP_indiv_simple_emp;
+	TAffineSampler<TMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_state_indiv_emp;
 	
 	timespec t_start, t_write, t_end;
 	//bool write_success;
