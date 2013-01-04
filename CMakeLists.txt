@@ -2,29 +2,35 @@ cmake_minimum_required(VERSION 2.6)
 project(bayestar)
 
 #
+# Use pkg-config to find some libraries
+#
+INCLUDE(FindPkgConfig)
+find_package(PkgConfig REQUIRED)
+
+#
 # Check requirements
 #
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 
 # Git version
 IF(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
-  FIND_PACKAGE(Git)
-  IF(GIT_FOUND)
-    EXECUTE_PROCESS(
-      COMMAND ${GIT_EXECUTABLE} rev-parse HEAD
-      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-      OUTPUT_VARIABLE "GIT_BUILD_VERSION"
-      ERROR_QUIET
-      OUTPUT_STRIP_TRAILING_WHITESPACE)
-    MESSAGE( STATUS "Git version: ${GIT_BUILD_VERSION}" )
-  ELSE(GIT_FOUND)
-    SET(GIT_BUILD_VERSION 0)
-  ENDIF(GIT_FOUND)
+	FIND_PACKAGE(Git)
+	IF(GIT_FOUND)
+		EXECUTE_PROCESS(
+			COMMAND ${GIT_EXECUTABLE} rev-parse HEAD
+			WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+			OUTPUT_VARIABLE "GIT_BUILD_VERSION"
+			ERROR_QUIET
+			OUTPUT_STRIP_TRAILING_WHITESPACE)
+		MESSAGE( STATUS "Git version: ${GIT_BUILD_VERSION}" )
+	ELSE(GIT_FOUND)
+		SET(GIT_BUILD_VERSION 0)
+	ENDIF(GIT_FOUND)
 ENDIF(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
 
 #
-# configure a header file to pass some of the CMake settings to the source
-# code
+# Configure a header file to pass some of the CMake
+# settings to the source code
 #
 #set(DATADIR "${CMAKE_INSTALL_PREFIX}/data/")
 set(DATADIR "${CMAKE_SOURCE_DIR}/data/")
@@ -45,7 +51,12 @@ ELSE(NOT CMAKE_COMPILER_IS_GNUCXX)
 ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
 
 ### OpenCV
-#find_package(OpenCV REQUIRED)
+pkg_check_modules(OPENCV opencv)
+include_directories(${OPENCV_INCLUDE_DIRS})
+link_directories(${OPENCV_LIBRARY_DIRS})
+MESSAGE( STATUS "OPENCV_LIBRARY_DIRS: ${OPENCV_LIBRARY_DIRS}" )
+MESSAGE( STATUS "OPENCV_INCLUDE_DIRS: ${OPENCV_INCLUDE_DIRS}" )
+MESSAGE( STATUS "OPENCV_LIBRARIES: ${OPENCV_LIBRARIES}" )
 
 ### GSL
 find_package(GSL REQUIRED)
@@ -80,5 +91,6 @@ target_link_libraries(bayestar rt)
 target_link_libraries(bayestar hdf5 hdf5_cpp)
 target_link_libraries(bayestar ${GSL_LIBRARIES})
 target_link_libraries(bayestar ${Boost_LIBRARIES})
-target_link_libraries(bayestar opencv_core opencv_imgproc)# ${OpenCV_LIBS})
+target_link_libraries(bayestar opencv_core opencv_imgproc)
+#target_link_libraries(bayestar ${OPENCV_LIBRARIES})
 #target_link_libraries(bayestar ${OpenMP_LIBRARIES})
