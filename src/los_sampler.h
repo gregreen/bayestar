@@ -49,6 +49,20 @@
 #include "binner.h"
 
 
+// Parameters commonly passed to sampling routines
+struct TMCMCOptions {
+	unsigned int steps;
+	unsigned int samplers;
+	double p_replacement;
+	unsigned int N_threads;
+	
+	TMCMCOptions(unsigned int _steps, unsigned int _samplers,
+	             double _p_replacement, unsigned int _N_threads)
+		: steps(_steps), samplers(_samplers),
+		  p_replacement(_p_replacement), N_threads(_N_threads)
+	{}
+};
+
 struct TImgStack {
 	cv::Mat **img;
 	TRect *rect;
@@ -76,7 +90,7 @@ struct TLOSMCMCParams {
 };
 
 
-void sample_los_extinction(std::string out_fname, TImgStack& img_stack,
+void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgStack& img_stack,
                            unsigned int N_regions, double p0, double EBV_max, uint64_t healpix_index);
 
 void los_integral(TImgStack& img_stack, double* ret,

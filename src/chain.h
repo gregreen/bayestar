@@ -26,10 +26,7 @@
 #include <gsl/gsl_eigen.h>
 #include <gsl/gsl_sf_gamma.h>
 
-#include <H5Cpp.h>
 #include "h5utils.h"
-
-//#include <boost/cstdint.hpp>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -172,7 +169,8 @@ public:
 	// File IO
 	// Save the chain to an HDF5 file
 	bool save(std::string fname, std::string group_name, std::string dim_name,
-	          int compression=1, hsize_t chunk=10000, int subsample=-1) const;
+	          int compression=1, int subsample=-1,
+	          bool converged=true, float lnZ=std::numeric_limits<float>::quiet_NaN()) const;
 	bool load(std::string filename, bool reserve_extra=false);	// Load the chain from file
 	
 	// Operators

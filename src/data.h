@@ -220,4 +220,8 @@ void draw_from_synth_model(size_t nstars, double RV, TGalacticLOSModel& gal_mode
 void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TStellarModel& stellar_model,
                            TStellarData& stellar_data, TExtinctionModel& ext_model, double (&mag_limit)[NBANDS]);
 
+// Return healpix indices of pixels in input file
+void get_input_pixels(std::string fname, std::vector<unsigned int> &healpix_index);
+
+
 #endif // _STELLAR_DATA_H__

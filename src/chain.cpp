@@ -435,7 +435,8 @@ void TChain::fit_gaussian_mixture(TGaussianMixture *gm, unsigned int iterations)
 
 
 bool TChain::save(std::string fname, std::string group_name,
-                   std::string dim_name, int compression, hsize_t chunk, int subsample) const {
+                  std::string dim_name, int compression, int subsample,
+                  bool converged, float lnZ) const {
 	if((compression<0) || (compression > 9)) {
 		std::cerr << "! Invalid gzip compression level: " << compression << std::endl;
 		return false;
@@ -445,6 +446,14 @@ bool TChain::save(std::string fname, std::string group_name,
 	
 	H5::H5File *file = H5Utils::openFile(fname);
 	if(file == NULL) { return false; }
+	
+	/*
+	try {
+		file->unlink(group_name);
+	} catch(...) {
+		// pass
+	}
+	*/
 	
 	H5::Group *group = H5Utils::openGroup(file, group_name);
 	if(group == NULL) {
@@ -481,6 +490,16 @@ bool TChain::save(std::string fname, std::string group_name,
 	att_data.length = length;
 	
 	att.write(att_type, &att_data);
+	
+	H5::DataType conv_dtype = H5::PredType::NATIVE_UCHAR;
+	H5::DataSpace conv_dspace(att_rank, &att_dim);
+	H5::Attribute conv_att = H5Utils::openAttribute(group, "converged", conv_dtype, conv_dspace);
+	conv_att.write(conv_dtype, &converged);
+	
+	H5::DataType lnZ_dtype = H5::PredType::NATIVE_FLOAT;
+	H5::DataSpace lnZ_dspace(att_rank, &att_dim);
+	H5::Attribute lnZ_att = H5Utils::openAttribute(group, "ln Z", lnZ_dtype, lnZ_dspace);
+	lnZ_att.write(lnZ_dtype, &lnZ);
 	
 	// Creation property list to be used for all three datasets
 	H5::DSetCreatPropList plist;

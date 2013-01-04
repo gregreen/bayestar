@@ -109,10 +109,13 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 void sample_model_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
 void sample_model_affine_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
 
-void sample_indiv_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model,
-                        TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD, double RV_sigma=-1.);
-void sample_indiv_emp(std::string out_fname, TGalacticLOSModel& galactic_model, TStellarModel& stellar_model,
-                      TExtinctionModel& extinction_model, TStellarData& stellar_data,
+void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
+                        TSyntheticStellarModel& stellar_model,TExtinctionModel& extinction_model, TStellarData& stellar_data,
+                        TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
+                        double EBV_SFD, double RV_sigma=-1.);
+
+void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
+                      TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
                       double EBV_SFD, double RV_sigma=-1.);
 

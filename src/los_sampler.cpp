@@ -27,23 +27,23 @@
 #include "los_sampler.h"
 
 
-void sample_los_extinction(std::string out_fname, TImgStack& img_stack,
+void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgStack& img_stack,
                            unsigned int N_regions, double p0, double EBV_max, uint64_t healpix_index) {
 	TLOSMCMCParams params(&img_stack, p0, EBV_max);
 	
 	TNullLogger logger;
 	
 	unsigned int max_attempts = 3;
-	unsigned int N_steps = 2000;
-	unsigned int N_samplers = 15;
-	unsigned int N_threads = 4;
+	unsigned int N_steps = options.steps;
+	unsigned int N_samplers = options.samplers;
+	unsigned int N_threads = options.N_threads;
 	unsigned int ndim = N_regions + 1;
 	
 	double *GR = new double[ndim];
 	double GR_threshold = 1.2;
 	
-	typename TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
-	typename TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction;
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction;
 	
 	timespec t_start, t_write, t_end;
 	
@@ -57,7 +57,7 @@ void sample_los_extinction(std::string out_fname, TImgStack& img_stack,
 	//std::cerr << "# Setting up sampler" << std::endl;
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 	sampler.set_scale(1.1);
-	sampler.set_replacement_bandwidth(0.70);
+	sampler.set_replacement_bandwidth(0.75);
 	
 	// Burn-in
 	std::cerr << "# Burn-in ..." << std::endl;
@@ -100,7 +100,7 @@ void sample_los_extinction(std::string out_fname, TImgStack& img_stack,
 	std::stringstream group_name;
 	group_name << "/pixel " << healpix_index;
 	group_name << "/los extinction";
-	chain.save(out_fname, group_name.str(), "Delta E(B-V)", 3, 500, 500);
+	chain.save(out_fname, group_name.str(), "Delta E(B-V)", 3, 500, converged);
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
 	
@@ -210,13 +210,13 @@ void gen_rand_los_extinction(double *const EBV, unsigned int N, gsl_rng *r, TLOS
 	double EBV_ceil = params.img_stack->rect->max[1];
 	double mu = EBV_ceil / (double)N;
 	for(size_t i=0; i<N; i++) {
-		EBV[i] = 0.5 * mu * gsl_rng_uniform(r);//gsl_ran_chisq(r, 2.);
+		EBV[i] = 0.1 * mu * gsl_ran_chisq(r, 1.);
 		if(i > 0) { EBV[i] += EBV[i-1]; }
 	}
 	
 	// Ensure that reddening is not more than allowed
 	if(EBV[N-1] >= 0.95 * EBV_ceil) {
-		double factor = 0.9 * EBV_ceil / EBV[N-1];
+		double factor = 0.95 * EBV_ceil / EBV[N-1];
 		for(size_t i=0; i<N; i++) {
 			EBV[i] *= factor;
 		}
