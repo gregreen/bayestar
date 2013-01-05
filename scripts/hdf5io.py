@@ -138,14 +138,12 @@ class TChain:
 			f.close()
 	
 	def load(self, gp):
-		N_coords = gp['coords'].shape[0]
+		N_coords, self.ndim = gp['coords'].shape
 		self.length = gp['weights'].shape[0]
-		self.ndim = N_coords / self.length
 		
 		dtype = [('x', 'f8', self.ndim), ('w', 'i8'), ('ln_p', 'f8')]
 		self.data = np.empty(self.length, dtype=dtype)
-		self.data['x'][:] = np.reshape(gp['coords'],
-		                                       (self.length, self.ndim))
+		self.data['x'][:] = gp['coords'][:]
 		self.data['w'][:] = gp['weights']
 		self.data['ln_p'][:] = gp['ln_p']
 		
