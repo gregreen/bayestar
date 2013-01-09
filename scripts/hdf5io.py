@@ -278,6 +278,36 @@ def grid_pdfs(chain, bounds, samples, axes=(0,1), subsample=None):
 	
 	return pdf.transpose([0,2,1])
 
+def get_stellar_pdfs(fname, pixel):
+	'''
+	Load all the stellar pdfs from a pixel.
+	'''
+	
+	pdf = []
+	tmp_index = None
+	
+	group = 'pixel %d' % pixel
+	
+	f = h5py.File(fname, 'r')
+	g = f[group]
+	
+	for name,item in g.iteritems():
+		# Check if group name is of type 'star #'
+		name_spl = name.split()
+		if name_spl[0] == 'star':
+			try:
+				tmp_index = int(name_spl[1])
+			except:
+				continue
+			# Look for 'DM_EBV' group
+			for subname,subitem in item.iteritems():
+				if subname == 'DM_EBV':
+					pdf.append(subitem[:,:])
+					break
+	
+	f.close()
+	
+	return pdf
 
 ########################################################################
 # Gridded Empirical Photometry

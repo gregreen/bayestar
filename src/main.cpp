@@ -126,7 +126,7 @@ int main(int argc, char **argv) {
 	unsigned int N_regions = 20;
 	unsigned int los_steps = 250;
 	unsigned int los_samplers = 20;
-	double los_p_replacement = 0.1;
+	double los_p_replacement = 0.2;
 	
 	unsigned int N_threads = 4;
 	

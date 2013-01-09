@@ -169,12 +169,13 @@ double lnp_los_extinction(const double* EBV, unsigned int N, TLOSMCMCParams& par
 	// Extinction must increase monotonically
 	if(EBV[0] < 0.) { return neginf; }
 	double Delta_EBV;
+	lnp -= EBV[0] * EBV[0] / (2. * 0.25 * 0.25);
 	for(size_t i=1; i<N; i++) {
 		Delta_EBV = EBV[i] - EBV[i-1];
 		if(Delta_EBV < 0.) {return neginf; }
 		
 		// Favor lower differential reddening
-		lnp -= Delta_EBV * Delta_EBV / (2. * 0.5 * 0.5);
+		lnp -= Delta_EBV * Delta_EBV / (2. * 0.25 * 0.25);
 	}
 	
 	// Compute line integrals through probability surfaces
@@ -210,7 +211,7 @@ void gen_rand_los_extinction(double *const EBV, unsigned int N, gsl_rng *r, TLOS
 	double EBV_ceil = params.img_stack->rect->max[1];
 	double mu = EBV_ceil / (double)N;
 	for(size_t i=0; i<N; i++) {
-		EBV[i] = 0.1 * mu * gsl_ran_chisq(r, 1.);
+		EBV[i] = 0.01 * mu * gsl_ran_chisq(r, 1.);
 		if(i > 0) { EBV[i] += EBV[i-1]; }
 	}
 	
