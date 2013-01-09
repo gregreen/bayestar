@@ -139,8 +139,8 @@ void los_integral(TImgStack &img_stack, double *ret, const double *EBV, unsigned
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
 	
-	for(int i=0; i<N_regions; i++) {
-		dy = (double)(EBV[i+1] - EBV[i]) / (double)(N_samples) / img_stack.rect->dx[1];
+	for(int i=1; i<N_regions+1; i++) {
+		dy = (double)(EBV[i]) / (double)(N_samples) / img_stack.rect->dx[1];
 		//std::cout << "(" << x << ", " << y << ", " << tmp << ") ";
 		for(int j=0; j<N_samples; j++, x++, y+=dy) {
 			y_floor = floor(y);
@@ -167,15 +167,11 @@ double lnp_los_extinction(const double* EBV, unsigned int N, TLOSMCMCParams& par
 	double lnp = 0.;
 	
 	// Extinction must increase monotonically
-	if(EBV[0] < 0.) { return neginf; }
-	double Delta_EBV;
-	lnp -= EBV[0] * EBV[0] / (2. * 0.25 * 0.25);
-	for(size_t i=1; i<N; i++) {
-		Delta_EBV = EBV[i] - EBV[i-1];
-		if(Delta_EBV < 0.) {return neginf; }
+	for(size_t i=0; i<N; i++) {
+		if(EBV[i] < 0.) {return neginf; }
 		
 		// Favor lower differential reddening
-		lnp -= Delta_EBV * Delta_EBV / (2. * 0.25 * 0.25);
+		lnp -= EBV[i] * EBV[i] / (2. * 10. * 10.);
 	}
 	
 	// Compute line integrals through probability surfaces
@@ -193,10 +189,10 @@ double lnp_los_extinction(const double* EBV, unsigned int N, TLOSMCMCParams& par
 	
 	// Reddening prior
 	if(params.EBV_max > 0.) {
-		//double EBV = 0.;
-		//for(size_t i=0; i<N; i++) { EBV += Delta_EBV[i]; }
-		if(EBV[N-1] > params.EBV_max) {
-			lnp -= 0.5 * (EBV[N-1] - params.EBV_max) * (EBV[N-1] - params.EBV_max) / (params.EBV_max * params.EBV_max);
+		double sum_EBV = 0.;
+		for(size_t i=0; i<N; i++) { sum_EBV += EBV[i]; }
+		if(sum_EBV > params.EBV_max) {
+			lnp -= 0.5 * (sum_EBV - params.EBV_max) * (sum_EBV - params.EBV_max) / (params.EBV_max * params.EBV_max);
 		}
 	}
 	
@@ -210,14 +206,16 @@ double lnp_los_extinction(const double* EBV, unsigned int N, TLOSMCMCParams& par
 void gen_rand_los_extinction(double *const EBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
 	double EBV_ceil = params.img_stack->rect->max[1];
 	double mu = EBV_ceil / (double)N;
+	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
 		EBV[i] = 0.01 * mu * gsl_ran_chisq(r, 1.);
-		if(i > 0) { EBV[i] += EBV[i-1]; }
+		EBV_sum += EBV[i];
 	}
 	
 	// Ensure that reddening is not more than allowed
-	if(EBV[N-1] >= 0.95 * EBV_ceil) {
-		double factor = 0.95 * EBV_ceil / EBV[N-1];
+	
+	if(EBV_sum >= 0.95 * EBV_ceil) {
+		double factor = 0.95 * EBV_ceil / EBV_sum;
 		for(size_t i=0; i<N; i++) {
 			EBV[i] *= factor;
 		}
