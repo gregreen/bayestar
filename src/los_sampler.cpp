@@ -30,6 +30,7 @@
 void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgStack& img_stack,
                            unsigned int N_regions, double p0, double EBV_max, uint64_t healpix_index) {
 	TLOSMCMCParams params(&img_stack, p0, EBV_max);
+	std::cout << "guess of EBV max = " << params.EBV_guess_max << std::endl;
 	
 	TNullLogger logger;
 	
@@ -56,8 +57,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	
 	//std::cerr << "# Setting up sampler" << std::endl;
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
-	sampler.set_scale(1.1);
-	sampler.set_replacement_bandwidth(0.75);
+	sampler.set_scale(1.15);
+	sampler.set_replacement_bandwidth(0.65);
 	
 	// Burn-in
 	std::cerr << "# Burn-in ..." << std::endl;
@@ -171,7 +172,7 @@ double lnp_los_extinction(const double* EBV, unsigned int N, TLOSMCMCParams& par
 		if(EBV[i] < 0.) {return neginf; }
 		
 		// Favor lower differential reddening
-		lnp -= EBV[i] * EBV[i] / (2. * 10. * 10.);
+		//lnp -= EBV[i] * EBV[i] / (2. * 10. * 10.);
 	}
 	
 	// Compute line integrals through probability surfaces
@@ -188,13 +189,13 @@ double lnp_los_extinction(const double* EBV, unsigned int N, TLOSMCMCParams& par
 	}
 	
 	// Reddening prior
-	if(params.EBV_max > 0.) {
+	/*if(params.EBV_max > 0.) {
 		double sum_EBV = 0.;
 		for(size_t i=0; i<N; i++) { sum_EBV += EBV[i]; }
 		if(sum_EBV > params.EBV_max) {
 			lnp -= 0.5 * (sum_EBV - params.EBV_max) * (sum_EBV - params.EBV_max) / (params.EBV_max * params.EBV_max);
 		}
-	}
+	}*/
 	
 	delete[] line_int;
 	
@@ -208,18 +209,52 @@ void gen_rand_los_extinction(double *const EBV, unsigned int N, gsl_rng *r, TLOS
 	double mu = EBV_ceil / (double)N;
 	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
-		EBV[i] = 0.01 * mu * gsl_ran_chisq(r, 1.);
+		EBV[i] = 1.5 * gsl_rng_uniform(r) * params.EBV_guess_max / (double)N;
+		//EBV[i] = 0.001 * mu * gsl_ran_chisq(r, 1.);
 		EBV_sum += EBV[i];
 	}
 	
 	// Ensure that reddening is not more than allowed
-	
 	if(EBV_sum >= 0.95 * EBV_ceil) {
 		double factor = 0.95 * EBV_ceil / EBV_sum;
 		for(size_t i=0; i<N; i++) {
 			EBV[i] *= factor;
 		}
 	}
+}
+
+double guess_EBV_max(TImgStack &img_stack) {
+	cv::Mat stack, row_avg, col_avg;
+	
+	// Stack images
+	img_stack.stack(stack);
+	
+	// Normalize at each distance
+	/*cv::reduce(stack, col_avg, 1, CV_REDUCE_MAX);
+	double tmp;
+	for(size_t i=0; i<col_avg.rows; i++) {
+		tmp = col_avg.at<double>(i, 0);
+		if(tmp > 0) { stack.row(i) /= tmp; }
+	}*/
+	
+	// Sum across each EBV
+	cv::reduce(stack, row_avg, 0, CV_REDUCE_AVG);
+	double max_sum = *std::max_element(row_avg.begin<double>(), row_avg.end<double>());
+	int max = 1;
+	/*for(int i = row_avg.cols - 1; i >= 0; i--) {
+		std::cout << i << "\t" << row_avg.at<double>(0, i) << std::endl;
+	}*/
+	//std::cout << std::endl;
+	for(int i = row_avg.cols - 1; i > 0; i--) {
+		//std::cout << i << "\t" << row_avg.at<double>(0, i) << std::endl;
+		if(row_avg.at<double>(0, i) > 0.2 * max_sum) {
+			max = i;
+			break;
+		}
+	}
+	
+	// Convert bin index to E(B-V)
+	return max * img_stack.rect->dx[1] + img_stack.rect->min[1];
 }
 
 
@@ -236,6 +271,7 @@ TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0, double _EBV_ma
 	p0 = _p0;
 	lnp0 = log(p0);
 	EBV_max = _EBV_max;
+	EBV_guess_max = guess_EBV_max(*img_stack);
 }
 
 TLOSMCMCParams::~TLOSMCMCParams() { }
@@ -332,3 +368,15 @@ void TImgStack::set_rect(TRect& _rect) {
 		*rect = _rect;
 	}
 }
+
+void TImgStack::stack(cv::Mat& dest) {
+	if(N_images > 0) {
+		dest = *(img[0]);
+		for(size_t i=1; i<N_images; i++) {
+			dest += *(img[i]);
+		}
+	} else {
+		dest.setTo(0);
+	}
+}
+

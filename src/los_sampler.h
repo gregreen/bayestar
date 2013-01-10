@@ -76,12 +76,14 @@ struct TImgStack {
 	void cull(const std::vector<bool> &keep);
 	void resize(size_t _N_images);
 	void set_rect(TRect &_rect);
+	void stack(cv::Mat &dest);
 };
 
 struct TLOSMCMCParams {
 	TImgStack *img_stack;
 	double p0, lnp0;
 	double EBV_max;
+	double EBV_guess_max;
 	
 	TLOSMCMCParams(TImgStack* _img_stack, double _p0, double _EBV_max = -1.);
 	~TLOSMCMCParams();
@@ -99,5 +101,6 @@ void los_integral(TImgStack& img_stack, double* ret,
 double lnp_los_extinction(const double *Delta_EBV, unsigned int N_regions, TLOSMCMCParams &params);
 void gen_rand_los_extinction(double *const Delta_EBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
 
+double guess_EBV_max(TImgStack &img_stack);
 
 #endif // _LOS_SAMPLER_H__
