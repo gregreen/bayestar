@@ -111,6 +111,22 @@ double TChain::get_w(unsigned int i) const {
 	return w[i];
 }
 
+void TChain::get_best(std::vector<double> &x) const {
+	double L_max = L[0];
+	size_t i_max = 0;
+	for(size_t i=1; i<length; i++) {
+		if(L[i] > L_max) {
+			L_max = L[i];
+			i_max = i;
+		}
+	}
+	const double *best = get_element(i_max);
+	x.clear();
+	for(size_t i=0; i<N; i++) {
+		x.push_back(best[i]);
+	}
+}
+
 double TChain::append(const TChain& chain, bool reweight, bool use_peak, double nsigma_max, double nsigma_peak, double chain_frac, double threshold) {
 	assert(chain.N == N);	// Make sure the two chains have the same dimensionality
 	

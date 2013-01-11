@@ -31,36 +31,36 @@
 
 void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgStack& img_stack,
                            unsigned int N_regions, double p0, double EBV_max, uint64_t healpix_index) {
+	timespec t_start, t_write, t_end;
+	clock_gettime(CLOCK_MONOTONIC, &t_start);
+	
 	TLOSMCMCParams params(&img_stack, p0, EBV_max);
 	std::cout << "guess of EBV max = " << params.EBV_guess_max << std::endl;
 	
+	guess_EBV_profile(options, params, N_regions);
+	
 	TNullLogger logger;
 	
-	unsigned int max_attempts = 3;
+	unsigned int max_attempts = 2;
 	unsigned int N_steps = options.steps;
 	unsigned int N_samplers = options.samplers;
 	unsigned int N_threads = options.N_threads;
 	unsigned int ndim = N_regions + 1;
 	
 	double *GR = new double[ndim];
-	double GR_threshold = 1.2;
+	double GR_threshold = 1.25;
 	
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
-	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction;
-	
-	timespec t_start, t_write, t_end;
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction_from_guess;
 	
 	std::cerr << std::endl;
-	
-	clock_gettime(CLOCK_MONOTONIC, &t_start);
-	
 	std::cout << "Line-of-Sight Extinction Profile" << std::endl;
 	std::cout << "====================================" << std::endl;
 	
 	//std::cerr << "# Setting up sampler" << std::endl;
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
-	sampler.set_scale(1.05);
-	sampler.set_replacement_bandwidth(0.75);
+	sampler.set_scale(1.2);
+	sampler.set_replacement_bandwidth(0.50);
 	
 	// Burn-in
 	std::cerr << "# Burn-in ..." << std::endl;
@@ -179,7 +179,7 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 		EBV_tot += EBV_tmp;
 		
 		// Prior to prevent EBV from straying high
-		//lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (5. * 5.);
+		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (5. * 5.);
 	}
 	if(EBV_tot >= params.img_stack->rect->max[1]) { return neginf; }
 	
@@ -190,7 +190,7 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 	
 	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
 	const double bias = -10.;
-	const double sigma = 100.;
+	const double sigma = 25.;
 	for(size_t i=0; i<N; i++) {
 		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
 	}
@@ -217,23 +217,22 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 
 void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
 	double EBV_ceil = params.img_stack->rect->max[1];
-	double mu = 1.5 * params.EBV_guess_max / (double)N;
+	double mu = log(1.5 * params.EBV_guess_max / (double)N);
 	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
 		//logEBV[i] = mu * gsl_rng_uniform(r);
-		logEBV[i] = 0.5 * mu * gsl_ran_chisq(r, 1.);
-		EBV_sum += logEBV[i];
+		logEBV[i] = mu + gsl_ran_gaussian_ziggurat(r, 1.5);
+		//logEBV[i] = 0.5 * mu * gsl_ran_chisq(r, 1.);
+		EBV_sum += exp(logEBV[i]);
 	}
 	
 	// Ensure that reddening is not more than allowed
 	if(EBV_sum >= 0.95 * EBV_ceil) {
-		double factor = 0.95 * EBV_ceil / EBV_sum;
+		double factor = log(0.95 * EBV_ceil / EBV_sum);
 		for(size_t i=0; i<N; i++) {
-			logEBV[i] *= factor;
+			logEBV[i] += factor;
 		}
 	}
-	
-	for(size_t i=0; i<N; i++) { logEBV[i] = log(logEBV[i]); }
 }
 
 double guess_EBV_max(TImgStack &img_stack) {
@@ -271,9 +270,59 @@ double guess_EBV_max(TImgStack &img_stack) {
 }
 
 void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned int N_regions) {
+	TNullLogger logger;
 	
+	unsigned int N_steps = options.steps / 2;
+	unsigned int N_samplers = options.samplers;
+	unsigned int N_threads = options.N_threads;
+	unsigned int ndim = N_regions + 1;
+	
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction;
+	
+	std::cout << "Generating Guess ..." << std::endl;
+	
+	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+	sampler.set_scale(1.05);
+	sampler.set_replacement_bandwidth(0.75);
+	
+	sampler.step(int(N_steps*20./100.), true, 0., 0.5, 0.);
+	sampler.step(int(N_steps*5./100), true, 0., 1., 0.);
+	sampler.step(int(N_steps*20./100.), true, 0., 0.5, 0.);
+	sampler.step(int(N_steps*5./100.), true, 0., 1., 0.);
+	sampler.step(int(N_steps*20./100.), true, 0., 0.5, 0.);
+	sampler.step(int(N_steps*5./100.), true, 0., 1., 0.);
+	sampler.step(int(N_steps*20./100.), true, 0., 0.5, 0.);
+	sampler.step(int(N_steps*5./100), true, 0., 1., 0.);
+	
+	sampler.print_stats();
+	std::cout << std::endl << std::endl;
+	
+	sampler.get_chain().get_best(params.EBV_prof_guess);
+	params.EBV_prof_guess.clear();
+	for(size_t i=0; i<ndim; i++) {
+		std::cout << "\t" << params.EBV_prof_guess[i] << std::endl;
+	}
+	std::cout << std::endl;
 }
 
+void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
+	assert(params.EBV_prof_guess.size() == N);
+	double EBV_ceil = params.img_stack->rect->max[1];
+	double EBV_sum = 0.;
+	for(size_t i=0; i<N; i++) {
+		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);
+		EBV_sum += logEBV[i];
+	}
+	
+	// Ensure that reddening is not more than allowed
+	if(EBV_sum >= 0.95 * EBV_ceil) {
+		double factor = log(0.95 * EBV_ceil / EBV_sum);
+		for(size_t i=0; i<N; i++) {
+			logEBV[i] += factor;
+		}
+	}
+}
 
 
 /****************************************************************************************************************************

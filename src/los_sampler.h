@@ -84,6 +84,7 @@ struct TLOSMCMCParams {
 	double p0, lnp0;
 	double EBV_max;
 	double EBV_guess_max;
+	std::vector<double> EBV_prof_guess;
 	
 	TLOSMCMCParams(TImgStack* _img_stack, double _p0, double _EBV_max = -1.);
 	~TLOSMCMCParams();
@@ -102,5 +103,7 @@ double lnp_los_extinction(const double *Delta_EBV, unsigned int N_regions, TLOSM
 void gen_rand_los_extinction(double *const Delta_EBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
 
 double guess_EBV_max(TImgStack &img_stack);
+void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned int N_regions);
+void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
 
 #endif // _LOS_SAMPLER_H__
