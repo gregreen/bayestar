@@ -26,6 +26,8 @@
 
 #include "los_sampler.h"
 
+// TODO: Do quick exploratory run to come up with guess(es).
+//       Store these, and use them to generate initial states for more thorough run.
 
 void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgStack& img_stack,
                            unsigned int N_regions, double p0, double EBV_max, uint64_t healpix_index) {
@@ -57,11 +59,12 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	
 	//std::cerr << "# Setting up sampler" << std::endl;
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
-	sampler.set_scale(1.15);
-	sampler.set_replacement_bandwidth(0.65);
+	sampler.set_scale(1.05);
+	sampler.set_replacement_bandwidth(0.75);
 	
 	// Burn-in
 	std::cerr << "# Burn-in ..." << std::endl;
+	//sampler.step(int(N_steps*20./100.), false, 0., 1., 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
 	sampler.step(int(N_steps*5./100), false, 0., 1., 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
@@ -70,13 +73,16 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	sampler.step(int(N_steps*5./100.), false, 0., 1., 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
 	sampler.step(int(N_steps*5./100), false, 0., 1., 0.);
+	//sampler.step(N_steps, false, 0., options.p_replacement, 0.);
+	//sampler.step(N_steps/2., false, 0., 1., 0.);
+	sampler.print_stats();
 	sampler.clear();
 	
 	std::cerr << "# Main run ..." << std::endl;
 	bool converged = false;
 	size_t attempt;
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-		sampler.step((1<<attempt)*N_steps, true, 0., 0.1, 0.);
+		sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
 		
 		converged = true;
 		sampler.get_GR_diagnostic(GR);
@@ -84,6 +90,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 			if(GR[i] > GR_threshold) {
 				converged = false;
 				if(attempt != max_attempts-1) {
+					sampler.print_stats();
 					std::cerr << "# Extending run ..." << std::endl;
 					sampler.step(int(N_steps*1./5.), false, 0., 1., 0.);
 					sampler.clear();
@@ -128,20 +135,20 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 }
 
 
-void los_integral(TImgStack &img_stack, double *ret, const double *EBV, unsigned int N_regions) {
+void los_integral(TImgStack &img_stack, double *ret, const double *logEBV, unsigned int N_regions) {
 	assert(img_stack.rect->N_bins[0] % N_regions == 0);
 	
 	unsigned int N_samples = img_stack.rect->N_bins[0] / N_regions;
 	int y_max = img_stack.rect->N_bins[1];
 	
-	double y = (EBV[0] - img_stack.rect->min[1]) / img_stack.rect->dx[1];
+	double y = (exp(logEBV[0]) - img_stack.rect->min[1]) / img_stack.rect->dx[1];
 	double y_ceil, y_floor, dy;
 	int x = 0;
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
 	
 	for(int i=1; i<N_regions+1; i++) {
-		dy = (double)(EBV[i]) / (double)(N_samples) / img_stack.rect->dx[1];
+		dy = (double)(exp(logEBV[i])) / (double)(N_samples) / img_stack.rect->dx[1];
 		//std::cout << "(" << x << ", " << y << ", " << tmp << ") ";
 		for(int j=0; j<N_samples; j++, x++, y+=dy) {
 			y_floor = floor(y);
@@ -159,25 +166,38 @@ void los_integral(TImgStack &img_stack, double *ret, const double *EBV, unsigned
 	}
 }
 
-double lnp_los_extinction(const double* EBV, unsigned int N, TLOSMCMCParams& params) {
+double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& params) {
 	#define neginf -std::numeric_limits<double>::infinity()
-	
-	// Extinction must not exceed maximum value
-	if(EBV[N-1] >= params.img_stack->rect->max[1]) { return neginf; }
 	
 	double lnp = 0.;
 	
-	// Extinction must increase monotonically
+	// Extinction must not exceed maximum value
+	double EBV_tot = 0.;
+	double EBV_tmp;
 	for(size_t i=0; i<N; i++) {
-		if(EBV[i] < 0.) {return neginf; }
+		EBV_tmp = exp(logEBV[i]);
+		EBV_tot += EBV_tmp;
 		
-		// Favor lower differential reddening
-		//lnp -= EBV[i] * EBV[i] / (2. * 10. * 10.);
+		// Prior to prevent EBV from straying high
+		//lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (5. * 5.);
+	}
+	if(EBV_tot >= params.img_stack->rect->max[1]) { return neginf; }
+	
+	// Prior on total extinction
+	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
+		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * params.EBV_max * params.EBV_max);
+	}
+	
+	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
+	const double bias = -10.;
+	const double sigma = 100.;
+	for(size_t i=0; i<N; i++) {
+		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
 	}
 	
 	// Compute line integrals through probability surfaces
 	double *line_int = new double[params.img_stack->N_images];
-	los_integral(*(params.img_stack), line_int, EBV, N-1);
+	los_integral(*(params.img_stack), line_int, logEBV, N-1);
 	
 	// Soften and multiply line integrals
 	for(size_t i=0; i<params.img_stack->N_images; i++) {
@@ -188,15 +208,6 @@ double lnp_los_extinction(const double* EBV, unsigned int N, TLOSMCMCParams& par
 		//std::cerr << line_int[i] << std::endl;
 	}
 	
-	// Reddening prior
-	/*if(params.EBV_max > 0.) {
-		double sum_EBV = 0.;
-		for(size_t i=0; i<N; i++) { sum_EBV += EBV[i]; }
-		if(sum_EBV > params.EBV_max) {
-			lnp -= 0.5 * (sum_EBV - params.EBV_max) * (sum_EBV - params.EBV_max) / (params.EBV_max * params.EBV_max);
-		}
-	}*/
-	
 	delete[] line_int;
 	
 	return lnp;
@@ -204,23 +215,25 @@ double lnp_los_extinction(const double* EBV, unsigned int N, TLOSMCMCParams& par
 	#undef neginf
 }
 
-void gen_rand_los_extinction(double *const EBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
+void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
 	double EBV_ceil = params.img_stack->rect->max[1];
-	double mu = EBV_ceil / (double)N;
+	double mu = 1.5 * params.EBV_guess_max / (double)N;
 	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
-		EBV[i] = 1.5 * gsl_rng_uniform(r) * params.EBV_guess_max / (double)N;
-		//EBV[i] = 0.001 * mu * gsl_ran_chisq(r, 1.);
-		EBV_sum += EBV[i];
+		//logEBV[i] = mu * gsl_rng_uniform(r);
+		logEBV[i] = 0.5 * mu * gsl_ran_chisq(r, 1.);
+		EBV_sum += logEBV[i];
 	}
 	
 	// Ensure that reddening is not more than allowed
 	if(EBV_sum >= 0.95 * EBV_ceil) {
 		double factor = 0.95 * EBV_ceil / EBV_sum;
 		for(size_t i=0; i<N; i++) {
-			EBV[i] *= factor;
+			logEBV[i] *= factor;
 		}
 	}
+	
+	for(size_t i=0; i<N; i++) { logEBV[i] = log(logEBV[i]); }
 }
 
 double guess_EBV_max(TImgStack &img_stack) {
@@ -255,6 +268,10 @@ double guess_EBV_max(TImgStack &img_stack) {
 	
 	// Convert bin index to E(B-V)
 	return max * img_stack.rect->dx[1] + img_stack.rect->min[1];
+}
+
+void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned int N_regions) {
+	
 }
 
 

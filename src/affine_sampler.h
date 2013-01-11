@@ -472,7 +472,7 @@ void TAffineSampler<TParams, TLogger>::replacement_proposal(unsigned int j) {
 	// Determine pi_S(X_j | Y_j , X_{-j})
 	double tmp;
 	double max = -std::numeric_limits<double>::infinity();
-	double cutoff = 3.;
+	double cutoff = 4.;
 	double pi_XY = 0.;
 	for(unsigned int i=0; i<L; i++) {
 		if(i != j) {

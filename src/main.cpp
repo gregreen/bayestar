@@ -124,7 +124,7 @@ int main(int argc, char **argv) {
 	double sigma_RV = -1.;
 	
 	unsigned int N_regions = 20;
-	unsigned int los_steps = 250;
+	unsigned int los_steps = 500;
 	unsigned int los_samplers = 20;
 	double los_p_replacement = 0.2;
 	
