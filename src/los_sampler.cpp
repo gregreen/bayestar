@@ -190,7 +190,7 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 	
 	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
 	const double bias = -10.;
-	const double sigma = 10.;
+	const double sigma = 5.;
 	for(size_t i=0; i<N; i++) {
 		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
 	}
@@ -253,13 +253,13 @@ double guess_EBV_max(TImgStack &img_stack) {
 	cv::reduce(stack, row_avg, 0, CV_REDUCE_AVG);
 	double max_sum = *std::max_element(row_avg.begin<double>(), row_avg.end<double>());
 	int max = 1;
-	/*for(int i = row_avg.cols - 1; i >= 0; i--) {
+	for(int i = row_avg.cols - 1; i >= 0; i--) {
 		std::cout << i << "\t" << row_avg.at<double>(0, i) << std::endl;
-	}*/
+	}
 	//std::cout << std::endl;
 	for(int i = row_avg.cols - 1; i > 0; i--) {
 		//std::cout << i << "\t" << row_avg.at<double>(0, i) << std::endl;
-		if(row_avg.at<double>(0, i) > 0.2 * max_sum) {
+		if(row_avg.at<double>(0, i) > 0.001 * max_sum) {
 			max = i;
 			break;
 		}

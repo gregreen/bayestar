@@ -37,7 +37,7 @@ using namespace std;
 
 
 void mock_test() {
-	size_t nstars = 100;
+	size_t nstars = 200;
 	unsigned int N_regions = 20;
 	double EBV_SFD = 2.5;
 	double RV = 3.1;
