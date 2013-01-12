@@ -118,13 +118,13 @@ int main(int argc, char **argv) {
 	double err_floor = 20;
 	
 	bool synthetic = false;
-	unsigned int star_steps = 500;
+	unsigned int star_steps = 250;
 	unsigned int star_samplers = 20;
 	double star_p_replacement = 0.2;
 	double sigma_RV = -1.;
 	
 	unsigned int N_regions = 20;
-	unsigned int los_steps = 500;
+	unsigned int los_steps = 750;
 	unsigned int los_samplers = 20;
 	double los_p_replacement = 0.2;
 	
