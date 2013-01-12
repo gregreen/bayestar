@@ -223,7 +223,7 @@ int main(int argc, char **argv) {
 	cerr << "# " << healpix_index.size() << " pixels in input file." << endl;
 	
 	// TODO: Put this into input file
-	double EBV_SFD = 5.;
+	double EBV_SFD = 0.7;
 	
 	// Remove the output file
 	remove(output_fname.c_str());

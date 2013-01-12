@@ -179,18 +179,18 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 		EBV_tot += EBV_tmp;
 		
 		// Prior to prevent EBV from straying high
-		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (5. * 5.);
+		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (0.5 * 0.5);
 	}
 	if(EBV_tot >= params.img_stack->rect->max[1]) { return neginf; }
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
-		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * params.EBV_max * params.EBV_max);
+		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * 0.25 * 0.25 * params.EBV_max * params.EBV_max);
 	}
 	
 	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
 	const double bias = -10.;
-	const double sigma = 25.;
+	const double sigma = 10.;
 	for(size_t i=0; i<N; i++) {
 		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
 	}
@@ -221,7 +221,7 @@ void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, T
 	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
 		//logEBV[i] = mu * gsl_rng_uniform(r);
-		logEBV[i] = mu + gsl_ran_gaussian_ziggurat(r, 1.5);
+		logEBV[i] = mu + gsl_ran_gaussian_ziggurat(r, 0.5);
 		//logEBV[i] = 0.5 * mu * gsl_ran_chisq(r, 1.);
 		EBV_sum += exp(logEBV[i]);
 	}
@@ -272,7 +272,7 @@ double guess_EBV_max(TImgStack &img_stack) {
 void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned int N_regions) {
 	TNullLogger logger;
 	
-	unsigned int N_steps = options.steps / 2;
+	unsigned int N_steps = options.steps / 4;
 	unsigned int N_samplers = options.samplers;
 	unsigned int N_threads = options.N_threads;
 	unsigned int ndim = N_regions + 1;
