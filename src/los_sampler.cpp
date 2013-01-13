@@ -26,8 +26,10 @@
 
 #include "los_sampler.h"
 
-// TODO: Do quick exploratory run to come up with guess(es).
-//       Store these, and use them to generate initial states for more thorough run.
+
+/*
+ *  Piecewise-linear line-of-sight model
+ */
 
 void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgStack& img_stack,
                            unsigned int N_regions, double p0, double EBV_max, uint64_t healpix_index) {
