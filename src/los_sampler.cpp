@@ -28,6 +28,274 @@
 
 
 /*
+ *  Discrete cloud model
+ */
+
+void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, TImgStack& img_stack,
+                                  unsigned int N_clouds, double p0, double EBV_max, uint64_t healpix_index) {
+	timespec t_start, t_write, t_end;
+	clock_gettime(CLOCK_MONOTONIC, &t_start);
+	
+	TLOSMCMCParams params(&img_stack, p0, EBV_max);
+	
+	/*double x[] = {8., 4., -0.693, -1.61};
+	gsl_rng *r;
+	seed_gsl_rng(&r);
+	//gen_rand_los_extinction_clouds(&(x[0]), 4, r, params);
+	double lnp_tmp = lnp_los_extinction_clouds(&(x[0]), 4, params);
+	std::cout << lnp_tmp << std::endl;
+	gsl_rng_free(r);*/
+	
+	TNullLogger logger;
+	
+	unsigned int max_attempts = 2;
+	unsigned int N_steps = options.steps;
+	unsigned int N_samplers = options.samplers;
+	unsigned int N_threads = options.N_threads;
+	unsigned int ndim = 2 * N_clouds;
+	
+	double *GR = new double[ndim];
+	double GR_threshold = 1.25;
+	
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction_clouds;
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction_clouds;
+	
+	std::cerr << std::endl;
+	std::cout << "Line-of-Sight Extinction Profile" << std::endl;
+	std::cout << "====================================" << std::endl;
+	
+	//std::cerr << "# Setting up sampler" << std::endl;
+	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+	sampler.set_scale(2.);
+	sampler.set_replacement_bandwidth(0.25);
+	
+	// Burn-in
+	std::cerr << "# Burn-in ..." << std::endl;
+	sampler.step(int(N_steps*50./100.), false, 0., 0., 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
+	sampler.step(int(N_steps*5./100), false, 0., 1., 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
+	sampler.step(int(N_steps*5./100.), false, 0., 1., 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
+	sampler.step(int(N_steps*5./100.), false, 0., 1., 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
+	sampler.step(int(N_steps*5./100), false, 0., 1., 0.);
+	//sampler.step(N_steps, false, 0., options.p_replacement, 0.);
+	//sampler.step(N_steps/2., false, 0., 1., 0.);
+	sampler.print_stats();
+	sampler.clear();
+	
+	std::cerr << "# Main run ..." << std::endl;
+	bool converged = false;
+	size_t attempt;
+	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
+		sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
+		
+		converged = true;
+		sampler.get_GR_diagnostic(GR);
+		for(size_t i=0; i<ndim; i++) {
+			if(GR[i] > GR_threshold) {
+				converged = false;
+				if(attempt != max_attempts-1) {
+					sampler.print_stats();
+					std::cerr << "# Extending run ..." << std::endl;
+					sampler.step(int(N_steps*1./5.), false, 0., 1., 0.);
+					sampler.clear();
+					//logger.clear();
+				}
+				break;
+			}
+		}
+	}
+	
+	clock_gettime(CLOCK_MONOTONIC, &t_write);
+	
+	TChain chain = sampler.get_chain();
+	
+	std::stringstream group_name;
+	group_name << "/pixel " << healpix_index;
+	group_name << "/los clouds";
+	chain.save(out_fname, group_name.str(), "Delta mu, Delta E(B-V)", 3, 500, converged);
+	
+	clock_gettime(CLOCK_MONOTONIC, &t_end);
+	
+	sampler.print_stats();
+	std::cout << std::endl;
+	
+	/*
+	for(size_t k=0; k<N_threads; k++) {
+		std::cout << std::endl << "Sampler " << k+1 << ":" << std::endl;
+		sampler.get_stats(k).print();
+		std::cout << std::endl;
+	}
+	*/
+	
+	if(!converged) {
+		std::cerr << "# Failed to converge." << std::endl;
+	}
+	std::cerr << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
+	std::cerr << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+	std::cerr << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+	std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
+	
+	delete[] GR;
+}
+
+void los_integral_clouds(TImgStack &img_stack, double *ret, const double *Delta_mu,
+                         const double *logDelta_EBV, unsigned int N_clouds) {
+	int x = 0;
+	int x_next = ceil((Delta_mu[0] - img_stack.rect->min[0]) / img_stack.rect->dx[0]);
+	
+	double y = 0.;
+	int y_max = img_stack.rect->N_bins[1];
+	double y_ceil, y_floor, dy;
+	
+	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
+	
+	for(int i=0; i<N_clouds+1; i++) {
+		if(i == N_clouds) {
+			x_next = img_stack.rect->N_bins[0];
+		} else if(i != 0) {
+			x_next += ceil(Delta_mu[i] / img_stack.rect->dx[0]);
+		}
+		
+		if(x_next > img_stack.rect->N_bins[0]) {
+			x_next = img_stack.rect->N_bins[0];
+		} else if(x_next < 0) {
+			x_next = 0;
+		}
+		
+		if(i != 0) {
+			y += exp(logDelta_EBV[i-1]) / img_stack.rect->dx[1];
+		}
+		
+		y_floor = floor(y);
+		y_ceil = y_floor + 1.;
+		if((int)y_ceil >= y_max) { break; }
+		if((int)y_floor < 0) { break; }
+		
+		for(; x<x_next; x++) {
+			for(int k=0; k<img_stack.N_images; k++) {
+				ret[k] += (y_ceil - y) * img_stack.img[k]->at<double>(x, (int)y_floor)
+				          + (y - y_floor) * img_stack.img[k]->at<double>(x, (int)y_ceil);
+			}
+		}
+	}
+}
+
+double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams& params) {
+	#define neginf -std::numeric_limits<double>::infinity()
+	
+	size_t N_clouds = N / 2;
+	const double *Delta_mu = x;
+	const double *logDelta_EBV = x + N_clouds;
+	
+	double lnp = 0.;
+	
+	// Delta_mu must be positive
+	double mu_tot = 0.;
+	for(size_t i=0; i<N_clouds; i++) {
+		if(Delta_mu[i] <= 0.) { return neginf; }
+		mu_tot += Delta_mu[i];
+	}
+	
+	// Don't consider clouds outside of the domain under consideration
+	if(Delta_mu[0] < params.img_stack->rect->min[0]) { return neginf; }
+	if(mu_tot > params.img_stack->rect->max[0]) { return neginf; }
+	
+	// Extinction must not exceed maximum value
+	double EBV_tot = 0.;
+	double tmp;
+	for(size_t i=0; i<N_clouds; i++) {
+		tmp = exp(logDelta_EBV[i]);
+		EBV_tot += tmp;
+		
+		// Prior to prevent EBV from straying high
+		lnp -= 0.5 * tmp * tmp / (0.5 * 0.5);
+		//lnp -= 0.5 * Delta_mu[i] * Delta_mu[i] / (20. * 20.);
+	}
+	if(EBV_tot >= params.img_stack->rect->max[1]) { return neginf; }
+	
+	// Prior on total extinction
+	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
+		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * 0.25 * 0.25 * params.EBV_max * params.EBV_max);
+	}
+	
+	// Wide Gaussian prior on Delta_EBV to prevent fit from straying drastically
+	const double bias = -10.;
+	const double sigma = 5.;
+	for(size_t i=0; i<N_clouds; i++) {
+		lnp -= (logDelta_EBV[i] - bias) * (logDelta_EBV[i] - bias) / (2. * sigma * sigma);
+	}
+	
+	// Repulsive force to keep clouds from collapsing into one
+	for(size_t i=1; i<N_clouds; i++) {
+		lnp -= 1. / Delta_mu[i];
+	}
+	
+	// Compute line integrals through probability surfaces
+	double *line_int = new double[params.img_stack->N_images];
+	los_integral_clouds(*(params.img_stack), line_int, Delta_mu, logDelta_EBV, N_clouds);
+	
+	// Soften and multiply line integrals
+	for(size_t i=0; i<params.img_stack->N_images; i++) {
+		if(line_int[i] < 1.e5*params.p0) {
+			line_int[i] += params.p0 * exp(-line_int[i]/params.p0);
+		}
+		lnp += log( line_int[i] );
+		//std::cerr << line_int[i] << std::endl;
+	}
+	
+	delete[] line_int;
+	
+	return lnp;
+	
+	#undef neginf
+}
+
+void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
+	double mu_floor = params.img_stack->rect->min[0];
+	double mu_ceil = params.img_stack->rect->max[0];
+	double EBV_ceil = params.img_stack->rect->max[1];
+	unsigned int N_clouds = N / 2;
+	
+	double logEBV_mean = log(1.5 * params.EBV_guess_max / (double)N_clouds);
+	double mu_mean = (mu_ceil - mu_floor) / N_clouds;
+	double EBV_sum = 0.;
+	double mu_sum = mu_floor;
+	
+	double *Delta_mu = x;
+	double *logDelta_EBV = x + N_clouds;
+	
+	for(size_t i=0; i<N_clouds; i++) {
+		logDelta_EBV[i] = logEBV_mean + gsl_ran_gaussian_ziggurat(r, 0.5);
+		EBV_sum += exp(logDelta_EBV[i]);
+		
+		Delta_mu[i] = mu_mean * gsl_rng_uniform(r);
+		mu_sum += Delta_mu[i];
+	}
+	Delta_mu[0] += mu_floor;
+	
+	// Ensure that reddening is not more than allowed
+	if(EBV_sum >= 0.95 * EBV_ceil) {
+		double factor = log(0.95 * EBV_ceil / EBV_sum);
+		for(size_t i=0; i<N_clouds; i++) {
+			logDelta_EBV[i] += factor;
+		}
+	}
+	
+	// Ensure that distance to farthest cloud is not more than allowed
+	if(mu_sum >= 0.95 * mu_ceil) {
+		double factor = 0.95 * mu_ceil / mu_sum;
+		for(size_t i=0; i<N_clouds; i++) {
+			Delta_mu[i] *= factor;
+		}
+	}
+}
+
+
+
+/*
  *  Piecewise-linear line-of-sight model
  */
 
@@ -255,9 +523,9 @@ double guess_EBV_max(TImgStack &img_stack) {
 	cv::reduce(stack, row_avg, 0, CV_REDUCE_AVG);
 	double max_sum = *std::max_element(row_avg.begin<double>(), row_avg.end<double>());
 	int max = 1;
-	for(int i = row_avg.cols - 1; i >= 0; i--) {
+	/*for(int i = row_avg.cols - 1; i >= 0; i--) {
 		std::cout << i << "\t" << row_avg.at<double>(0, i) << std::endl;
-	}
+	}*/
 	//std::cout << std::endl;
 	for(int i = row_avg.cols - 1; i > 0; i--) {
 		//std::cout << i << "\t" << row_avg.at<double>(0, i) << std::endl;

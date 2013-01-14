@@ -223,7 +223,7 @@ int main(int argc, char **argv) {
 	cerr << "# " << healpix_index.size() << " pixels in input file." << endl;
 	
 	// TODO: Put this into input file
-	double EBV_SFD = 0.7;
+	double EBV_SFD = 2.5;
 	
 	// Remove the output file
 	remove(output_fname.c_str());
@@ -258,7 +258,7 @@ int main(int argc, char **argv) {
 		
 		// Fit line-of-sight extinction profile
 		img_stack.cull(conv);
-		sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-150, 2.*EBV_SFD, *it);
+		sample_los_extinction_clouds(output_fname, los_options, img_stack, N_regions, 1.e-150, EBV_SFD, *it);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		t_tot = (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec);

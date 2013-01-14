@@ -63,6 +63,51 @@ def los2ax(ax, fname, group, *args, **kwargs):
 	
 	ax.set_xlim(5., 20.) 
 
+def clouds2ax(ax, fname, group, *args, **kwargs):
+	chain = hdf5io.TChain(fname, group)
+	mu_range = np.linspace(5., 20., chain.ndim)
+	if 'alpha' not in kwargs:
+		kwargs['alpha'] = 1. / np.power(chain.data.shape[0], 0.55)
+	
+	# Plot all paths
+	N_clouds = chain.data['x'].shape[1] / 2
+	N_paths = chain.data['x'].shape[0]
+	mu_tmp = np.cumsum(chain.data['x'][:,:N_clouds], axis=1)
+	EBV_tmp = np.cumsum(np.exp(chain.data['x'][:,N_clouds:]), axis=1)
+	
+	print mu_tmp[0]
+	print EBV_tmp[0]
+	
+	mu_all = np.zeros((N_paths, 2*(N_clouds+1)), dtype='f8')
+	EBV_all = np.zeros((N_paths, 2*(N_clouds+1)), dtype='f8')
+	mu_all[:,0] = mu_range[0]
+	mu_all[:,1:-1:2] = mu_tmp
+	mu_all[:,2:-1:2] = mu_tmp
+	mu_all[:,-1] = mu_range[-1]
+	EBV_all[:,2:-1:2] = EBV_tmp
+	EBV_all[:,3::2] = EBV_tmp
+	#EBV_all[:,-1] = EBV_tmp[:,-1]
+	for mu,EBV in zip(mu_all, EBV_all):
+		ax.plot(mu, EBV, *args, **kwargs)
+	
+	# Plot mean path
+	#y = np.mean(EBV_all, axis=0)
+	#y_err = np.std(EBV_all, axis=0)
+	#ax.errorbar(mu, y, yerr=y_err, c='g', ecolor=(0., 1., 0., 0.5), alpha=0.3)
+	
+	# Plot best path
+	#i = np.argsort(chain.data['ln_p'])[::-1]
+	#alpha = 1.
+	#for ii in i[:3]:
+	#	ax.plot(mu, EBV_all[ii], 'r-', alpha=alpha)
+	#	alpha *= 0.5
+	#alpha = 1.
+	#for ii in i[-10:]:
+	#	ax.plot(mu, EBV_all[ii], 'k-', alpha=alpha)
+	#	alpha *= 0.85
+	
+	ax.set_xlim(5., 20.) 
+
 def main():
 	# Parse commandline arguments
 	parser = argparse.ArgumentParser(prog='plotpdf',
@@ -135,8 +180,12 @@ def main():
 		             aspect='auto', cmap='hot', interpolation='nearest')
 	
 	# Plot l.o.s. extinction to figure
-	group = 'pixel %d/los extinction/' % (args.index)
-	los2ax(ax, fname, group, 'c')
+	try:
+		group = 'pixel %d/los extinction/' % (args.index)
+		los2ax(ax, fname, group, 'c')
+	except:
+		group = 'pixel %d/los clouds/' % (args.index)
+		clouds2ax(ax, fname, group, 'c')
 	
 	ax.set_ylim(0., EBV_max)
 	
