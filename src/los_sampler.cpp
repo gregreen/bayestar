@@ -71,9 +71,9 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	
 	// Burn-in
 	std::cerr << "# Burn-in ..." << std::endl;
-	sampler.step(int(N_steps*50./100.), false, 0., 0., 0.);
-	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
-	sampler.step(int(N_steps*5./100), false, 0., 1., 0.);
+	sampler.step(int(N_steps*25./100.), false, 0., 0., 0.);
+	//sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
+	//sampler.step(int(N_steps*5./100), false, 0., 1., 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
 	sampler.step(int(N_steps*5./100.), false, 0., 1., 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);

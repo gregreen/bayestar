@@ -123,6 +123,7 @@ int main(int argc, char **argv) {
 	double star_p_replacement = 0.2;
 	double sigma_RV = -1.;
 	
+	unsigned int N_clouds = 0;
 	unsigned int N_regions = 20;
 	unsigned int los_steps = 750;
 	unsigned int los_samplers = 20;
@@ -155,6 +156,10 @@ int main(int argc, char **argv) {
 		("los-samplers", po::value<unsigned int>(&los_samplers), "# of samplers per dimension (l.o.s. fit)")
 		("los-p-replacement", po::value<double>(&los_p_replacement), "Probability of taking replacement step (l.o.s. fit)")
 		
+		("clouds", po::value<unsigned int>(&N_clouds), "# of clouds along the line of sight (default: 0).\n"
+		                                               "Setting this option causes the sampler to use a discrete\n"
+		                                               "cloud model for the l.o.s. extinction profile.")
+		
 		("threads", po::value<unsigned int>(&N_threads), "# of threads to run on (default: 4)")
 	;
 	po::positional_options_description pd;
@@ -164,10 +169,15 @@ int main(int argc, char **argv) {
 	po::store(po::command_line_parser(argc, argv).options(desc).positional(pd).run(), vm);
 	po::notify(vm);
 	
-	if(vm.count("help")) { cout << desc << endl; return -1; }
-	if(vm.count("version")) { cout << "git commit " << GIT_BUILD_VERSION << endl; return -1; }
+	if(vm.count("help")) { cout << desc << endl; return 0; }
+	if(vm.count("version")) { cout << "git commit " << GIT_BUILD_VERSION << endl; return 0; }
 	
 	if(vm.count("synthetic")) { synthetic = true; }
+	
+	if((N_clouds != 0) && vm.count("regions")) {
+		cout << "'--clouds' is incompatible with '--regions' argument. Choose one or the other." << endl;
+		return -1;
+	}
 	
 	// Convert error floor to mags
 	err_floor /= 1000.;
@@ -256,9 +266,15 @@ int main(int argc, char **argv) {
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);
 		
+		// TODO: Filter based on lnZ as well
+		
 		// Fit line-of-sight extinction profile
 		img_stack.cull(conv);
-		sample_los_extinction_clouds(output_fname, los_options, img_stack, N_regions, 1.e-150, EBV_SFD, *it);
+		if(N_clouds != 0) {
+			sample_los_extinction_clouds(output_fname, los_options, img_stack, N_clouds, 1.e-15, EBV_SFD, *it);
+		} else {
+			sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-15, EBV_SFD, *it);
+		}
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		t_tot = (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec);

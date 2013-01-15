@@ -684,7 +684,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		chain_name << group_name.str() << "/chain";
 		std::stringstream dim_name_all;
 		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
-		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 100, converged, lnZ_tmp);
+		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 500, converged, lnZ_tmp);
 		
 		// Save binned p(DM, EBV) surface
 		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 500.);
@@ -810,11 +810,11 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		chain_name << group_name.str() << "/chain";
 		std::stringstream dim_name_all;
 		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
-		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 500, converged, lnZ_tmp);
+		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 100, converged, lnZ_tmp);
 		
 		// Save binned p(DM, EBV) surface
 		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 500.);
-		save_mat_image(*(img_stack.img[n]), rect, out_fname, group_name.str(), "DM_EBV", "DM", "E(B-V)", 5);
+		//save_mat_image(*(img_stack.img[n]), rect, out_fname, group_name.str(), "DM_EBV", "DM", "E(B-V)", 5);
 		
 		lnZ.push_back(lnZ_tmp);
 		conv.push_back(converged);
