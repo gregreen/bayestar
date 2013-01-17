@@ -110,25 +110,25 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_write);
 	
-	TChain chain = sampler.get_chain();
+	//std::stringstream group_name;
+	//group_name << "/pixel " << healpix_index;
+	//group_name << "/los clouds";
+	//chain.save(out_fname, group_name.str(), 0, "Delta mu, Delta E(B-V)", 3, 100, converged);
 	
 	std::stringstream group_name;
 	group_name << "/pixel " << healpix_index;
-	group_name << "/los clouds";
-	chain.save(out_fname, group_name.str(), "Delta mu, Delta E(B-V)", 3, 500, converged);
+	TChain chain = sampler.get_chain();
+	
+	TChainWriteBuffer writeBuffer(ndim, 100, 1);
+	writeBuffer.add(chain, converged);
+	writeBuffer.write(out_fname, group_name.str(), "clouds");
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
 	
 	sampler.print_stats();
 	std::cout << std::endl;
 	
-	/*
-	for(size_t k=0; k<N_threads; k++) {
-		std::cout << std::endl << "Sampler " << k+1 << ":" << std::endl;
-		sampler.get_stats(k).print();
-		std::cout << std::endl;
-	}
-	*/
+	
 	
 	if(!converged) {
 		std::cerr << "# Failed to converge." << std::endl;
@@ -373,12 +373,13 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_write);
 	
-	TChain chain = sampler.get_chain();
-	
 	std::stringstream group_name;
 	group_name << "/pixel " << healpix_index;
-	group_name << "/los extinction";
-	chain.save(out_fname, group_name.str(), "Delta E(B-V)", 3, 500, converged);
+	TChain chain = sampler.get_chain();
+	
+	TChainWriteBuffer writeBuffer(ndim, 100, 1);
+	writeBuffer.add(chain, converged);
+	writeBuffer.write(out_fname, group_name.str(), "los");
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
 	

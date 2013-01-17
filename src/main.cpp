@@ -237,6 +237,7 @@ int main(int argc, char **argv) {
 	
 	// Remove the output file
 	remove(output_fname.c_str());
+	H5::Exception::dontPrint();
 	
 	// Run each pixel
 	timespec t_start, t_mid, t_end;

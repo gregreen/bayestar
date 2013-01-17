@@ -450,7 +450,7 @@ void TChain::fit_gaussian_mixture(TGaussianMixture *gm, unsigned int iterations)
 }
 
 
-bool TChain::save(std::string fname, std::string group_name,
+bool TChain::save(std::string fname, std::string group_name, size_t index,
                   std::string dim_name, int compression, int subsample,
                   bool converged, float lnZ) const {
 	if((compression<0) || (compression > 9)) {
@@ -486,9 +486,9 @@ bool TChain::save(std::string fname, std::string group_name,
 	hid_t tid = H5Tcopy(H5T_C_S1);
 	H5Tset_size(tid, H5T_VARIABLE);
 	att_type.insertMember("dim_name", HOFFSET(TChainAttribute, dim_name), tid);
-	att_type.insertMember("total_weight", HOFFSET(TChainAttribute, total_weight), H5::PredType::NATIVE_FLOAT);
-	att_type.insertMember("ndim", HOFFSET(TChainAttribute, ndim), H5::PredType::NATIVE_UINT64);
-	att_type.insertMember("length", HOFFSET(TChainAttribute, length), H5::PredType::NATIVE_UINT64);
+	//att_type.insertMember("total_weight", HOFFSET(TChainAttribute, total_weight), H5::PredType::NATIVE_FLOAT);
+	//att_type.insertMember("ndim", HOFFSET(TChainAttribute, ndim), H5::PredType::NATIVE_UINT64);
+	//att_type.insertMember("length", HOFFSET(TChainAttribute, length), H5::PredType::NATIVE_UINT64);
 	
 	// Dataspace
 	int att_rank = 1;
@@ -496,32 +496,39 @@ bool TChain::save(std::string fname, std::string group_name,
 	H5::DataSpace att_space(att_rank, &att_dim);
 	
 	// Dataset
-	H5::Attribute att = group->createAttribute("attributes", att_type, att_space);
+	//H5::Attribute att = group->createAttribute("parameter names", att_type, att_space);
 	
 	TChainAttribute att_data;
 	att_data.dim_name = new char[dim_name.size()+1];
 	std::strcpy(att_data.dim_name, dim_name.c_str());
-	att_data.total_weight = total_weight;
-	att_data.ndim = N;
-	att_data.length = length;
+	//att_data.total_weight = total_weight;
+	//att_data.ndim = N;
+	//att_data.length = length;
 	
-	att.write(att_type, &att_data);
+	//att.write(att_type, &att_data);
+	delete[] att_data.dim_name;
+	
+	//int att_rank = 1;
+	//hsize_t att_dim = 1;
 	
 	H5::DataType conv_dtype = H5::PredType::NATIVE_UCHAR;
 	H5::DataSpace conv_dspace(att_rank, &att_dim);
-	H5::Attribute conv_att = H5Utils::openAttribute(group, "converged", conv_dtype, conv_dspace);
-	conv_att.write(conv_dtype, &converged);
+	//H5::Attribute conv_att = H5Utils::openAttribute(group, "converged", conv_dtype, conv_dspace);
+	//conv_att.write(conv_dtype, &converged);
 	
 	H5::DataType lnZ_dtype = H5::PredType::NATIVE_FLOAT;
 	H5::DataSpace lnZ_dspace(att_rank, &att_dim);
-	H5::Attribute lnZ_att = H5Utils::openAttribute(group, "ln Z", lnZ_dtype, lnZ_dspace);
-	lnZ_att.write(lnZ_dtype, &lnZ);
+	//H5::Attribute lnZ_att = H5Utils::openAttribute(group, "ln Z", lnZ_dtype, lnZ_dspace);
+	//lnZ_att.write(lnZ_dtype, &lnZ);
 	
 	// Creation property list to be used for all three datasets
 	H5::DSetCreatPropList plist;
-	plist.setDeflate(compression);	// gzip compression level
+	//plist.setDeflate(compression);	// gzip compression level
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
+	
+	H5D_layout_t layout = H5D_COMPACT;
+	plist.setLayout(layout);
 	
 	/*
 	 *  Choose subsample of points in chain
@@ -568,7 +575,7 @@ bool TChain::save(std::string fname, std::string group_name,
 	int rank = 2;
 	hsize_t coord_dim[2] = {dim, N};
 	//if(dim < chunk) {
-	plist.setChunk(rank, &(coord_dim[0]));
+	//plist.setChunk(rank, &(coord_dim[0]));
 	//} else {
 	//	plist.setChunk(rank, &chunk);
 	//}
@@ -577,7 +584,9 @@ bool TChain::save(std::string fname, std::string group_name,
 	// Dataset
 	//std::stringstream x_dset_path;
 	//x_dset_path << group_name << "/chain/coords";
-	H5::DataSet* x_dataset = new H5::DataSet(group->createDataSet("coords", H5::PredType::NATIVE_FLOAT, x_dspace, plist));
+	std::stringstream coordname;
+	coordname << "coords " << index;
+	H5::DataSet* x_dataset = new H5::DataSet(group->createDataSet(coordname.str(), H5::PredType::NATIVE_FLOAT, x_dspace, plist));
 	
 	// Write
 	float *buf = new float[N*dim];
@@ -600,51 +609,43 @@ bool TChain::save(std::string fname, std::string group_name,
 	 */
 	
 	// Dataspace
-	if(subsample > 0) {
-		dim = subsample;
-	} else {
+	if(subsample <= 0) {
 		dim = w.size();
+		
+		rank = 1;
+		H5::DataSpace w_dspace(rank, &dim);
+		
+		// Dataset
+		//std::stringstream w_dset_path;
+		//w_dset_path << group_name << "/chain/weights";
+		H5::DataSet* w_dataset = new H5::DataSet(group->createDataSet("weights", H5::PredType::NATIVE_FLOAT, w_dspace, plist));
+		
+		// Write
+		if(subsample > 0) {
+			for(size_t i=0; i<subsample; i++) { buf[i] = 1.; }
+		} else {
+			assert(w.size() < x.size());
+			for(size_t i=0; i<w.size(); i++) { buf[i] = w[i]; }
+		}
+		w_dataset->write(buf, H5::PredType::NATIVE_FLOAT);
+		
+		delete w_dataset;
 	}
-	rank = 1;
-	//if(dim < chunk) {
-	plist.setChunk(rank, &dim);
-	//} else {
-	//	plist.setChunk(rank, &chunk);
-	//}
-	H5::DataSpace w_dspace(rank, &dim);
-	
-	// Dataset
-	//std::stringstream w_dset_path;
-	//w_dset_path << group_name << "/chain/weights";
-	H5::DataSet* w_dataset = new H5::DataSet(group->createDataSet("weights", H5::PredType::NATIVE_FLOAT, w_dspace, plist));
-	
-	// Write
-	if(subsample > 0) {
-		for(size_t i=0; i<subsample; i++) { buf[i] = 1.; }
-	} else {
-		assert(w.size() < x.size());
-		for(size_t i=0; i<w.size(); i++) { buf[i] = w[i]; }
-	}
-	w_dataset->write(buf, H5::PredType::NATIVE_FLOAT);
-	
 	
 	/*
 	 *  Probability densities
 	 */
 	
 	// Dataspace
-	//dim = L.size();
-	//if(dim < chunk) {
-	plist.setChunk(rank, &dim);
-	//} else {
-	//	plist.setChunk(rank, &chunk);
-	//}
+	rank = 1;
 	H5::DataSpace L_dspace(rank, &dim);
 	
 	// Dataset
 	//std::stringstream L_dset_path;
 	//L_dset_path << group_name << "/chain/probs";
-	H5::DataSet* L_dataset = new H5::DataSet(group->createDataSet("ln_p", H5::PredType::NATIVE_FLOAT, L_dspace, plist));
+	std::stringstream lnpname;
+	lnpname << "ln_p " << index;
+	H5::DataSet* L_dataset = new H5::DataSet(group->createDataSet(lnpname.str(), H5::PredType::NATIVE_FLOAT, L_dspace, plist));
 	
 	// Write
 	if(subsample > 0) {
@@ -662,10 +663,8 @@ bool TChain::save(std::string fname, std::string group_name,
 	}
 	
 	delete[] buf;
-	delete[] att_data.dim_name;
 	
 	delete x_dataset;
-	delete w_dataset;
 	delete L_dataset;
 	
 	delete group;
@@ -740,6 +739,241 @@ void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsig
 }
 
 
+
+/*
+ *   TImgWriteBuffer member functions
+ */
+
+TImgWriteBuffer::TImgWriteBuffer(const TRect& rect, unsigned int nReserved)
+	: rect_(rect), buf(NULL), nReserved_(0), length_(0)
+{
+	reserve(nReserved);
+}
+
+
+TImgWriteBuffer::~TImgWriteBuffer() {
+	if(buf != NULL) { delete[] buf; }
+}
+
+void TImgWriteBuffer::reserve(unsigned int nReserved) {
+	assert(nReserved > nReserved_);
+	float *buf_new = new float[rect_.N_bins[0] * rect_.N_bins[1] * nReserved];
+	if(buf != NULL) {
+		memcpy(buf_new, buf, sizeof(float) * rect_.N_bins[0] * rect_.N_bins[1] * length_);
+		delete[] buf;
+	}
+	buf = buf_new;
+	nReserved_ = nReserved;
+}
+
+class ImageDimensionException: public std::exception {
+	virtual const char* what() const throw() {
+		return "Dimensions of matrix do not match dimensions of write buffer.";
+	}
+} imgDimException;
+
+void TImgWriteBuffer::add(const cv::Mat& img) {
+	// Make sure the image is of the correct dimensions
+	if((img.rows != rect_.N_bins[0]) || (img.cols != rect_.N_bins[1])) {
+		throw imgDimException;
+	}
+	
+	// Make sure buffer is long enough
+	if(length_ >= nReserved_) {
+		reserve(1.5 * (length_ + 1));
+		std::cout << "reserving for images" << std::endl;
+	}
+	
+	float *const imgBuf = &(buf[rect_.N_bins[0] * rect_.N_bins[1] * length_]);
+	for(size_t j=0; j<rect_.N_bins[0]; j++) {
+		for(size_t k=0; k<rect_.N_bins[1]; k++) {
+			imgBuf[rect_.N_bins[1]*j + k] = img.at<double>(j,k);
+		}
+	}
+	
+	length_++;
+}
+
+void TImgWriteBuffer::write(const std::string& fname, const std::string& group, const std::string& img) {
+	H5::H5File* h5file = H5Utils::openFile(fname);
+	H5::Group* h5group = H5Utils::openGroup(h5file, group);
+	
+	// Dataset properties: optimized for reading/writing entire buffer at once
+	int rank = 3;
+	hsize_t dim[3] = {length_, rect_.N_bins[0], rect_.N_bins[1]};
+	H5::DataSpace dspace(rank, &(dim[0]));
+	H5::DSetCreatPropList plist;
+	plist.setDeflate(9);	// gzip compression level
+	plist.setChunk(rank, &(dim[0]));
+	float fillvalue = 0;
+	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
+	
+	H5::DataSet* dataset = new H5::DataSet(h5group->createDataSet(img, H5::PredType::NATIVE_FLOAT, dspace, plist));
+	dataset->write(buf, H5::PredType::NATIVE_FLOAT);
+	
+	/*
+	 *  Attributes
+	 */
+	
+	hsize_t att_dim = 2;
+	H5::DataSpace att_dspace(1, &att_dim);
+	
+	H5::PredType att_dtype = H5::PredType::NATIVE_UINT32;
+	H5::Attribute att_N = dataset->createAttribute("nPix", att_dtype, att_dspace);
+	att_N.write(att_dtype, &(rect_.N_bins));
+	
+	att_dtype = H5::PredType::NATIVE_DOUBLE;
+	H5::Attribute att_min = dataset->createAttribute("min", att_dtype, att_dspace);
+	att_min.write(att_dtype, &(rect_.min));
+	
+	att_dtype = H5::PredType::NATIVE_DOUBLE;
+	H5::Attribute att_max = dataset->createAttribute("max", att_dtype, att_dspace);
+	att_max.write(att_dtype, &(rect_.max));
+	
+	delete dataset;
+	delete h5group;
+	delete h5file;
+}
+
+
+
+/*
+ *   TChainWriteBuffer member functions
+ */
+
+TChainWriteBuffer::TChainWriteBuffer(unsigned int nDim, unsigned int nSamples, unsigned int nReserved)
+	: buf(NULL), nDim_(nDim+1), nSamples_(nSamples), nReserved_(0), length_(0), samplePos(nSamples, 0)
+{
+	reserve(nReserved);
+	seed_gsl_rng(&r);
+}
+
+TChainWriteBuffer::~TChainWriteBuffer() {
+	if(buf != NULL) { delete[] buf; }
+	gsl_rng_free(r);
+}
+
+void TChainWriteBuffer::reserve(unsigned int nReserved) {
+	assert(nReserved > nReserved_);
+	float *buf_new = new float[nDim_ * nSamples_ * nReserved];
+	if(buf != NULL) {
+		memcpy(buf_new, buf, sizeof(float) * nDim_ * nSamples_ * length_);
+		delete[] buf;
+	}
+	buf = buf_new;
+	metadata.reserve(nReserved);
+	nReserved_ = nReserved;
+}
+
+void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
+	// Make sure buffer is long enough
+	if(length_ >= nReserved_) {
+		reserve(1.5 * (length_ + 1));
+		std::cout << "reserving" << std::endl;
+	}
+	
+	// Store metadata
+	TChainMetadata meta = {converged, lnZ};
+	metadata.push_back(meta);
+	
+	// Choose which points in chain to sample
+	double totalWeight = chain.get_total_weight();
+	for(unsigned int i=0; i<nSamples_; i++) {
+		samplePos[i] = gsl_rng_uniform(r) * totalWeight;
+	}
+	std::sort(samplePos.begin(), samplePos.end());
+	
+	// Copy chosen points into buffer
+	unsigned int i = 0;
+	unsigned int k = 0;
+	double w = 0.;
+	unsigned int chainLength = chain.get_length();
+	size_t startIdx = length_ * nDim_ * nSamples_;
+	const double *chainElement;
+	while((k < nSamples_) && (i < chainLength) && (w < totalWeight)) {
+		if(w < samplePos[k]) {
+			w += chain.get_w(i);
+			i++;
+		} else {
+			chainElement = chain.get_element(i);
+			buf[startIdx + nDim_*k] = chain.get_L(i);
+			for(size_t n = 1; n < nDim_; n++) {
+				buf[startIdx + nDim_*k + n] = chainElement[n-1];
+			}
+			k++;
+		}
+	}
+	assert(k == nSamples_);
+	
+	length_++;
+}
+
+void TChainWriteBuffer::write(const std::string& fname, const std::string& group, const std::string& chain, const std::string& meta) {
+	H5::H5File* h5file = H5Utils::openFile(fname);
+	H5::Group* h5group = H5Utils::openGroup(h5file, group);
+	
+	// Dataset properties: optimized for reading/writing entire buffer at once
+	int rank = 3;
+	hsize_t dim[3] = {length_, nSamples_, nDim_};
+	H5::DataSpace dspace(rank, &(dim[0]));
+	H5::DSetCreatPropList plist;
+	plist.setDeflate(9);	// gzip compression level
+	plist.setChunk(rank, &(dim[0]));
+	float fillvalue = 0;
+	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
+	
+	H5::DataSet* dataset = new H5::DataSet(h5group->createDataSet(chain, H5::PredType::NATIVE_FLOAT, dspace, plist));
+	dataset->write(buf, H5::PredType::NATIVE_FLOAT);
+	
+	if(meta == "") {	// Store metadata as attributes
+		bool *converged = new bool[length_];
+		float *lnZ = new float[length_];
+		for(unsigned int i=0; i<length_; i++) {
+			converged[i] = metadata[i].converged;
+			lnZ[i] = metadata[i].lnZ;
+		}
+		
+		H5::DataSpace convSpace(1, &(dim[0]));
+		H5::Attribute convAtt = dataset->createAttribute("converged", H5::PredType::NATIVE_CHAR, convSpace);
+		convAtt.write(H5::PredType::NATIVE_CHAR, reinterpret_cast<char*>(converged));
+		
+		H5::DataSpace lnZSpace(1, &(dim[0]));
+		H5::Attribute lnZAtt = dataset->createAttribute("ln(Z)", H5::PredType::NATIVE_FLOAT, lnZSpace);
+		lnZAtt.write(H5::PredType::NATIVE_FLOAT, lnZ);
+		
+		delete[] converged;
+		delete[] lnZ;
+	} else {	 	// Store metadata as separate dataset
+		H5::CompType metaType(sizeof(TChainMetadata));
+		metaType.insertMember("converged", HOFFSET(TChainMetadata, converged), H5::PredType::NATIVE_CHAR);
+		metaType.insertMember("ln(Z)", HOFFSET(TChainMetadata, lnZ), H5::PredType::NATIVE_FLOAT);
+		
+		rank = 1;
+		H5::DataSpace metaSpace(rank, &(dim[0]));
+		H5::DSetCreatPropList metaProp;
+		TChainMetadata emptyMetadata = {0, 0};
+		metaProp.setFillValue(metaType, &emptyMetadata);
+		metaProp.setDeflate(9);
+		metaProp.setChunk(rank, &(dim[0]));
+		
+		H5::DataSet* metaDataset = new H5::DataSet(h5group->createDataSet(meta, metaType, metaSpace, metaProp));
+		metaDataset->write(metadata.data(), metaType);
+		
+		delete metaDataset;
+		metaDataset = NULL;
+	}
+	
+	delete dataset;
+	delete h5group;
+	delete h5file;
+}
+
+
+/*
+ *  TRect member functions
+ */
+
+
 TRect::TRect(double _min[2], double _max[2], unsigned int _N_bins[2]) {
 	for(size_t i=0; i<2; i++) {
 		min[i] = _min[i];
@@ -748,6 +982,16 @@ TRect::TRect(double _min[2], double _max[2], unsigned int _N_bins[2]) {
 		dx[i] = (max[i] - min[i]) / (double)N_bins[i];
 	}
 }
+
+TRect::TRect(const TRect& rect) {
+	for(size_t i=0; i<2; i++) {
+		min[i] = rect.min[i];
+		max[i] = rect.max[i];
+		N_bins[i] = rect.N_bins[i];
+		dx[i] = rect.dx[i];
+	}
+}
+
 
 TRect::~TRect() { }
 
@@ -776,10 +1020,8 @@ TRect& TRect::operator=(const TRect& rhs) {
 
 
 
-
 /*
- * TGaussianMixture member functions
- * 
+ *  TGaussianMixture member functions
  */
 
 TGaussianMixture::TGaussianMixture(unsigned int _ndim, unsigned int _nclusters) 

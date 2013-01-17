@@ -35,13 +35,13 @@ from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 import hdf5io
 
 def los2ax(ax, fname, group, *args, **kwargs):
-	chain = hdf5io.TChain(fname, group)
-	mu = np.linspace(5., 20., chain.ndim)
+	chain = hdf5io.TChain(fname, '%s/los' % group)
+	mu = np.linspace(5., 20., chain.get_nDim())
 	if 'alpha' not in kwargs:
-		kwargs['alpha'] = 1. / np.power(chain.data.shape[0], 0.55)
+		kwargs['alpha'] = 1. / np.power(chain.get_nSamples(), 0.55)
 	
 	# Plot all paths
-	EBV_all = np.cumsum(np.exp(chain.data['x']), axis=1)
+	EBV_all = np.cumsum(np.exp(chain.get_samples(0)), axis=1)
 	for EBV in EBV_all:
 		ax.plot(mu, EBV, *args, **kwargs)
 	
@@ -51,7 +51,7 @@ def los2ax(ax, fname, group, *args, **kwargs):
 	ax.errorbar(mu, y, yerr=y_err, c='g', ecolor=(0., 1., 0., 0.5), alpha=0.3)
 	
 	# Plot best path
-	i = np.argsort(chain.data['ln_p'])[::-1]
+	i = np.argsort(chain.get_lnp(0))[::-1]
 	alpha = 1.
 	for ii in i[:3]:
 		ax.plot(mu, EBV_all[ii], 'r-', alpha=alpha)
@@ -64,19 +64,17 @@ def los2ax(ax, fname, group, *args, **kwargs):
 	ax.set_xlim(5., 20.) 
 
 def clouds2ax(ax, fname, group, *args, **kwargs):
-	chain = hdf5io.TChain(fname, group)
-	mu_range = np.linspace(5., 20., chain.ndim)
+	chain = hdf5io.TChain(fname, '%s/clouds' % group)
+	mu_range = np.linspace(5., 20., chain.get_nDim())
 	if 'alpha' not in kwargs:
-		kwargs['alpha'] = 1. / np.power(chain.data.shape[0], 0.55)
+		kwargs['alpha'] = 1. / np.power(chain.get_nSamples(), 0.55)
 	
 	# Plot all paths
-	N_clouds = chain.data['x'].shape[1] / 2
-	N_paths = chain.data['x'].shape[0]
-	mu_tmp = np.cumsum(chain.data['x'][:,:N_clouds], axis=1)
-	EBV_tmp = np.cumsum(np.exp(chain.data['x'][:,N_clouds:]), axis=1)
-	
-	print mu_tmp[0]
-	print EBV_tmp[0]
+	N_clouds = chain.get_nDim() / 2
+	print N_clouds
+	N_paths = chain.get_nSamples()
+	mu_tmp = np.cumsum(chain.get_samples(0)[:,:N_clouds], axis=1)
+	EBV_tmp = np.cumsum(np.exp(chain.get_samples(0)[:,N_clouds:]), axis=1)
 	
 	mu_all = np.zeros((N_paths, 2*(N_clouds+1)), dtype='f8')
 	EBV_all = np.zeros((N_paths, 2*(N_clouds+1)), dtype='f8')
@@ -96,7 +94,7 @@ def clouds2ax(ax, fname, group, *args, **kwargs):
 	#ax.errorbar(mu, y, yerr=y_err, c='g', ecolor=(0., 1., 0., 0.5), alpha=0.3)
 	
 	# Plot best path
-	#i = np.argsort(chain.data['ln_p'])[::-1]
+	#i = np.argsort(chain.get_lnp(0))[::-1]
 	#alpha = 1.
 	#for ii in i[:3]:
 	#	ax.plot(mu, EBV_all[ii], 'r-', alpha=alpha)
@@ -135,23 +133,26 @@ def main():
 		print 'Either --output or --show must be given.'
 		return 0
 	
-	# Load in pdfs
 	fname = abspath(expanduser(args.input))
-	pdf = hdf5io.get_stellar_pdfs(fname, args.index)
-	pdf_stack = np.zeros(pdf[0].shape, pdf[0].dtype)
-	for p in pdf:
-		pdf_stack += p
-	del pdf
+	group = 'pixel %d' % (args.index)
 	
-	# Normalize peak to unity at each distance
-	norm = 1. / np.max(pdf_stack, axis=1)
-	pdf_stack = np.einsum('ij,i->ij', pdf_stack, norm)
-	
-	# Determine maximum E(B-V)
-	w_y = np.mean(pdf_stack, axis=0)
-	y_max = np.max(np.where(w_y > 1.e-2)[0])
-	EBV_max = y_max * (5. / pdf_stack.shape[1])
-	#pdf_stack = pdf_stack[:,:y_max]
+	# Load in pdfs
+	pdf_stack = None
+	EBV_max = None
+	if args.show_pdfs:
+		dset = '%s/stellar pdfs' % group
+		pdf = hdf5io.TProbSurf(fname, dset)
+		pdf_stack = np.sum(pdf.get_p(), axis=0)
+		del pdf
+		
+		# Normalize peak to unity at each distance
+		norm = 1. / np.max(pdf_stack, axis=1)
+		pdf_stack = np.einsum('ij,i->ij', pdf_stack, norm)
+		
+		# Determine maximum E(B-V)
+		w_y = np.mean(pdf_stack, axis=0)
+		y_max = np.max(np.where(w_y > 1.e-2)[0])
+		EBV_max = y_max * (5. / pdf_stack.shape[1])
 	
 	# Set matplotlib style attributes
 	mplib.rc('text', usetex=True)
@@ -181,13 +182,12 @@ def main():
 	
 	# Plot l.o.s. extinction to figure
 	try:
-		group = 'pixel %d/los extinction/' % (args.index)
 		los2ax(ax, fname, group, 'c')
 	except:
-		group = 'pixel %d/los clouds/' % (args.index)
 		clouds2ax(ax, fname, group, 'c')
 	
-	ax.set_ylim(0., EBV_max)
+	if EBV_max != None:
+		ax.set_ylim(0., EBV_max)
 	
 	# Save/show plot
 	if args.output != None:

@@ -106,15 +106,13 @@ H5::Group* H5Utils::openGroup(H5::H5File* file, const std::string& name, int acc
 	std::stringstream path;
 	std::string gp_name;
 	while(std::getline(ss, gp_name, '/')) {
-		//if(gp_name != "") {
-			path << "/" << gp_name;
-			if(group != NULL) { delete group; }
-			try {
-				group = new H5::Group(file->openGroup(path.str().c_str()));
-			} catch(const H5::FileIException& err_does_not_exist) {
-				group = new H5::Group(file->createGroup(path.str().c_str()));
-			}
-		//}
+		path << "/" << gp_name;
+		if(group != NULL) { delete group; }
+		try {
+			group = new H5::Group(file->openGroup(path.str().c_str()));
+		} catch(const H5::FileIException& err_does_not_exist) {
+			group = new H5::Group(file->createGroup(path.str().c_str()));
+		}
 	}
 	
 	return group;

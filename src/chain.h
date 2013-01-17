@@ -93,6 +93,7 @@ public:
 	double max[2];
 	
 	TRect(double _min[2], double _max[2], uint32_t _N_bins[2]);
+	TRect(const TRect& rect);
 	~TRect();
 	
 	bool get_index(double x1, double x2, unsigned int &i1, unsigned int &i2) const;
@@ -169,8 +170,8 @@ public:
 	
 	// File IO
 	// Save the chain to an HDF5 file
-	bool save(std::string fname, std::string group_name, std::string dim_name,
-	          int compression=1, int subsample=-1,
+	bool save(std::string fname, std::string group_name, size_t index,
+	          std::string dim_name, int compression=1, int subsample=-1,
 	          bool converged=true, float lnZ=std::numeric_limits<float>::quiet_NaN()) const;
 	bool load(std::string filename, bool reserve_extra=false);	// Load the chain from file
 	
@@ -180,6 +181,68 @@ public:
 	TChain& operator =(const TChain& rhs);		// Assignment operator
 };
 
+
+/*************************************************************************
+ *   Class to write multiple chains to HDF5
+ *************************************************************************/
+
+class TChainWriteBuffer {
+public:
+	TChainWriteBuffer(unsigned int nDim, unsigned int nSamples, unsigned int nReserved = 10);
+	~TChainWriteBuffer();
+	
+	void add(const TChain &chain,
+	         bool converged = true,
+	         double lnZ = std::numeric_limits<double>::quiet_NaN()
+	        );
+	
+	void reserve(unsigned int nReserved);
+	
+	void write(const std::string& fname, const std::string& group,
+	           const std::string& chain, const std::string& meta="");
+	
+private:
+	float *buf;
+	unsigned int nDim_, nSamples_, nReserved_, length_;
+	gsl_rng *r;
+	std::vector<double> samplePos;
+	
+	struct TChainMetadata {
+		bool converged;
+		float lnZ;
+	};
+	
+	std::vector<TChainMetadata> metadata;
+	
+};
+
+/*************************************************************************
+ *   Class to write stack of images to HDF5
+ *************************************************************************/
+
+class TImgWriteBuffer {
+public:
+	TImgWriteBuffer(const TRect& rect, unsigned int nReserved = 10);
+	~TImgWriteBuffer();
+	
+	void add(const cv::Mat& img);
+	
+	void reserve(unsigned int nReserved);
+	
+	void write(const std::string& fname, const std::string& group, const std::string& img);
+	
+private:
+	float *buf;
+	unsigned int nReserved_, length_;
+	TRect rect_;
+};
+
+
+
+
+/*************************************************************************
+ *   Auxiliary functions
+ *************************************************************************/
 
 // Save an image stored in an OpenCV matrix, with dimensions corresponding to
 // those encoded in the TRect class, to an HDF5 file

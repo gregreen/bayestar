@@ -119,75 +119,105 @@ class TSyntheticPhotometry:
 # Markov Chain
 ########################################################################
 class TChain:
-	def __init__(self, fname=None, group=None):
+	def __init__(self, fname=None, dset=None):
 		f = None
 		
 		if fname != None:
-			if type(group) != str:
-				raise TypeError("If 'fname' is provided, 'group' must be "
-				                "a string containing the name of the group.")
+			if type(dset) != str:
+				raise TypeError("If 'fname' is provided, 'dset' must be "
+				                "a string containing the name of the dataset.")
 			f = h5py.File(fname, 'r')
-			group = f[group]
+			dset = f[dset]
 		
-		if group == None:
-			raise ValueError('A group name or object must be provided.')
+		if dset == None:
+			raise ValueError('A dataset name or object must be provided.')
 		
-		self.load(group)
+		self.load(dset)
 		
 		if f != None:
 			f.close()
 	
-	def load(self, gp):
-		N_coords, self.ndim = gp['coords'].shape
-		self.length = gp['weights'].shape[0]
+	def load(self, dset):
+		self.nChains, self.nSamples, self.nDim = dset.shape
+		self.nDim -= 1
 		
-		dtype = [('x', 'f8', self.ndim), ('w', 'i8'), ('ln_p', 'f8')]
-		self.data = np.empty(self.length, dtype=dtype)
-		self.data['x'][:] = gp['coords'][:]
-		self.data['w'][:] = gp['weights']
-		self.data['ln_p'][:] = gp['ln_p']
+		self.converged = dset.attrs['converged'][:]
+		self.lnZ = dset.attrs['ln(Z)'][:]
 		
-		self.max_ln_p = np.max(self.data['ln_p'])
-		self.x_min = np.min(self.data['x'], axis=0)
-		self.x_max = np.max(self.data['x'], axis=0)
+		self.lnp = dset[:,:,0]
+		self.coords = dset[:,:,1:]
 		
-		idx = np.arange(0, self.length)
-		self.el_idx = np.repeat(idx, self.data['w'])
+		self.lnp_max = np.max(self.lnp)
+		self.x_min = np.min(self.coords, axis=1)
+		self.x_max = np.max(self.coords, axis=1)
 	
-	def get_element(self, idx=None):
-		if idx == None:
-			return self.data
+	def get_samples(self, chainIdx=None):
+		if chainIdx == None:
+			return self.coords
 		else:
-			return self.data[idx]
+			return self.coords[chainIdx]
 	
-	def rand_sample(self, n_elements):
-		idx = np.random.randint(0, self.length, size=n_elements)
-		idx = self.el_idx[idx]
-		return self.data[idx]
-	
-	def get_N_elements(self):
-		return len(self.data)
-	
-	def get_max_ln_p(self):
-		return self.max_ln_p
-	
-	def get_kde(self, dim=None, subsample=None):
-		if dim == None:
-			dim = range(ndim)
-		if subsample == None:
-			return scipy.stats.gaussian_kde(self.data['x'][:,dim].T)
+	def get_lnp(self, chainIdx):
+		if chainIdx == None:
+			return self.lnp
 		else:
-			subsample = self.rand_sample(subsample)['x'][:,dim].T
-			return scipy.stats.gaussian_kde(subsample)
+			return self.lnp[chainIdx]
 	
-	def get_min_max(self, dim=None):
-		if dim == None:
-			return self.x_min, self.x_max
+	def get_lnZ(self, chainIdx):
+		if chainIdx == None:
+			return self.lnZ
 		else:
-			return self.x_min[dim], self.x_max[dim]
+			return self.lnZ[chainIdx]
 	
-	def get_cov(self):
-		return np.cov(self.data['x'], rowvar=0)
+	def get_nChains(self):
+		return self.nChains
+	
+	def get_nSamples(self):
+		return self.nSamples
+	
+	def get_nDim(self):
+		return self.nDim
+
+
+
+########################################################################
+# Probability surfaces
+########################################################################
+class TProbSurf:
+	def __init__(self, fname=None, dset=None):
+		f = None
+		
+		if fname != None:
+			if type(dset) != str:
+				raise TypeError("If 'fname' is provided, 'dset' must be "
+				                "a string containing the name of the dataset.")
+			f = h5py.File(fname, 'r')
+			dset = f[dset]
+		
+		if dset == None:
+			raise ValueError('A dataset name or object must be provided.')
+		
+		self.load(dset)
+		
+		if f != None:
+			f.close()
+	
+	def load(self, dset):
+		self.nImages = dset.shape[0]
+		self.nPix = dset.shape[1:]
+		
+		self.x_min = dset.attrs['min']
+		self.x_max = dset.attrs['max']
+		self.p = dset[:,:,:]
+		
+		self.p_max = np.max(np.max(self.p, axis=2), axis=1)
+	
+	def get_p(self, imgIdx=None):
+		if imgIdx == None:
+			return self.p
+		else:
+			return self.p[imgIdx]
+
 
 
 ########################################################################

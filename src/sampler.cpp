@@ -677,14 +677,14 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		// Group in which star will be saved
 		std::stringstream group_name;
 		group_name << "/pixel " << stellar_data.healpix_index;
-		group_name << "/star " << n;
+		//group_name << "/star " << n;
 		
 		// Save thinned chain
 		std::stringstream chain_name;
 		chain_name << group_name.str() << "/chain";
 		std::stringstream dim_name_all;
 		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
-		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 500, converged, lnZ_tmp);
+		chain.save(out_fname, chain_name.str(), n, dim_name_all.str(), 5, 500, converged, lnZ_tmp);
 		
 		// Save binned p(DM, EBV) surface
 		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 500.);
@@ -734,8 +734,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	
 	img_stack.resize(params.N_stars);
 	img_stack.set_rect(rect);
-	
-	TNullLogger logger;
+	TImgWriteBuffer imgBuffer(rect, params.N_stars);
 	
 	unsigned int max_attempts = 3;
 	unsigned int N_steps = options.steps;
@@ -748,14 +747,18 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	double *GR = new double[ndim];
 	double GR_threshold = 1.1;
 	
+	TNullLogger logger;
 	TAffineSampler<TMCMCParams, TNullLogger>::pdf_t f_pdf = &logP_indiv_simple_emp;
 	TAffineSampler<TMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_state_indiv_emp;
 	
 	timespec t_start, t_write, t_end;
-	//bool write_success;
 	
 	std::cerr << std::endl;
 	unsigned int N_nonconv = 0;
+	
+	TChainWriteBuffer chainBuffer(ndim, 100, params.N_stars);
+	std::stringstream group_name;
+	group_name << "/pixel " << stellar_data.healpix_index;
 	
 	for(size_t n=0; n<params.N_stars; n++) {
 		params.idx_star = n;
@@ -800,20 +803,16 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		TChain chain = sampler.get_chain();
 		double lnZ_tmp = chain.get_ln_Z_harmonic(true, 10., 0.05, 0.02);
 		
-		// Group in which star will be saved
-		std::stringstream group_name;
-		group_name << "/pixel " << stellar_data.healpix_index;
-		group_name << "/star " << n;
-		
 		// Save thinned chain
 		std::stringstream chain_name;
-		chain_name << group_name.str() << "/chain";
+		chain_name << group_name.str();// << "/chain";
 		std::stringstream dim_name_all;
 		for(size_t i=0; i<ndim; i++) { dim_name_all << (i == 0 ? "" : " ") << dim_name[i]; }
-		chain.save(out_fname, chain_name.str(), dim_name_all.str(), 5, 100, converged, lnZ_tmp);
+		chainBuffer.add(chain, converged, lnZ_tmp);
 		
 		// Save binned p(DM, EBV) surface
 		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 500.);
+		imgBuffer.add(*(img_stack.img[n]));
 		//save_mat_image(*(img_stack.img[n]), rect, out_fname, group_name.str(), "DM_EBV", "DM", "E(B-V)", 5);
 		
 		lnZ.push_back(lnZ_tmp);
@@ -821,7 +820,6 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		
-		//std::cout << "Sampler stats:" << std::endl;
 		sampler.print_stats();
 		std::cout << std::endl;
 		
@@ -835,6 +833,9 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		std::cerr << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
 		std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
 	}
+	
+	chainBuffer.write(out_fname, group_name.str(), "stellar chains");
+	imgBuffer.write(out_fname, group_name.str(), "stellar pdfs");
 	
 	std::cerr << "====================================" << std::endl;
 	std::cerr << std::endl;
