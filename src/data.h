@@ -55,8 +55,8 @@ struct TStellarData {
 		double l, b;
 		float mag[NBANDS];
 		float err[NBANDS];
-		uint32_t N_det[NBANDS];
 		float maglimit[NBANDS];
+		uint32_t N_det[NBANDS];
 	};
 	
 	struct TMagnitudes {
@@ -64,6 +64,7 @@ struct TStellarData {
 		double l, b;
 		double m[NBANDS];
 		double err[NBANDS];
+		double maglimit[NBANDS];
 		unsigned int N_det[NBANDS];
 		double lnL_norm;
 		
@@ -74,6 +75,7 @@ struct TStellarData {
 			for(unsigned int i=0; i<NBANDS; i++) {
 				m[i] = _m[i];
 				err[i] = _err[i];
+				maglimit[i] = 0.;	// TODO
 				lnL_norm += log(err[i]);
 			}
 		}
@@ -85,13 +87,14 @@ struct TStellarData {
 			for(unsigned int i=0; i<NBANDS; i++) {
 				m[i] = rhs.m[i];
 				err[i] = rhs.err[i];
+				maglimit[i] = rhs.maglimit[i];
 				N_det[i] = rhs.N_det[i];
 			}
 			lnL_norm = rhs.lnL_norm;
 			return *this;
 		}
 		
-		void set(TFileData dat, double err_floor=0.02);
+		void set(const TStellarData::TFileData& dat, double err_floor = 0.02);
 	};
 	
 	uint64_t healpix_index;
@@ -100,17 +103,17 @@ struct TStellarData {
 	double l, b;
 	std::vector<TMagnitudes> star;
 	
-	TStellarData(std::string infile, uint32_t _healpix_index, double err_floor=0.02);
+	TStellarData(const std::string& infile, uint32_t _healpix_index, double err_floor = 0.02);
 	TStellarData(uint64_t _healpix_index, uint32_t _nside, bool _nested, double _l, double _b);
 	TStellarData() {}
 	
-	TMagnitudes& operator[](const unsigned int &index) { return star.at(index); }
+	TMagnitudes& operator[](unsigned int index) { return star.at(index); }
 	
 	void clear() { star.clear(); }
 	
 	// Read/write stellar photometry from/to HDF5 files
-	bool save(std::string fname, std::string group_name, int compression=1);
-	bool load(std::string fname, std::string group_name, double err_floor=0.02);
+	bool save(const std::string& fname, const std::string& group, const std::string& dset, int compression=9);
+	bool load(const std::string& fname, const std::string& group, const std::string& dset, double err_floor=0.02);
 	
 	// Load magnitudes and errors of stars along one line of sight, along with (l,b) for the given l.o.s. Same as load_data, but for binary files.
 	// Each binary file contains magnitudes and errors for stars along multiple lines of sight. The stars are grouped into lines of sight, called

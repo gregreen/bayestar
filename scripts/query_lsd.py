@@ -95,9 +95,9 @@ def to_file(f, pix_index, nside, nest, data):
 		f = h5py.File(fname, 'a')
 		close_file = True
 	
-	ds_name = '/pixel %d/photometry' % pix_index
+	ds_name = '/photometry/pixel %d' % pix_index
 	ds = f.create_dataset(ds_name, data.shape, data.dtype, chunks=True,
-	                      compression='gzip', compression_opts=1)
+	                      compression='gzip', compression_opts=9)
 	ds[:] = data[:]
 	
 	N_stars = data.shape[0]
@@ -112,7 +112,7 @@ def to_file(f, pix_index, nside, nest, data):
 	ds.attrs['healpix_index'] = att_u8[0]
 	ds.attrs['nested'] = att_u4[0]
 	ds.attrs['nside'] = att_u4[1]
-	ds.attrs['N_stars'] = N_stars
+	#ds.attrs['N_stars'] = N_stars
 	ds.attrs['l'] = gal_lb[0]
 	ds.attrs['b'] = gal_lb[1]
 	

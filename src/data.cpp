@@ -26,12 +26,13 @@
 #include "data.h"
 
 
-TStellarData::TStellarData(std::string infile, uint32_t _healpix_index, double err_floor)
+TStellarData::TStellarData(const std::string& infile, uint32_t _healpix_index, double err_floor)
 	: healpix_index(_healpix_index)
 {
-	std::stringstream ss;
-	ss << "/pixel " << healpix_index;
-	load(infile, ss.str(), err_floor);
+	std::string group = "photometry";
+	std::stringstream dset;
+	dset << "pixel " << healpix_index;
+	load(infile, group, dset.str(), err_floor);
 }
 
 
@@ -45,7 +46,7 @@ TStellarData::TStellarData(uint64_t _healpix_index, uint32_t _nside, bool _neste
 }
 
 
-bool TStellarData::save(std::string fname, std::string group_name, int compression) {
+bool TStellarData::save(const std::string& fname, const std::string& group, const std::string &dset, int compression) {
 	if((compression < 0) || (compression > 9)) {
 		std::cerr << "! Invalid gzip compression level: " << compression << std::endl;
 		return false;
@@ -62,8 +63,8 @@ bool TStellarData::save(std::string fname, std::string group_name, int compressi
 	H5::H5File *file = H5Utils::openFile(fname);
 	if(file == NULL) { return false; }
 	
-	H5::Group *group = H5Utils::openGroup(file, group_name);
-	if(group == NULL) {
+	H5::Group *gp = H5Utils::openGroup(file, group);
+	if(gp == NULL) {
 		delete file;
 		return false;
 	}
@@ -74,13 +75,16 @@ bool TStellarData::save(std::string fname, std::string group_name, int compressi
 	
 	// Datatype
 	hsize_t nbands = NBANDS;
-	H5::ArrayType mtype(H5::PredType::NATIVE_FLOAT, 1, &nbands);
+	H5::ArrayType f4arr(H5::PredType::NATIVE_FLOAT, 1, &nbands);
+	H5::ArrayType u4arr(H5::PredType::NATIVE_FLOAT, 1, &nbands);
 	H5::CompType dtype(sizeof(TFileData));
 	dtype.insertMember("obj_id", HOFFSET(TFileData, obj_id), H5::PredType::NATIVE_UINT64);
 	dtype.insertMember("l", HOFFSET(TFileData, l), H5::PredType::NATIVE_DOUBLE);
 	dtype.insertMember("b", HOFFSET(TFileData, b), H5::PredType::NATIVE_DOUBLE);
-	dtype.insertMember("mag", HOFFSET(TFileData, mag), mtype);
-	dtype.insertMember("err", HOFFSET(TFileData, err), mtype);
+	dtype.insertMember("mag", HOFFSET(TFileData, mag), f4arr);
+	dtype.insertMember("err", HOFFSET(TFileData, err), f4arr);
+	dtype.insertMember("maglimit", HOFFSET(TFileData, maglimit), f4arr);
+	dtype.insertMember("nDet", HOFFSET(TFileData, N_det), u4arr);
 	
 	// Dataspace
 	hsize_t dim = nstars;
@@ -92,7 +96,7 @@ bool TStellarData::save(std::string fname, std::string group_name, int compressi
 	plist.setDeflate(compression);
 	
 	// Dataset
-	H5::DataSet dset = group->createDataSet("photometry", dtype, dspace, plist);
+	H5::DataSet dataset = gp->createDataSet(dset, dtype, dspace, plist);
 	
 	// Write dataset
 	TFileData* data = new TFileData[nstars];
@@ -103,9 +107,10 @@ bool TStellarData::save(std::string fname, std::string group_name, int compressi
 		for(size_t k=0; k<NBANDS; k++) {
 			data[i].mag[k] = star[i].m[k];
 			data[i].err[k] = star[i].err[k];
+			data[i].maglimit[k] = star[i].maglimit[k];
 		}
 	}
-	dset.write(data, dtype);
+	dataset.write(data, dtype);
 	
 	/*
 	 *  Attributes
@@ -115,36 +120,36 @@ bool TStellarData::save(std::string fname, std::string group_name, int compressi
 	H5::DataSpace att_dspace(1, &dim);
 	
 	H5::PredType att_dtype = H5::PredType::NATIVE_UINT64;
-	H5::Attribute att_healpix_index = group->createAttribute("healpix_index", att_dtype, att_dspace);
+	H5::Attribute att_healpix_index = dataset.createAttribute("healpix_index", att_dtype, att_dspace);
 	att_healpix_index.write(att_dtype, &healpix_index);
 	
 	att_dtype = H5::PredType::NATIVE_UINT32;
-	H5::Attribute att_nside = group->createAttribute("nside", att_dtype, att_dspace);
+	H5::Attribute att_nside = dataset.createAttribute("nside", att_dtype, att_dspace);
 	att_nside.write(att_dtype, &nside);
 	
 	att_dtype = H5::PredType::NATIVE_UCHAR;
-	H5::Attribute att_nested = group->createAttribute("nested", att_dtype, att_dspace);
+	H5::Attribute att_nested = dataset.createAttribute("nested", att_dtype, att_dspace);
 	att_nested.write(att_dtype, &nested);
 	
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
-	H5::Attribute att_l = group->createAttribute("l", att_dtype, att_dspace);
+	H5::Attribute att_l = dataset.createAttribute("l", att_dtype, att_dspace);
 	att_l.write(att_dtype, &l);
 	
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
-	H5::Attribute att_b = group->createAttribute("b", att_dtype, att_dspace);
+	H5::Attribute att_b = dataset.createAttribute("b", att_dtype, att_dspace);
 	att_b.write(att_dtype, &b);
 	
 	file->close();
 	
 	delete data;
-	delete group;
+	delete gp;
 	delete file;
 	
 	return true;
 }
 
 
-void TStellarData::TMagnitudes::set(TStellarData::TFileData dat, double err_floor) {
+void TStellarData::TMagnitudes::set(const TStellarData::TFileData& dat, double err_floor) {
 	obj_id = dat.obj_id;
 	l = dat.l;
 	b = dat.b;
@@ -152,25 +157,24 @@ void TStellarData::TMagnitudes::set(TStellarData::TFileData dat, double err_floo
 	for(unsigned int i=0; i<NBANDS; i++) {
 		m[i] = dat.mag[i];
 		err[i] = sqrt(dat.err[i]*dat.err[i] + err_floor*err_floor);
+		maglimit[i] = dat.maglimit[i];
 		lnL_norm += log(err[i]);
 		N_det[i] = dat.N_det[i];
 	}
 }
 
 
-bool TStellarData::load(std::string fname, std::string group_name, double err_floor) {
-	//H5::Exception::dontPrint();
-	
+bool TStellarData::load(const std::string& fname, const std::string& group, const std::string& dset, double err_floor) {
 	H5::H5File *file = H5Utils::openFile(fname);
 	if(file == NULL) { return false; }
 	
-	H5::Group *group = H5Utils::openGroup(file, group_name);
-	if(group == NULL) {
+	H5::Group *gp = H5Utils::openGroup(file, group);
+	if(gp == NULL) {
 		delete file;
 		return false;
 	}
 	
-	H5::DataSet dataset = group->openDataSet("photometry");
+	H5::DataSet dataset = gp->openDataSet(dset);
 	
 	/*
 	 *  Photometry
@@ -178,16 +182,16 @@ bool TStellarData::load(std::string fname, std::string group_name, double err_fl
 	
 	// Datatype
 	hsize_t nbands = NBANDS;
-	H5::ArrayType floatarrtype(H5::PredType::NATIVE_FLOAT, 1, &nbands);
-	H5::ArrayType uint32arrtype(H5::PredType::NATIVE_UINT32, 1, &nbands);
+	H5::ArrayType f4arr(H5::PredType::NATIVE_FLOAT, 1, &nbands);
+	H5::ArrayType u4arr(H5::PredType::NATIVE_UINT32, 1, &nbands);
 	H5::CompType dtype(sizeof(TFileData));
 	dtype.insertMember("obj_id", HOFFSET(TFileData, obj_id), H5::PredType::NATIVE_UINT64);
 	dtype.insertMember("l", HOFFSET(TFileData, l), H5::PredType::NATIVE_DOUBLE);
 	dtype.insertMember("b", HOFFSET(TFileData, b), H5::PredType::NATIVE_DOUBLE);
-	dtype.insertMember("mag", HOFFSET(TFileData, mag), floatarrtype);
-	dtype.insertMember("err", HOFFSET(TFileData, err), floatarrtype);
-	dtype.insertMember("N_det", HOFFSET(TFileData, N_det), uint32arrtype);
-	dtype.insertMember("maglimit", HOFFSET(TFileData, maglimit), floatarrtype);
+	dtype.insertMember("mag", HOFFSET(TFileData, mag), f4arr);
+	dtype.insertMember("err", HOFFSET(TFileData, err), f4arr);
+	dtype.insertMember("maglimit", HOFFSET(TFileData, maglimit), f4arr);
+	dtype.insertMember("nDet", HOFFSET(TFileData, N_det), u4arr);
 	
 	// Dataspace
 	hsize_t length;
@@ -212,28 +216,28 @@ bool TStellarData::load(std::string fname, std::string group_name, double err_fl
 	//hsize_t dim = 1;
 	//H5::DataSpace att_dspace(1, &dim);
 	
-	H5::Attribute att = group->openAttribute("healpix_index");
+	H5::Attribute att = dataset.openAttribute("healpix_index");
 	H5::DataType att_dtype = H5::PredType::NATIVE_UINT64;
 	att.read(att_dtype, reinterpret_cast<void*>(&healpix_index));
 	
-	att = group->openAttribute("nested");
+	att = dataset.openAttribute("nested");
 	att_dtype = H5::PredType::NATIVE_UCHAR;
 	att.read(att_dtype, reinterpret_cast<void*>(&nested));
 	
-	att = group->openAttribute("nside");
+	att = dataset.openAttribute("nside");
 	att_dtype = H5::PredType::NATIVE_UINT32;
 	att.read(att_dtype, reinterpret_cast<void*>(&nside));
 	
-	att = group->openAttribute("l");
+	att = dataset.openAttribute("l");
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	att.read(att_dtype, reinterpret_cast<void*>(&l));
 	
-	att = group->openAttribute("b");
+	att = dataset.openAttribute("b");
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	att.read(att_dtype, reinterpret_cast<void*>(&b));
 	
 	delete data_buf;
-	delete group;
+	delete gp;
 	delete file;
 	
 	return true;
@@ -600,7 +604,7 @@ herr_t fetch_pixel_index(hid_t loc_id, const char *name, void *opdata) {
 void get_input_pixels(std::string fname, std::vector<unsigned int> &healpix_index) {
 	H5::H5File *file = H5Utils::openFile(fname, H5Utils::READ);
 	
-	file->iterateElems("/", NULL, fetch_pixel_index, reinterpret_cast<void*>(&healpix_index));
+	file->iterateElems("/photometry/", NULL, fetch_pixel_index, reinterpret_cast<void*>(&healpix_index));
 	
 	delete file;
 }

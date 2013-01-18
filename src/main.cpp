@@ -59,10 +59,11 @@ void mock_test() {
 	for(size_t i=0; i<5; i++) { mag_lim[i] = 22.5; }
 	draw_from_emp_model(nstars, RV, los_model, emplib, stellar_data, ext_model, mag_lim);
 	
-	std::stringstream group_name;
-	group_name << "pixel " << healpix_index;
+	std::string group = "photometry";
+	std::stringstream dset;
+	dset << "pixel " << healpix_index;
 	remove("mock.hdf5");
-	stellar_data.save("mock.hdf5", group_name.str());
+	stellar_data.save("mock.hdf5", group, dset.str());
 	
 	//sample_indiv_synth(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
 	
@@ -118,14 +119,14 @@ int main(int argc, char **argv) {
 	double err_floor = 20;
 	
 	bool synthetic = false;
-	unsigned int star_steps = 250;
+	unsigned int star_steps = 500;
 	unsigned int star_samplers = 20;
 	double star_p_replacement = 0.2;
 	double sigma_RV = -1.;
 	
 	unsigned int N_clouds = 0;
 	unsigned int N_regions = 20;
-	unsigned int los_steps = 750;
+	unsigned int los_steps = 400;
 	unsigned int los_samplers = 20;
 	double los_p_replacement = 0.2;
 	
