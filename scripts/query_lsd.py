@@ -186,13 +186,12 @@ def main():
 			         "(type == 6) & (rExt <= %.4f)" % values.maxAr)
 	else:
 		query = ("select obj_id, equgal(ra, dec) as (l, b), mean, err, "
-		         "mean_ap, nmag_ok from ucal_magsqw_noref "
+		         "mean_ap, nmag_ok, immaglimit from ucal_magsqw_noref "
 		         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
 		         "& (nmag_ok[:,0] > 0) & "
 		         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2)")
 	
 	query = db.query(query)
-	
 	
 	# Initialize map to store number of stars in each pixel
 	pix_map = None
@@ -214,7 +213,7 @@ def main():
 	fname = abspath(values.out)
 	f = h5py.File(fname, 'w')
 	
-	# Save each pixel to the file with the least number of stars
+	# Write each pixel to the same file
 	nest = (not values.ring)
 	for (pix_index, obj) in query.execute([(mapper, values.nside, nest, values.bounds), reducer],
 	                                      group_by_static_cell=True,
@@ -226,13 +225,15 @@ def main():
 		outarr = np.empty(len(obj), dtype=[('obj_id','u8'),
 		                                   ('l','f8'), ('b','f8'), 
 		                                   ('mean','f4',5), ('err','f4',5),
-		                                   ('nmag_ok','u4',5)])
+		                                   ('nmag_ok','u4',5),
+		                                   ('maglimit','f4',5)])
 		outarr['obj_id'] = obj['obj_id']
 		outarr['l'] = obj['l']
 		outarr['b'] = obj['b']
 		outarr['mean'] = obj['mean']
 		outarr['err'] = obj['err']
 		outarr['nmag_ok'] = obj['nmag_ok']
+		outarr['maglimit'] = obj['immaglimit']
 		
 		gal_lb = to_file(f, pix_index, values.nside, nest, outarr)
 		
