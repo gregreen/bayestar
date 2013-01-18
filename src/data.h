@@ -56,6 +56,7 @@ struct TStellarData {
 		float mag[NBANDS];
 		float err[NBANDS];
 		uint32_t N_det[NBANDS];
+		float maglimit[NBANDS];
 	};
 	
 	struct TMagnitudes {

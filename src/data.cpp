@@ -187,6 +187,7 @@ bool TStellarData::load(std::string fname, std::string group_name, double err_fl
 	dtype.insertMember("mag", HOFFSET(TFileData, mag), floatarrtype);
 	dtype.insertMember("err", HOFFSET(TFileData, err), floatarrtype);
 	dtype.insertMember("N_det", HOFFSET(TFileData, N_det), uint32arrtype);
+	dtype.insertMember("maglimit", HOFFSET(TFileData, maglimit), floatarrtype);
 	
 	// Dataspace
 	hsize_t length;
