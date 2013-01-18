@@ -907,6 +907,7 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 		std::cout << "w = " << w << std::endl;
 		std::cout << "totalWeight = " << totalWeight << std::endl;
 		std::cout << "i = " << i << std::endl;
+		std::cout << "chainLength = " << i << std::endl;
 		std::cout << "k = " << k << std::endl;
 		std::cout << "nSamples_ = " << nSamples_ << std::endl;
 	}
