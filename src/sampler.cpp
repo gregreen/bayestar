@@ -768,6 +768,18 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		std::cout << "Star #" << n+1 << " of " << params.N_stars << std::endl;
 		std::cout << "====================================" << std::endl;
 		
+		std::cout << "mags = ";
+		for(unsigned int i=0; i<NBANDS; i++) {
+			std::cout << std::setprecision(3) << params.data->star[n].m[i] << " ";
+		}
+		std::cout << std::endl;
+		std::cout << "errs = ";
+		for(unsigned int i=0; i<NBANDS; i++) {
+			std::cout << std::setprecision(3) << params.data->star[n].err[i] << " ";
+		}
+		std::cout << std::endl << std::endl;
+		
+		
 		//std::cerr << "# Setting up sampler" << std::endl;
 		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 		sampler.set_scale(1.5);

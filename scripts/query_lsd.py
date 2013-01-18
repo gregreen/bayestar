@@ -108,10 +108,11 @@ def to_file(f, pix_index, nside, nest, data):
 	
 	att_u8 = np.array([pix_index], dtype='u8')
 	att_u4 = np.array([nside, N_stars], dtype='u4')
+	att_bool = np.array([nest], dtype=np.bool)
 	
 	ds.attrs['healpix_index'] = att_u8[0]
-	ds.attrs['nested'] = att_u4[0]
-	ds.attrs['nside'] = att_u4[1]
+	ds.attrs['nested'] = att_bool[0]
+	ds.attrs['nside'] = att_u4[0]
 	#ds.attrs['N_stars'] = N_stars
 	ds.attrs['l'] = gal_lb[0]
 	ds.attrs['b'] = gal_lb[1]
@@ -225,8 +226,8 @@ def main():
 		outarr = np.empty(len(obj), dtype=[('obj_id','u8'),
 		                                   ('l','f8'), ('b','f8'), 
 		                                   ('mean','f4',5), ('err','f4',5),
-		                                   ('nmag_ok','u4',5),
-		                                   ('maglimit','f4',5)])
+		                                   ('maglimit','f4',5),
+		                                   ('nmag_ok','u4',5)])
 		outarr['obj_id'] = obj['obj_id']
 		outarr['l'] = obj['l']
 		outarr['b'] = obj['b']
