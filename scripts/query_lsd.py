@@ -225,16 +225,17 @@ def main():
 		# Write object to file
 		outarr = np.empty(len(obj), dtype=[('obj_id','u8'),
 		                                   ('l','f8'), ('b','f8'), 
-		                                   ('mean','f4',5), ('err','f4',5),
+		                                   ('mag','f4',5), ('err','f4',5),
 		                                   ('maglimit','f4',5),
-		                                   ('nmag_ok','u4',5)])
+		                                   ('nmag_ok','u4',5),
+		                                   ('nDet','u4',5)])
 		outarr['obj_id'] = obj['obj_id']
 		outarr['l'] = obj['l']
 		outarr['b'] = obj['b']
-		outarr['mean'] = obj['mean']
+		outarr['mag'] = obj['mag']
 		outarr['err'] = obj['err']
-		outarr['nmag_ok'] = obj['nmag_ok']
 		outarr['maglimit'] = obj['maglimit']
+		outarr['nDet'] = obj['nmag_ok']
 		
 		gal_lb = to_file(f, pix_index, values.nside, nest, outarr)
 		
