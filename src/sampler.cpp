@@ -528,7 +528,7 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	TSED sed_tmp(true);
 	
 	// E(B-V)
-	x[0] = 1.5 * params.EBV_SFD * gsl_rng_uniform(r);
+	x[0] = 3. * params.EBV_SFD * gsl_rng_uniform(r);
 	
 	// DM
 	x[1] = 6. + 12. * gsl_rng_uniform(r);
