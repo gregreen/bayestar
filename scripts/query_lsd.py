@@ -186,7 +186,7 @@ def main():
 			         "(type == 6) & (rExt <= %.4f)" % values.maxAr)
 	else:
 		query = ("select obj_id, equgal(ra, dec) as (l, b), mean, err, "
-		         "mean_ap, nmag_ok, immaglimit from ucal_magsqw_noref "
+		         "mean_ap, nmag_ok, maglimit from ucal_magsqw_noref "
 		         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
 		         "& (nmag_ok[:,0] > 0) & "
 		         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2)")
@@ -233,7 +233,7 @@ def main():
 		outarr['mean'] = obj['mean']
 		outarr['err'] = obj['err']
 		outarr['nmag_ok'] = obj['nmag_ok']
-		outarr['maglimit'] = obj['immaglimit']
+		outarr['maglimit'] = obj['maglimit']
 		
 		gal_lb = to_file(f, pix_index, values.nside, nest, outarr)
 		
