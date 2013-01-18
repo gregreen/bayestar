@@ -884,26 +884,27 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 	std::sort(samplePos.begin(), samplePos.end());
 	
 	// Copy chosen points into buffer
-	unsigned int i = 0;
+	unsigned int i = 1;
 	unsigned int k = 0;
-	uint64_t w = 0;
+	double w = chain.get_w(0);
 	unsigned int chainLength = chain.get_length();
 	size_t startIdx = length_ * nDim_ * nSamples_;
 	const double *chainElement;
-	while((k < nSamples_) && (i < chainLength)) {
+	while(k < nSamples_) {
 		if(w < samplePos[k]) {
-			w += (uint64_t)ceil(chain.get_w(i));
+			assert(i < chainLength);
+			w += chain.get_w(i);
 			i++;
 		} else {
-			chainElement = chain.get_element(i);
-			buf[startIdx + nDim_*k] = chain.get_L(i);
+			chainElement = chain.get_element(i-1);
+			buf[startIdx + nDim_*k] = chain.get_L(i-1);
 			for(size_t n = 1; n < nDim_; n++) {
 				buf[startIdx + nDim_*k + n] = chainElement[n-1];
 			}
 			k++;
 		}
 	}
-	if(k != nSamples_) {
+	/*if(k != nSamples_) {
 		std::cout << std::setprecision(8) << "w = " << w << std::endl;
 		std::cout << std::setprecision(8) << "totalWeight = " << totalWeight << std::endl;
 		std::cout << "i = " << i << std::endl;
@@ -943,7 +944,7 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 		}
 		
 		abort();
-	}
+	}*/
 	assert(k == nSamples_);
 	
 	length_++;
