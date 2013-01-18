@@ -904,13 +904,13 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 		}
 	}
 	if(k != nSamples_) {
-		std::cout << "w = " << w << std::endl;
-		std::cout << "totalWeight = " << totalWeight << std::endl;
+		std::cout << std::setprecision(8) << "w = " << w << std::endl;
+		std::cout << std::setprecision(8) << "totalWeight = " << totalWeight << std::endl;
 		std::cout << "i = " << i << std::endl;
 		std::cout << "chainLength = " << i << std::endl;
 		std::cout << "k = " << k << std::endl;
 		std::cout << "nSamples_ = " << nSamples_ << std::endl;
-		std::cout << "samplePos[k] = " << samplePos[k] << std::endl;
+		std::cout << std::setprecision(8) <<"samplePos[k] = " << samplePos[k] << std::endl;
 	}
 	assert(k == nSamples_);
 	
