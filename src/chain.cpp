@@ -910,6 +910,7 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 		std::cout << "chainLength = " << i << std::endl;
 		std::cout << "k = " << k << std::endl;
 		std::cout << "nSamples_ = " << nSamples_ << std::endl;
+		std::cout << "samplePos[k] = " << samplePos[k] << std::endl;
 	}
 	assert(k == nSamples_);
 	
