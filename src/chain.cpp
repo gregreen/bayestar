@@ -886,13 +886,13 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 	// Copy chosen points into buffer
 	unsigned int i = 0;
 	unsigned int k = 0;
-	double w = 0.;
+	uint64_t w = 0;
 	unsigned int chainLength = chain.get_length();
 	size_t startIdx = length_ * nDim_ * nSamples_;
 	const double *chainElement;
 	while((k < nSamples_) && (i < chainLength)) {
 		if(w < samplePos[k]) {
-			w += chain.get_w(i);
+			w += (uint64_t)ceil(chain.get_w(i));
 			i++;
 		} else {
 			chainElement = chain.get_element(i);
