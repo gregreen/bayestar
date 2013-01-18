@@ -911,6 +911,35 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 		std::cout << "k = " << k << std::endl;
 		std::cout << "nSamples_ = " << nSamples_ << std::endl;
 		std::cout << std::setprecision(8) <<"samplePos[k] = " << samplePos[k] << std::endl;
+		
+		i = 0;
+		k = 0;
+		w = 0;
+		chainLength = chain.get_length();
+		startIdx = length_ * nDim_ * nSamples_;
+		while((k < nSamples_) && (i < chainLength)) {
+			std::cout << "(w, samplePos[k]) = " << w << ", " << samplePos[k] << std::endl;
+			if(w < samplePos[k]) {
+				std::cout << "w: " << w << " --> ";
+				w += (uint64_t)ceil(chain.get_w(i));
+				std::cout << w << std::endl;
+				std::cout << "i: " << i << " --> ";
+				i++;
+				std::cout << i << std::endl;
+			} else {
+				chainElement = chain.get_element(i);
+				buf[startIdx + nDim_*k] = chain.get_L(i);
+				for(size_t n = 1; n < nDim_; n++) {
+					buf[startIdx + nDim_*k + n] = chainElement[n-1];
+				}
+				std::cout << "k: " << k << " --> ";
+				k++;
+				std::cout << k << std::endl;
+			}
+			std::cout << "(k, nSamples_) = " << k << ", " << nSamples_ << std::endl;
+			std::cout << "(i, chainLength) = " << i << ", " << chainLength << std::endl;
+			std::cout << std::endl;
+		}
 	}
 	assert(k == nSamples_);
 	
