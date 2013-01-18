@@ -890,7 +890,7 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 	unsigned int chainLength = chain.get_length();
 	size_t startIdx = length_ * nDim_ * nSamples_;
 	const double *chainElement;
-	while((k < nSamples_) && (i < chainLength) && (w < totalWeight)) {
+	while((k < nSamples_) && (i < chainLength)) {
 		if(w < samplePos[k]) {
 			w += chain.get_w(i);
 			i++;
@@ -902,6 +902,13 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 			}
 			k++;
 		}
+	}
+	if(k != nSamples_) {
+		std::cout << "w = " << w << std::endl;
+		std::cout << "totalWeight = " << totalWeight << std::endl;
+		std::cout << "i = " << i << std::endl;
+		std::cout << "k = " << k << std::endl;
+		std::cout << "nSamples_ = " << nSamples_ << std::endl;
 	}
 	assert(k == nSamples_);
 	
