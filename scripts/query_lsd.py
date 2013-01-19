@@ -240,13 +240,13 @@ def main():
 		                                   ('mag','f4',5), ('err','f4',5),
 		                                   ('maglimit','f4',5),
 		                                   ('nDet','u4',5)])
-		outarr['obj_id'] = obj['obj_id']
-		outarr['l'] = obj['l']
-		outarr['b'] = obj['b']
-		outarr['mag'] = obj['mean']
-		outarr['err'] = obj['err']
-		outarr['maglimit'] = obj['maglimit']
-		outarr['nDet'] = obj['nmag_ok']
+		outarr['obj_id'][:] = obj['obj_id'][:]
+		outarr['l'][:] = obj['l'][:]
+		outarr['b'][:] = obj['b'][:]
+		outarr['mag'][:] = obj['mean'][:]
+		outarr['err'][:] = obj['err'][:]
+		outarr['maglimit'][:] = obj['maglimit'][:]
+		outarr['nDet'][:] = obj['nmag_ok'][:]
 		EBV = np.median(obj['EBV'])
 		
 		# Open output file
