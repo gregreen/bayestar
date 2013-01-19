@@ -100,7 +100,7 @@ struct TStellarData {
 	uint64_t healpix_index;
 	uint32_t nside;
 	bool nested;
-	double l, b;
+	double l, b, EBV;
 	std::vector<TMagnitudes> star;
 	
 	TStellarData(const std::string& infile, uint32_t _healpix_index, double err_floor = 0.02);

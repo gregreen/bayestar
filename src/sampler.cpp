@@ -34,9 +34,9 @@
  ****************************************************************************************************************************/
 
 TMCMCParams::TMCMCParams(TGalacticLOSModel *_gal_model, TSyntheticStellarModel *_synth_stellar_model, TStellarModel *_emp_stellar_model,
-			  TExtinctionModel *_ext_model, TStellarData *_data, double _EBV_SFD, unsigned int _N_DM, double _DM_min, double _DM_max)
+			  TExtinctionModel *_ext_model, TStellarData *_data, unsigned int _N_DM, double _DM_min, double _DM_max)
 	: gal_model(_gal_model), synth_stellar_model(_synth_stellar_model), emp_stellar_model(_emp_stellar_model),
-          ext_model(_ext_model), data(_data), EBV_SFD(_EBV_SFD), N_DM(_N_DM), DM_min(_DM_min), DM_max(_DM_max)
+          ext_model(_ext_model), data(_data), N_DM(_N_DM), DM_min(_DM_min), DM_max(_DM_max)
 {
 	N_stars = data->star.size();
 	EBV_interp = new TLinearInterp(DM_min, DM_max, N_DM);
@@ -225,12 +225,12 @@ double logP_los_synth(const double *x, unsigned int N, TMCMCParams &p, double *l
  * 
  ****************************************************************************************************************************/
 
-void sample_model_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
+void sample_model_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
-	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
-	TMCMCParams params_tmp(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
+	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
+	TMCMCParams params_tmp(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
 	
 	// Random number generator
 	gsl_rng *r;
@@ -243,7 +243,7 @@ void sample_model_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 	
 	// Random starting point for reddening profile
 	x[0] = 3.1;// + gsl_ran_gaussian_ziggurat(r, 0.2);	// RV
-	for(size_t i=0; i<params.N_DM; i++) { x[i+1] = EBV_SFD/(double)N_DM * gsl_ran_chisq(r, 1.); }		// Delta_EBV
+	for(size_t i=0; i<params.N_DM; i++) { x[i+1] = params.data->EBV / (double)N_DM * gsl_ran_chisq(r, 1.); }		// Delta_EBV
 	
 	// Random starting point for each star
 	TSED sed_tmp(true);
@@ -397,7 +397,7 @@ void gen_rand_state_synth(double *const x, unsigned int N, gsl_rng *r, TMCMCPara
 	x[0] = 3.1 + gsl_ran_gaussian_ziggurat(r, 0.2);
 	
 	// Delta_EBV
-	for(size_t i=0; i<params.N_DM; i++) { x[i+1] = params.EBV_SFD/(double)params.N_DM * gsl_ran_chisq(r, 1.); }
+	for(size_t i=0; i<params.N_DM; i++) { x[i+1] = params.data->EBV / (double)params.N_DM * gsl_ran_chisq(r, 1.); }
 	
 	// Stars
 	TSED sed_tmp(true);
@@ -430,11 +430,11 @@ double logP_los_simple_synth(const double *x, unsigned int N, TMCMCParams &param
 	return logP_los_synth(x, N, params, NULL);
 }
 
-void sample_model_affine_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data, double EBV_SFD) {
+void sample_model_affine_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
-	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
+	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
 	TStats EBV_stats(N_DM);
 	
 	unsigned int N_steps = 100;
@@ -488,7 +488,7 @@ void gen_rand_state_indiv_synth(double *const x, unsigned int N, gsl_rng *r, TMC
 	TSED sed_tmp(true);
 	
 	// E(B-V)
-	x[0] = 1.5 * params.EBV_SFD * gsl_rng_uniform(r);
+	x[0] = 1.5 * params.data->EBV * gsl_rng_uniform(r);
 	
 	// DM
 	x[1] = 5. + 13. * gsl_rng_uniform(r);
@@ -528,7 +528,7 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	TSED sed_tmp(true);
 	
 	// E(B-V)
-	x[0] = 3. * params.EBV_SFD * gsl_rng_uniform(r);
+	x[0] = 3. * params.data->EBV * gsl_rng_uniform(r);
 	
 	// DM
 	x[1] = 6. + 12. * gsl_rng_uniform(r);
@@ -591,7 +591,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
-	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
+	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
 	
 	if(RV_sigma > 0.) {
 		params.vary_RV = true;
@@ -718,7 +718,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
-	TMCMCParams params(&galactic_model, NULL, &stellar_model, &extinction_model, &stellar_data, EBV_SFD, N_DM, DM_min, DM_max);
+	TMCMCParams params(&galactic_model, NULL, &stellar_model, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
 	
 	if(RV_sigma > 0.) {
 		params.vary_RV = true;

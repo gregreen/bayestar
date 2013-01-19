@@ -239,7 +239,6 @@ def main():
 		                                   ('l','f8'), ('b','f8'), 
 		                                   ('mag','f4',5), ('err','f4',5),
 		                                   ('maglimit','f4',5),
-		                                   ('nmag_ok','u4',5),
 		                                   ('nDet','u4',5)])
 		outarr['obj_id'] = obj['obj_id']
 		outarr['l'] = obj['l']

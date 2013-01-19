@@ -139,6 +139,10 @@ bool TStellarData::save(const std::string& fname, const std::string& group, cons
 	H5::Attribute att_b = dataset.createAttribute("b", att_dtype, att_dspace);
 	att_b.write(att_dtype, &b);
 	
+	att_dtype = H5::PredType::NATIVE_DOUBLE;
+	H5::Attribute att_EBV = dataset.createAttribute("EBV", att_dtype, att_dspace);
+	att_EBV.write(att_dtype, &EBV);
+	
 	file->close();
 	
 	delete data;
@@ -235,6 +239,10 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	att = dataset.openAttribute("b");
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	att.read(att_dtype, reinterpret_cast<void*>(&b));
+	
+	att = dataset.openAttribute("EBV");
+	att_dtype = H5::PredType::NATIVE_DOUBLE;
+	att.read(att_dtype, reinterpret_cast<void*>(&EBV));
 	
 	delete data_buf;
 	delete gp;

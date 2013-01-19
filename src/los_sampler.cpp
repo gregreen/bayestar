@@ -570,7 +570,6 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned i
 	std::cout << std::endl << std::endl;
 	
 	sampler.get_chain().get_best(params.EBV_prof_guess);
-	params.EBV_prof_guess.clear();
 	for(size_t i=0; i<ndim; i++) {
 		std::cout << "\t" << params.EBV_prof_guess[i] << std::endl;
 	}

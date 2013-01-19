@@ -62,7 +62,7 @@
 // Wrapper for parameters needed by the sampler
 struct TMCMCParams {
 	TMCMCParams(TGalacticLOSModel* _gal_model, TSyntheticStellarModel* _synth_stellar_model, TStellarModel* _emp_stellar_model, TExtinctionModel* _ext_model,
-                    TStellarData* _data, double _EBV_SFD, unsigned int _N_DM, double _DM_min, double _DM_max);
+                    TStellarData* _data, unsigned int _N_DM, double _DM_min, double _DM_max);
 	~TMCMCParams();
 	
 	// Model
@@ -106,8 +106,8 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
                             TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed=NULL);
 
 // Sampling routines
-void sample_model_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
-void sample_model_affine_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data, double EBV_SFD);
+void sample_model_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data);
+void sample_model_affine_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data);
 
 void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                         TSyntheticStellarModel& stellar_model,TExtinctionModel& extinction_model, TStellarData& stellar_data,
