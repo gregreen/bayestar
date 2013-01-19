@@ -232,7 +232,7 @@ def main():
 		outarr['obj_id'] = obj['obj_id']
 		outarr['l'] = obj['l']
 		outarr['b'] = obj['b']
-		outarr['mag'] = obj['mag']
+		outarr['mag'] = obj['mean']
 		outarr['err'] = obj['err']
 		outarr['maglimit'] = obj['maglimit']
 		outarr['nDet'] = obj['nmag_ok']
