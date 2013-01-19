@@ -89,7 +89,7 @@ def start_file(base_fname, index):
 	return f
 
 
-def to_file(f, pix_index, nside, nest, data):
+def to_file(f, pix_index, nside, nest, EBV, data):
 	close_file = False
 	if type(f) == str:
 		f = h5py.File(fname, 'a')
@@ -106,6 +106,7 @@ def to_file(f, pix_index, nside, nest, data):
 	p *= 180. / np.pi
 	gal_lb = np.array([p, 90. - t], dtype='f8')
 	
+	att_f4 = np.array([EBV], dtype='f8')
 	att_u8 = np.array([pix_index], dtype='u8')
 	att_u4 = np.array([nside, N_stars], dtype='u4')
 	att_u1 = np.array([nest], dtype='u1')
@@ -116,6 +117,7 @@ def to_file(f, pix_index, nside, nest, data):
 	#ds.attrs['N_stars'] = N_stars
 	ds.attrs['l'] = gal_lb[0]
 	ds.attrs['b'] = gal_lb[1]
+	ds.attrs['EBV'] = att_f4[0]
 	
 	if close_file:
 		f.close()
@@ -133,8 +135,10 @@ def main():
 	                    help='Healpix nside parameter (default: 512).')
 	parser.add_argument('-b', '--bounds', type=float, nargs=4, default=None,
 	                    help='Restrict pixels to region enclosed by: l_min, l_max, b_min, b_max.')
-	parser.add_argument('-min', '--min_stars', type=int, default=1,
+	parser.add_argument('-min', '--min-stars', type=int, default=1,
 	                    help='Minimum # of stars in pixel (default: 1).')
+	parser.add_argument('-max', '--max-stars', type=int, default=50000,
+	                    help='Maximum # of stars in file')
 	parser.add_argument('-sdss', '--sdss', action='store_true',
 	                    help='Only select objects identified in the SDSS catalog as stars.')
 	parser.add_argument('-ext', '--maxAr', type=float, default=None,
@@ -187,7 +191,8 @@ def main():
 			         "(type == 6) & (rExt <= %.4f)" % values.maxAr)
 	else:
 		query = ("select obj_id, equgal(ra, dec) as (l, b), mean, err, "
-		         "mean_ap, nmag_ok, maglimit from ucal_magsqw_noref "
+		         "mean_ap, nmag_ok, maglimit, SFD.EBV(l, b) as EBV "
+		         "from ucal_magsqw_noref "
 		         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
 		         "& (nmag_ok[:,0] > 0) & "
 		         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2)")
@@ -210,9 +215,16 @@ def main():
 	N_min = np.inf
 	N_max = -np.inf
 	
-	# Open output file
-	fname = abspath(values.out)
-	f = h5py.File(fname, 'w')
+	fnameBase = abspath(values.out)
+	fnameSuffix = 'h5'
+	if fnameBase.endswith('.h5'):
+		fnameBase = fnameBase[:-3]
+	elif fnameBase.endswith('.hdf5'):
+		fnameBase = fnameBase[:-5]
+		fnameSuffix = 'hdf5'
+	f = None
+	nFiles = 0
+	nInFile = 0
 	
 	# Write each pixel to the same file
 	nest = (not values.ring)
@@ -222,7 +234,7 @@ def main():
 		if len(obj) < values.min_stars:
 			continue
 		
-		# Write object to file
+		# Prepare output for pixel
 		outarr = np.empty(len(obj), dtype=[('obj_id','u8'),
 		                                   ('l','f8'), ('b','f8'), 
 		                                   ('mag','f4',5), ('err','f4',5),
@@ -236,13 +248,23 @@ def main():
 		outarr['err'] = obj['err']
 		outarr['maglimit'] = obj['maglimit']
 		outarr['nDet'] = obj['nmag_ok']
+		EBV = np.median(obj['EBV'])
 		
-		gal_lb = to_file(f, pix_index, values.nside, nest, outarr)
+		# Open output file
+		if f == None:
+			fname = '%s.%.5d.%s' % (fnameBase, nFiles, fnameSuffix)
+			f = h5py.File(fname, 'w')
+			nInFile = 0
+			nFiles += 1
+		
+		# Write to file
+		gal_lb = to_file(f, pix_index, values.nside, nest, EBV, outarr)
 		
 		# Update stats
 		N_pix += 1
 		stars_in_pix = len(obj)
 		N_stars += stars_in_pix
+		nInFile += stars_in_pix
 		
 		if values.visualize:
 			pix_max[pix_index] += N_stars
@@ -260,8 +282,14 @@ def main():
 			N_min = stars_in_pix
 		if stars_in_pix > N_max:
 			N_max = stars_in_pix
+		
+		# Close file if size exceeds max_stars
+		if nInFile >= values.max_stars:
+			f.close()
+			f = None
 	
-	f.close()
+	if f != None:
+		f.close()
 	
 	if N_pix != 0:
 		print '# of stars in footprint: %d.' % N_stars
@@ -270,6 +298,7 @@ def main():
 		print '    min: %d' % N_min
 		print '    mean: %d' % (N_stars / N_pix)
 		print '    max: %d' % N_max
+		print '# of files: %d.' % nFiles
 	else:
 		print 'No pixels in specified bounds with sufficient # of stars.'
 	
