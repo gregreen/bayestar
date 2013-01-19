@@ -203,7 +203,6 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	if(Delta_mu[0] < params.img_stack->rect->min[0]) { return neginf; }
 	if(mu_tot > params.img_stack->rect->max[0]) { return neginf; }
 	
-	// Extinction must not exceed maximum value
 	double EBV_tot = 0.;
 	double tmp;
 	for(size_t i=0; i<N_clouds; i++) {
@@ -212,8 +211,9 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 		
 		// Prior to prevent EBV from straying high
 		lnp -= 0.5 * tmp * tmp / (0.5 * 0.5);
-		//lnp -= 0.5 * Delta_mu[i] * Delta_mu[i] / (20. * 20.);
 	}
+	
+	// Extinction must not exceed maximum value
 	if(EBV_tot >= params.img_stack->rect->max[1]) { return neginf; }
 	
 	// Prior on total extinction

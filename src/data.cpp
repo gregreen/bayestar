@@ -162,7 +162,9 @@ void TStellarData::TMagnitudes::set(const TStellarData::TFileData& dat, double e
 		m[i] = dat.mag[i];
 		err[i] = sqrt(dat.err[i]*dat.err[i] + err_floor*err_floor);
 		maglimit[i] = dat.maglimit[i];
-		lnL_norm += log(err[i]);
+		if(lnL_norm < 9.e9) {
+			lnL_norm += log(err[i]);
+		}
 		N_det[i] = dat.N_det[i];
 	}
 }

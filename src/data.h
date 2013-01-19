@@ -76,7 +76,9 @@ struct TStellarData {
 				m[i] = _m[i];
 				err[i] = _err[i];
 				maglimit[i] = 0.;	// TODO
-				lnL_norm += log(err[i]);
+				if(lnL_norm < 9.e9) {
+					lnL_norm += log(err[i]);
+				}
 			}
 		}
 		
