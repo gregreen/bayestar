@@ -108,10 +108,10 @@ def to_file(f, pix_index, nside, nest, data):
 	
 	att_u8 = np.array([pix_index], dtype='u8')
 	att_u4 = np.array([nside, N_stars], dtype='u4')
-	att_bool = np.array([nest], dtype=np.bool)
+	att_u1 = np.array([nest], dtype='u1')
 	
 	ds.attrs['healpix_index'] = att_u8[0]
-	ds.attrs['nested'] = att_bool[0]
+	ds.attrs['nested'] = att_u1[0]
 	ds.attrs['nside'] = att_u4[0]
 	#ds.attrs['N_stars'] = N_stars
 	ds.attrs['l'] = gal_lb[0]
