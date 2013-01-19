@@ -39,7 +39,6 @@ using namespace std;
 void mock_test() {
 	size_t nstars = 200;
 	unsigned int N_regions = 20;
-	double EBV_SFD = 2.5;
 	double RV = 3.1;
 	double l = 90.;
 	double b = 10.;
@@ -65,8 +64,6 @@ void mock_test() {
 	remove("mock.hdf5");
 	stellar_data.save("mock.hdf5", group, dset.str());
 	
-	//sample_indiv_synth(los_model, synthlib, ext_model, stellar_data, EBV_SFD);
-	
 	// Prepare data structures for stellar parameters
 	TImgStack img_stack(stellar_data.star.size());
 	std::vector<bool> conv;
@@ -75,12 +72,12 @@ void mock_test() {
 	std::string out_fname = "emp_out.h5";
 	remove(out_fname.c_str());
 	TMCMCOptions star_options(500, 20, 0.2, 4);
-	sample_indiv_emp(out_fname, star_options, los_model, emplib, ext_model, stellar_data, img_stack, conv, lnZ, EBV_SFD);
+	sample_indiv_emp(out_fname, star_options, los_model, emplib, ext_model, stellar_data, img_stack, conv, lnZ, 5.);
 	
 	// Fit line-of-sight extinction profile
 	img_stack.cull(conv);
 	TMCMCOptions los_options(250, 15, 0.1, 4);
-	sample_los_extinction(out_fname, los_options, img_stack, N_regions, 1.e-50, 2.*EBV_SFD, healpix_index);
+	sample_los_extinction(out_fname, los_options, img_stack, N_regions, 1.e-50, 5., healpix_index);
 	
 	/*
 	TLOSMCMCParams params(&img_stack, 1.e-100, -1.);
@@ -233,9 +230,6 @@ int main(int argc, char **argv) {
 	get_input_pixels(input_fname, healpix_index);
 	cerr << "# " << healpix_index.size() << " pixels in input file." << endl;
 	
-	// TODO: Put this into input file
-	double EBV_SFD = 2.5;
-	
 	// Remove the output file
 	remove(output_fname.c_str());
 	H5::Exception::dontPrint();
@@ -260,10 +254,10 @@ int main(int argc, char **argv) {
 		
 		if(synthetic) {
 			sample_indiv_synth(output_fname, star_options, los_model, *synthlib, ext_model,
-			                   stellar_data, img_stack, conv, lnZ, EBV_SFD, sigma_RV);
+			                   stellar_data, img_stack, conv, lnZ, sigma_RV);
 		} else {
 			sample_indiv_emp(output_fname, star_options, los_model, *emplib, ext_model,
-			                 stellar_data, img_stack, conv, lnZ, EBV_SFD, sigma_RV);
+			                 stellar_data, img_stack, conv, lnZ, sigma_RV);
 		}
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);
@@ -272,10 +266,11 @@ int main(int argc, char **argv) {
 		
 		// Fit line-of-sight extinction profile
 		img_stack.cull(conv);
+		double EBV_max = stellar_data.EBV;
 		if(N_clouds != 0) {
-			sample_los_extinction_clouds(output_fname, los_options, img_stack, N_clouds, 1.e-15, EBV_SFD, *it);
+			sample_los_extinction_clouds(output_fname, los_options, img_stack, N_clouds, 1.e-15, EBV_max, *it);
 		} else {
-			sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-15, EBV_SFD, *it);
+			sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-15, EBV_max, *it);
 		}
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
