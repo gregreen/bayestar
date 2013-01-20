@@ -587,7 +587,7 @@ double logP_indiv_simple_emp(const double *x, unsigned int N, TMCMCParams &param
 void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                         TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                         TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                        double EBV_SFD, double RV_sigma, bool saveSurfs) {
+                        double RV_sigma, bool saveSurfs) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
@@ -720,7 +720,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                       TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                      double EBV_SFD, double RV_sigma, bool saveSurfs) {
+                      double RV_sigma, bool saveSurfs) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
