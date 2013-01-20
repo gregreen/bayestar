@@ -157,13 +157,13 @@ void TStellarData::TMagnitudes::set(const TStellarData::TFileData& dat, double e
 	obj_id = dat.obj_id;
 	l = dat.l;
 	b = dat.b;
-	lnL_norm = NBANDS * 0.9189385332;
+	lnL_norm = 0.;
 	for(unsigned int i=0; i<NBANDS; i++) {
 		m[i] = dat.mag[i];
 		err[i] = sqrt(dat.err[i]*dat.err[i] + err_floor*err_floor);
 		maglimit[i] = dat.maglimit[i];
-		if(lnL_norm < 9.e9) {
-			lnL_norm += log(err[i]);
+		if(err[i] < 9.e9) {	// Ignore missing bands (otherwise, they affect evidence)
+			lnL_norm += 0.9189385332 + log(err[i]);
 		}
 		N_det[i] = dat.N_det[i];
 	}

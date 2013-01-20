@@ -71,13 +71,13 @@ struct TStellarData {
 		TMagnitudes() {}
 		
 		TMagnitudes(double (&_m)[NBANDS], double (&_err)[NBANDS]) {
-			lnL_norm = NBANDS * 0.9189385332;
+			lnL_norm = 0.;
 			for(unsigned int i=0; i<NBANDS; i++) {
 				m[i] = _m[i];
 				err[i] = _err[i];
 				maglimit[i] = 0.;	// TODO
-				if(lnL_norm < 9.e9) {
-					lnL_norm += log(err[i]);
+				if(err[i] < 9.e9) {	// Ignore missing bands (otherwise, they affect evidence)
+					lnL_norm += 0.9189385332 + log(err[i]);
 				}
 			}
 		}
