@@ -113,6 +113,8 @@ int main(int argc, char **argv) {
 	std::string input_fname = "NONE";
 	std::string output_fname = "NONE";
 	
+	bool saveSurfs = false;
+	
 	double err_floor = 20;
 	
 	bool synthetic = false;
@@ -126,6 +128,9 @@ int main(int argc, char **argv) {
 	unsigned int los_steps = 400;
 	unsigned int los_samplers = 20;
 	double los_p_replacement = 0.2;
+	
+	bool SFDPrior = false;
+	double evCut = 30.;
 	
 	unsigned int N_threads = 4;
 	
@@ -141,13 +146,15 @@ int main(int argc, char **argv) {
 		("version", "Display version number")
 		("input", po::value<std::string>(&input_fname), "Input HDF5 filename (contains stellar photometry)")
 		("output", po::value<std::string>(&output_fname), "Output HDF5 filename (MCMC output and smoothed probability surfaces)")
-		("err-floor", po::value<double>(&err_floor), "Error to add in quadrature (in millimags)")
 		
+		("save-surfs", "Save probability surfaces.")
+		
+		("err-floor", po::value<double>(&err_floor), "Error to add in quadrature (in millimags)")
 		("synthetic", "Use synthetic photometric library (default: use empirical library)")
 		("star-steps", po::value<unsigned int>(&star_steps), "# of MCMC steps per star (per sampler)")
 		("star-samplers", po::value<unsigned int>(&star_samplers), "# of samplers per dimension (stellar fit)")
 		("star-p-replacement", po::value<double>(&star_p_replacement), "Probability of taking replacement step (stellar fit)")
-		("sigma-RV", po::value<double>(&sigma_RV), "Variation in R_V (per star)")
+		("sigma-RV", po::value<double>(&sigma_RV), "Variation in R_V (per star) (default: -1, interpreted as no variance)")
 		
 		("regions", po::value<unsigned int>(&N_regions), "# of piecewise-linear regions in l.o.s. extinction profile (default: 20)")
 		("los-steps", po::value<unsigned int>(&los_steps), "# of MCMC steps in l.o.s. fit (per sampler)")
@@ -157,6 +164,10 @@ int main(int argc, char **argv) {
 		("clouds", po::value<unsigned int>(&N_clouds), "# of clouds along the line of sight (default: 0).\n"
 		                                               "Setting this option causes the sampler to use a discrete\n"
 		                                               "cloud model for the l.o.s. extinction profile.")
+		
+		("SFD-prior", "Use SFD E(B-V) as a prior on the total extinction in each pixel.")
+		("evidence-cut", po::value<double>(&evCut), "Delta lnZ to use as threshold for including star\n"
+		                                            "in l.o.s. fit (default: 30).")
 		
 		("threads", po::value<unsigned int>(&N_threads), "# of threads to run on (default: 4)")
 	;
@@ -177,6 +188,10 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 	
+	if(vm.count("save-surfs")) { saveSurfs = true; }
+	
+	if(vm.count("SFD-prior")) { SFDPrior = true; }
+	
 	// Convert error floor to mags
 	err_floor /= 1000.;
 	
@@ -191,7 +206,7 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 	
-	if(120 % N_regions != 0) {
+	if((N_clouds == 0) && (120 % N_regions != 0)) {
 		cout << "# of regions in extinction profile must divide 120 without remainder." << endl;
 		return -1;
 	}
@@ -249,24 +264,37 @@ int main(int argc, char **argv) {
 		
 		// Prepare data structures for stellar parameters
 		TImgStack img_stack(stellar_data.star.size());
-		std::vector<bool> conv;
-		std::vector<double> lnZ;
+		vector<bool> conv;
+		vector<double> lnZ;
 		
 		if(synthetic) {
 			sample_indiv_synth(output_fname, star_options, los_model, *synthlib, ext_model,
-			                   stellar_data, img_stack, conv, lnZ, sigma_RV);
+			                   stellar_data, img_stack, conv, lnZ, sigma_RV, saveSurfs);
 		} else {
 			sample_indiv_emp(output_fname, star_options, los_model, *emplib, ext_model,
-			                 stellar_data, img_stack, conv, lnZ, sigma_RV);
+			                 stellar_data, img_stack, conv, lnZ, sigma_RV, saveSurfs);
 		}
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);
 		
-		// TODO: Filter based on lnZ as well
+		// Filter based on convergence and lnZ
+		assert(conv.size() == lnZ.size());
+		vector<bool> keep;
+		double lnZmax = *max_element(lnZ.begin(), lnZ.end());
+		bool tmpFilter;
+		size_t nFiltered = 0;
+		for(size_t n=0; n<conv.size(); n++) {
+			tmpFilter = conv[n] && (lnZmax - lnZ[n] < evCut);
+			keep.push_back(tmpFilter);
+			if(tmpFilter) { nFiltered++; }
+		}
+		img_stack.cull(keep);
+		cerr << "# of elements filtered: " << nFiltered << " of " << conv.size();
+		cerr << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
 		
 		// Fit line-of-sight extinction profile
-		img_stack.cull(conv);
-		double EBV_max = stellar_data.EBV;
+		double EBV_max = -1.;
+		if(SFDPrior) { EBV_max = stellar_data.EBV; }
 		if(N_clouds != 0) {
 			sample_los_extinction_clouds(output_fname, los_options, img_stack, N_clouds, 1.e-15, EBV_max, *it);
 		} else {

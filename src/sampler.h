@@ -112,12 +112,12 @@ void sample_model_affine_synth(TGalacticLOSModel& galactic_model, TSyntheticStel
 void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                         TSyntheticStellarModel& stellar_model,TExtinctionModel& extinction_model, TStellarData& stellar_data,
                         TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                        double EBV_SFD, double RV_sigma=-1.);
+                        double EBV_SFD, double RV_sigma=-1., bool saveSurfs=false);
 
 void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                       TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                      double EBV_SFD, double RV_sigma=-1.);
+                      double EBV_SFD, double RV_sigma=-1., bool saveSurfs=false);
 
 // Auxiliary functions
 void seed_gsl_rng(gsl_rng **r);
