@@ -286,10 +286,10 @@ int main(int argc, char **argv) {
 		for(size_t n=0; n<conv.size(); n++) {
 			tmpFilter = conv[n] && (lnZmax - lnZ[n] < evCut);
 			keep.push_back(tmpFilter);
-			if(tmpFilter) { nFiltered++; }
+			if(!tmpFilter) { nFiltered++; }
 		}
 		img_stack.cull(keep);
-		cerr << "# of elements filtered: " << nFiltered << " of " << conv.size();
+		cerr << "# of stars filtered: " << nFiltered << " of " << conv.size();
 		cerr << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
 		
 		// Fit line-of-sight extinction profile

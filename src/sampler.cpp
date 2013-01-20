@@ -675,7 +675,8 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		
 		// Compute evidence
 		TChain chain = sampler.get_chain();
-		double lnZ_tmp = chain.get_ln_Z_harmonic(true, 10., 0.05, 0.02);
+		double lnZ_tmp = chain.get_ln_Z_harmonic(true, 10., 0.25, 0.05);
+		if(isinf(lnZ_tmp)) { lnZ_tmp = -std::numeric_limits<double>::infinity(); }
 		
 		// Save thinned chain
 		chainBuffer.add(chain, converged, lnZ_tmp);
@@ -819,7 +820,8 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		
 		// Compute evidence
 		TChain chain = sampler.get_chain();
-		double lnZ_tmp = chain.get_ln_Z_harmonic(true, 10., 0.05, 0.02);
+		double lnZ_tmp = chain.get_ln_Z_harmonic(true, 10., 0.25, 0.05);
+		if(isinf(lnZ_tmp)) { lnZ_tmp = -std::numeric_limits<double>::infinity(); }
 		
 		// Save thinned chain
 		chainBuffer.add(chain, converged, lnZ_tmp);
