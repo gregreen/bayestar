@@ -53,11 +53,38 @@ def getClouds(fname):
 	DeltaLnEBV = np.zeros(shape, dtype='f8')
 	for i,pixIdx in enumerate(pixels):
 		group = f['pixel %d/clouds' % pixIdx]
-		DeltaMu[i] = group[0, :, 1:nClouds+1]
-		DeltaLnEBV[i] = group[0, :, nClouds+1:]
+		try:
+			DeltaMu[i] = group[0, :, 1:nClouds+1]
+			DeltaLnEBV[i] = group[0, :, nClouds+1:]
+		except:
+			DeltaMu[i] = 0
+			DeltaLnEBV[i] = np.nan
 	
 	muAnchor = np.cumsum(DeltaMu, axis=2)
 	DeltaEBV = np.exp(DeltaLnEBV)
+	
+	return pixels, muAnchor, DeltaEBV
+
+def getCloudsFromMultiple(fnames):
+	partial = []
+	nPixels = 0
+	for fname in fnames:
+		partial.append( getClouds(fname) )
+		nPixels += len(partial[-1][1])
+	tmp, nSamples, nClouds = partial[0][1].shape
+	
+	pixels = np.empty(nPixels, dtype='u4')
+	shape = (nPixels, nSamples, nClouds)
+	muAnchor = np.empty(shape, dtype='f8')
+	DeltaEBV = np.empty(shape, dtype='f8')
+	
+	startIdx = 0
+	for i,part in enumerate(partial):
+		endIdx = startIdx + len(part[1])
+		pixels[startIdx:endIdx] = part[0][:]
+		muAnchor[startIdx:endIdx] = part[1][:]
+		DeltaEBV[startIdx:endIdx] = part[2][:]
+		startIdx += len(part[1])
 	
 	return pixels, muAnchor, DeltaEBV
 
@@ -65,20 +92,19 @@ def calcEBV(muAnchor, DeltaEBV, mu):
 	foreground = (muAnchor < mu)
 	return np.cumsum(foreground * DeltaEBV, axis=2)[:,:,-1]
 
-def rasterizeMap(pixels, EBV, nside=512, nest=True):
+def rasterizeMap(pixels, EBV, nside=512, nest=True, oversample=4):
 	# Determine pixel centers and bounds
 	pixels = np.array(pixels)
 	theta, phi = hp.pix2ang(nside, pixels, nest=nest)
 	lCenter, bCenter = 180./np.pi * phi, 90. - 180./np.pi * theta
 	
-	pixLength = np.sqrt( hp.nside2pixarea(nside, degrees=False) )
+	pixLength = np.sqrt( hp.nside2pixarea(nside, degrees=True) )
 	lMin, lMax = np.min(lCenter)-pixLength/2., np.max(lCenter)+pixLength/2.
 	bMin, bMax = np.min(bCenter)-pixLength/2., np.max(bCenter)+pixLength/2.
 	
 	# Set resolution of image
-	xSize = int( 3. * (lMax - lMin) / pixLength )
-	ySize = int( 3. * (bMax - bMin) / pixLength )
-	print xSize, ySize
+	xSize = int( oversample * (lMax - lMin) / pixLength )
+	ySize = int( oversample * (bMax - bMin) / pixLength )
 	
 	# Make grid of pixels to plot
 	l, b = np.mgrid[0:xSize, 0:ySize].astype(np.float32) + 0.5
@@ -115,9 +141,7 @@ def plotEBV(pixels, muAnchor, DeltaEBV, mu, nside=512, nest=True, **kwargs):
 	# Generate rasterized image of E(B-V)
 	EBV = calcEBV(muAnchor, DeltaEBV, mu)
 	EBV = np.mean(EBV, axis=1)
-	print EBV
 	img, bounds = rasterizeMap(pixels, EBV, nside, nest)
-	print img
 	
 	# Configure plotting options
 	if 'vmin' not in kwargs:
@@ -147,8 +171,8 @@ def plotEBV(pixels, muAnchor, DeltaEBV, mu, nside=512, nest=True, **kwargs):
 
 
 def main():
-	fname = '../output/MonR2.h5'
-	pixels, muAnchor, DeltaEBV = getClouds(fname)
+	fnames = ['../output/MonR2.00000.h5', '../output/MonR2.00001.h5']
+	pixels, muAnchor, DeltaEBV = getCloudsFromMultiple(fnames)
 	
 	'''
 	nMu = 100
@@ -181,7 +205,10 @@ def main():
 	mplib.rc('ytick', direction='out')
 	mplib.rc('axes', grid=False)
 	
-	plotEBV(pixels, muAnchor, DeltaEBV, 9.)
+	plotEBV(pixels, muAnchor, DeltaEBV, 7., vmin=0., vmax=1.)
+	plotEBV(pixels, muAnchor, DeltaEBV, 9., vmin=0., vmax=1.)
+	plotEBV(pixels, muAnchor, DeltaEBV, 10., vmin=0., vmax=1.)
+	plotEBV(pixels, muAnchor, DeltaEBV, 12., vmin=0., vmax=1.)
 	plt.show()
 	
 	return 0
