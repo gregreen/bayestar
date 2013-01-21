@@ -37,7 +37,7 @@ using namespace std;
 
 
 void mock_test() {
-	size_t nstars = 200;
+	size_t nstars = 2;
 	unsigned int N_regions = 20;
 	double RV = 3.1;
 	double l = 90.;
@@ -72,7 +72,7 @@ void mock_test() {
 	std::string out_fname = "emp_out.h5";
 	remove(out_fname.c_str());
 	TMCMCOptions star_options(500, 20, 0.2, 4);
-	sample_indiv_emp(out_fname, star_options, los_model, emplib, ext_model, stellar_data, img_stack, conv, lnZ, 5.);
+	sample_indiv_emp(out_fname, star_options, los_model, emplib, ext_model, stellar_data, img_stack, conv, lnZ);
 	
 	// Fit line-of-sight extinction profile
 	img_stack.cull(conv);

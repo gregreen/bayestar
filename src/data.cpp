@@ -43,6 +43,7 @@ TStellarData::TStellarData(uint64_t _healpix_index, uint32_t _nside, bool _neste
 	nested = _nested;
 	l = _l;
 	b = _b;
+	EBV = -1.;
 }
 
 
@@ -145,7 +146,7 @@ bool TStellarData::save(const std::string& fname, const std::string& group, cons
 	
 	file->close();
 	
-	delete data;
+	delete[] data;
 	delete gp;
 	delete file;
 	
@@ -246,7 +247,7 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	att.read(att_dtype, reinterpret_cast<void*>(&EBV));
 	
-	delete data_buf;
+	delete[] data_buf;
 	delete gp;
 	delete file;
 	
