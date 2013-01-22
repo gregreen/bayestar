@@ -247,7 +247,7 @@ def main():
 		outarr['err'][:] = obj['err'][:]
 		outarr['maglimit'][:] = obj['maglimit'][:]
 		outarr['nDet'][:] = obj['nmag_ok'][:]
-		EBV = np.median(obj['EBV'])
+		EBV = np.percentile(obj['EBV'][:], 95.)
 		
 		# Open output file
 		if f == None:

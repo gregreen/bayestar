@@ -123,11 +123,15 @@ int main(int argc, char **argv) {
 	double star_p_replacement = 0.2;
 	double sigma_RV = -1.;
 	
-	unsigned int N_clouds = 0;
 	unsigned int N_regions = 20;
 	unsigned int los_steps = 400;
 	unsigned int los_samplers = 20;
 	double los_p_replacement = 0.2;
+	
+	unsigned int N_clouds = 3;
+	unsigned int cloud_steps = 500;
+	unsigned int cloud_samplers = 80;
+	double cloud_p_replacement = 0.2;
 	
 	bool SFDPrior = false;
 	double evCut = 30.;
@@ -164,6 +168,9 @@ int main(int argc, char **argv) {
 		("clouds", po::value<unsigned int>(&N_clouds), "# of clouds along the line of sight (default: 0).\n"
 		                                               "Setting this option causes the sampler to use a discrete\n"
 		                                               "cloud model for the l.o.s. extinction profile.")
+		("cloud-steps", po::value<unsigned int>(&cloud_steps), "# of MCMC steps in cloud fit (per sampler)")
+		("cloud-samplers", po::value<unsigned int>(&cloud_samplers), "# of samplers per dimension (cloud fit)")
+		("cloud-p-replacement", po::value<double>(&cloud_p_replacement), "Probability of taking replacement step (cloud fit)")
 		
 		("SFD-prior", "Use SFD E(B-V) as a prior on the total extinction in each pixel.")
 		("evidence-cut", po::value<double>(&evCut), "Delta lnZ to use as threshold for including star\n"
@@ -183,10 +190,12 @@ int main(int argc, char **argv) {
 	
 	if(vm.count("synthetic")) { synthetic = true; }
 	
+	/*
 	if((N_clouds != 0) && vm.count("regions")) {
 		cout << "'--clouds' is incompatible with '--regions' argument. Choose one or the other." << endl;
 		return -1;
 	}
+	*/
 	
 	if(vm.count("save-surfs")) { saveSurfs = true; }
 	
@@ -206,7 +215,7 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 	
-	if((N_clouds == 0) && (120 % N_regions != 0)) {
+	if(120 % N_regions != 0) {
 		cout << "# of regions in extinction profile must divide 120 without remainder." << endl;
 		return -1;
 	}
@@ -217,6 +226,7 @@ int main(int argc, char **argv) {
 	 */
 	
 	TMCMCOptions star_options(star_steps, star_samplers, star_p_replacement, N_threads);
+	TMCMCOptions cloud_options(cloud_steps, cloud_samplers, cloud_p_replacement, N_threads);
 	TMCMCOptions los_options(los_steps, los_samplers, los_p_replacement, N_threads);
 	
 	
@@ -296,8 +306,9 @@ int main(int argc, char **argv) {
 		double EBV_max = -1.;
 		if(SFDPrior) { EBV_max = stellar_data.EBV; }
 		if(N_clouds != 0) {
-			sample_los_extinction_clouds(output_fname, los_options, img_stack, N_clouds, 1.e-15, EBV_max, *it);
-		} else {
+			sample_los_extinction_clouds(output_fname, cloud_options, img_stack, N_clouds, 1.e-15, EBV_max, *it);
+		}
+		if(N_regions != 0) {
 			sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-15, EBV_max, *it);
 		}
 		
