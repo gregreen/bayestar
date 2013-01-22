@@ -147,6 +147,8 @@ def main():
 	                    help='Use healpix ring ordering scheme (default: nested).')
 	parser.add_argument('-vis', '--visualize', action='store_true',
 	                    help='Show number of stars in each pixel when query is done')
+	parser.add_argument('--n-bands', type=int, default=4
+	                    help='Min. # of passbands with detection.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -193,9 +195,9 @@ def main():
 		query = ("select obj_id, equgal(ra, dec) as (l, b), mean, err, "
 		         "mean_ap, nmag_ok, maglimit, SFD.EBV(l, b) as EBV "
 		         "from ucal_magsqw_noref_maglimit "
-		         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
-		         "& (nmag_ok[:,0] > 0) & "
-		         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2)")
+		         "where (numpy.sum(nmag_ok > 0, axis=1) >= %d) "
+		         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= %d)"
+		         % (values.n_bands, values.n_bands))
 	
 	query = db.query(query)
 	
@@ -239,7 +241,8 @@ def main():
 		                                   ('l','f8'), ('b','f8'), 
 		                                   ('mag','f4',5), ('err','f4',5),
 		                                   ('maglimit','f4',5),
-		                                   ('nDet','u4',5)])
+		                                   ('nDet','u4',5),
+		                                   ('EBV','f4')])
 		outarr['obj_id'][:] = obj['obj_id'][:]
 		outarr['l'][:] = obj['l'][:]
 		outarr['b'][:] = obj['b'][:]
@@ -247,6 +250,7 @@ def main():
 		outarr['err'][:] = obj['err'][:]
 		outarr['maglimit'][:] = obj['maglimit'][:]
 		outarr['nDet'][:] = obj['nmag_ok'][:]
+		outarr['EBV'][:] = obj['EBV'][:]
 		EBV = np.percentile(obj['EBV'][:], 95.)
 		
 		# Open output file

@@ -137,6 +137,7 @@ int main(int argc, char **argv) {
 	double evCut = 30.;
 	
 	unsigned int N_threads = 4;
+	bool verbose = false;
 	
 	
 	/*
@@ -177,6 +178,8 @@ int main(int argc, char **argv) {
 		                                            "in l.o.s. fit (default: 30).")
 		
 		("threads", po::value<unsigned int>(&N_threads), "# of threads to run on (default: 4)")
+		
+		("verbose", "Enable verbose output.")
 	;
 	po::positional_options_description pd;
 	pd.add("input", 1).add("output", 1);
@@ -189,34 +192,25 @@ int main(int argc, char **argv) {
 	if(vm.count("version")) { cout << "git commit " << GIT_BUILD_VERSION << endl; return 0; }
 	
 	if(vm.count("synthetic")) { synthetic = true; }
-	
-	/*
-	if((N_clouds != 0) && vm.count("regions")) {
-		cout << "'--clouds' is incompatible with '--regions' argument. Choose one or the other." << endl;
-		return -1;
-	}
-	*/
-	
 	if(vm.count("save-surfs")) { saveSurfs = true; }
-	
 	if(vm.count("SFD-prior")) { SFDPrior = true; }
 	
 	// Convert error floor to mags
 	err_floor /= 1000.;
 	
 	if(input_fname == "NONE") {
-		cout << "Input filename required." << endl << endl;
-		cout << desc << endl;
+		cerr << "Input filename required." << endl << endl;
+		cerr << desc << endl;
 		return -1;
 	}
 	if(output_fname == "NONE") {
-		cout << "Output filename required." << endl << endl;
-		cout << desc << endl;
+		cerr << "Output filename required." << endl << endl;
+		cerr << desc << endl;
 		return -1;
 	}
 	
 	if(120 % N_regions != 0) {
-		cout << "# of regions in extinction profile must divide 120 without remainder." << endl;
+		cerr << "# of regions in extinction profile must divide 120 without remainder." << endl;
 		return -1;
 	}
 	
