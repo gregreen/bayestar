@@ -192,7 +192,7 @@ def main():
 	else:
 		query = ("select obj_id, equgal(ra, dec) as (l, b), mean, err, "
 		         "mean_ap, nmag_ok, maglimit, SFD.EBV(l, b) as EBV "
-		         "from ucal_magsqw_noref "
+		         "from ucal_magsqw_noref_maglimit "
 		         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
 		         "& (nmag_ok[:,0] > 0) & "
 		         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2)")

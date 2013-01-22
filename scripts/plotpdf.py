@@ -146,8 +146,9 @@ def main():
 		del pdf
 		
 		# Normalize peak to unity at each distance
-		norm = 1. / np.max(pdf_stack, axis=1)
-		pdf_stack = np.einsum('ij,i->ij', pdf_stack, norm)
+		pdf_stack /= np.max(pdf_stack)
+		#norm = 1. / np.max(pdf_stack, axis=1)
+		#pdf_stack = np.einsum('ij,i->ij', pdf_stack, norm)
 		
 		# Determine maximum E(B-V)
 		w_y = np.mean(pdf_stack, axis=0)
