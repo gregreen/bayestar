@@ -27,6 +27,7 @@ import numpy as np
 import matplotlib as mplib
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
+from mpl_toolkits.axes_grid1 import ImageGrid
 
 import healpy as hp
 import h5py
@@ -137,10 +138,10 @@ def rasterizeMap(pixels, EBV, nside=512, nest=True, oversample=4):
 	bounds = (lMin, lMax, bMin, bMax)
 	return img, bounds
 
-def plotEBV(pixels, muAnchor, DeltaEBV, mu, nside=512, nest=True, **kwargs):
+def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu, nside=512, nest=True, **kwargs):
 	# Generate rasterized image of E(B-V)
 	EBV = calcEBV(muAnchor, DeltaEBV, mu)
-	EBV = np.mean(EBV, axis=1)
+	EBV = np.median(EBV, axis=1) #np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1) #np.mean(EBV, axis=1)
 	img, bounds = rasterizeMap(pixels, EBV, nside, nest)
 	
 	# Configure plotting options
@@ -158,33 +159,21 @@ def plotEBV(pixels, muAnchor, DeltaEBV, mu, nside=512, nest=True, **kwargs):
 	kwargs['extent'] = bounds
 	
 	# Plot
-	fig = plt.figure(figsize=(5., 5.), dpi=150)
-	ax = fig.add_subplot(1,1,1)
 	ax.imshow(img.T, **kwargs)
-	
-	ax.set_xlabel(r'$\ell$', fontsize=16)
-	ax.set_ylabel(r'$b$', fontsize=16)
-	ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
-	ax.xaxis.set_minor_locator(AutoMinorLocator())
-	ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
-	ax.yaxis.set_minor_locator(AutoMinorLocator())
 
 
 def main():
-	fnames = ['../output/MonR2.00000.h5', '../output/MonR2.00001.h5']
+	fnames = ['/n/wise/ggreen/bayestar/output/MonR2.0000%d.h5' % i for i in xrange(5)]
 	pixels, muAnchor, DeltaEBV = getCloudsFromMultiple(fnames)
 	
 	'''
 	nMu = 100
 	xRange = np.linspace(5., 15., nMu)
 	yRange = np.empty(nMu, dtype='f8')
-	yErr = np.empty(nMu, dtype='f8')
-	y10 = np.empty(nMu, dtype='f8')
-	y90 = np.empty(nMu, dtype='f8')
 	yPctile = np.empty((4, nMu), dtype='f8')
 	pctile = [5., 25., 75., 95.]
 	for i,x in enumerate(xRange):
-		tmpEBV = calcEBV(muAnchor, DeltaEBV, x)
+		tmpEBV = calcEBV(muAnchor, DeltaEBV, x)[1]
 		yRange[i] = np.mean(tmpEBV)
 		yPctile[:,i] = np.percentile(tmpEBV, pctile)
 	
@@ -205,10 +194,23 @@ def main():
 	mplib.rc('ytick', direction='out')
 	mplib.rc('axes', grid=False)
 	
-	plotEBV(pixels, muAnchor, DeltaEBV, 7., vmin=0., vmax=1.)
-	plotEBV(pixels, muAnchor, DeltaEBV, 9., vmin=0., vmax=1.)
-	plotEBV(pixels, muAnchor, DeltaEBV, 10., vmin=0., vmax=1.)
-	plotEBV(pixels, muAnchor, DeltaEBV, 12., vmin=0., vmax=1.)
+	fig = plt.figure(figsize=(7., 7.), dpi=150)
+	grid = ImageGrid(fig, 111, nrows_ncols=(3, 3), axes_pad=0.05)
+	
+	mu = np.linspace(5., 11., 9)
+	print mu
+	for i in xrange(9):
+		ax = grid[i]
+		plotEBV(ax, pixels, muAnchor, DeltaEBV, mu[i], vmin=0., vmax=1.)
+	
+	#ax.set_xlabel(r'$\ell$', fontsize=16)
+	#ax.set_ylabel(r'$b$', fontsize=16)
+	
+	#ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
+	#ax.xaxis.set_minor_locator(AutoMinorLocator())
+	#ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+	#ax.yaxis.set_minor_locator(AutoMinorLocator())
+	
 	plt.show()
 	
 	return 0
