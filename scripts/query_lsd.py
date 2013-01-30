@@ -147,13 +147,19 @@ def main():
 	                    help='Use healpix ring ordering scheme (default: nested).')
 	parser.add_argument('-vis', '--visualize', action='store_true',
 	                    help='Show number of stars in each pixel when query is done')
-	parser.add_argument('--n-bands', type=int, default=4
+	parser.add_argument('--n-bands', type=int, default=4,
 	                    help='Min. # of passbands with detection.')
+	parser.add_argument('--n-det', type=int, default=4,
+	                    help='Min. # of detections.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
 		offset = 1
 	values = parser.parse_args(sys.argv[offset:])
+	
+	nPointlike = values.n_bands - 1
+	if nPointlike == 0:
+		nPointlike = 1
 	
 	# Determine the query bounds
 	query_bounds = None
@@ -194,10 +200,12 @@ def main():
 	else:
 		query = ("select obj_id, equgal(ra, dec) as (l, b), mean, err, "
 		         "mean_ap, nmag_ok, maglimit, SFD.EBV(l, b) as EBV "
-		         "from ucal_magsqw_noref_maglimit "
+		         "from ucal_magsqw_noref_maglim "
 		         "where (numpy.sum(nmag_ok > 0, axis=1) >= %d) "
-		         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= %d)"
-		         % (values.n_bands, values.n_bands))
+		         "& (numpy.sum(nmag_ok, axis=1) >= %d) "
+		         "& (numpy.sum(mean - mean_ap < 0.1, axis=1) >= %d)"
+		         % (values.n_bands, values.n_det, nPointlike))
+		         #)
 	
 	query = db.query(query)
 	
