@@ -209,9 +209,11 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 	
-	if(120 % N_regions != 0) {
-		cerr << "# of regions in extinction profile must divide 120 without remainder." << endl;
-		return -1;
+	if(N_regions != 0) {
+		if(120 % N_regions != 0) {
+			cerr << "# of regions in extinction profile must divide 120 without remainder." << endl;
+			return -1;
+		}
 	}
 	
 	

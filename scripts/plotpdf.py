@@ -71,7 +71,6 @@ def clouds2ax(ax, fname, group, *args, **kwargs):
 	
 	# Plot all paths
 	N_clouds = chain.get_nDim() / 2
-	print N_clouds
 	N_paths = chain.get_nSamples()
 	mu_tmp = np.cumsum(chain.get_samples(0)[:,:N_clouds], axis=1)
 	EBV_tmp = np.cumsum(np.exp(chain.get_samples(0)[:,N_clouds:]), axis=1)
@@ -143,10 +142,19 @@ def main():
 		dset = '%s/stellar pdfs' % group
 		pdf = hdf5io.TProbSurf(fname, dset)
 		pdf_stack = np.sum(pdf.get_p(), axis=0)
-		del pdf
+		#pdf_stack = pdf.get_p()[1,:,:]
+		#del pdf
 		
 		# Normalize peak to unity at each distance
 		pdf_stack /= np.max(pdf_stack)
+		#print 'shape = %d x %d' % (pdf_stack.shape[0], pdf_stack.shape[1])
+		norm = 1. / np.max(pdf_stack, axis=1)
+		norm[np.isinf(norm)] = 0.
+		#norm.shape = (norm.size, 1)
+		#norm = np.repeat(norm, pdf_stack.shape[1], axis=1)
+		#pdf_stack *= norm
+		#print norm
+		pdf_stack = np.einsum('ij,i->ij', pdf_stack, norm)
 		#norm = 1. / np.max(pdf_stack, axis=1)
 		#pdf_stack = np.einsum('ij,i->ij', pdf_stack, norm)
 		
