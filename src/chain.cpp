@@ -732,8 +732,8 @@ void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsig
 	if((sigma1 >= 0.) && (sigma2 >= 0.)) {
 		double s1 = sigma1 / grid.dx[0];
 		double s2 = sigma2 / grid.dx[1];
-		std::cout << "dx = (" << grid.dx[0] << ", " << grid.dx[1] << ")" << std::endl;
-		std::cout << "s = (" << s1 << ", " << s2 << ")" << std::endl;
+		//std::cout << "dx = (" << grid.dx[0] << ", " << grid.dx[1] << ")" << std::endl;
+		//std::cout << "s = (" << s1 << ", " << s2 << ")" << std::endl;
 		
 		int w1 = 2*ceil(nsigma*s1)+1;
 		int w2 = 2*ceil(nsigma*s2)+1;
