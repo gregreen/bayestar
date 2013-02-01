@@ -304,9 +304,10 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 		}
 		tmp_index = sorted_indices[i].index;
 		tmp_invL = w[tmp_index] / exp(L[tmp_index] - L_0);
-		if(isnan(tmp_invL)) {
-			std::cout << "\t\tL, L_0 = " << L[tmp_index] << ", " << L_0 << std::endl;
-		}
+		//std::cout << w[tmp_index] << ", " << L[tmp_index] << std::endl;
+		//if(isnan(tmp_invL)) {
+		//	std::cout << "\t\tL, L_0 = " << L[tmp_index] << ", " << L_0 << std::endl;
+		//}
 		if((tmp_invL + sum_invL > 1.e100) && (i != 0)) {
 			nsigma = sqrt(sorted_indices[i-1].dist2);
 			break;
@@ -731,10 +732,13 @@ void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsig
 	if((sigma1 >= 0.) && (sigma2 >= 0.)) {
 		double s1 = sigma1 / grid.dx[0];
 		double s2 = sigma2 / grid.dx[1];
+		std::cout << "dx = (" << grid.dx[0] << ", " << grid.dx[1] << ")" << std::endl;
+		std::cout << "s = (" << s1 << ", " << s2 << ")" << std::endl;
+		
 		int w1 = 2*ceil(nsigma*s1)+1;
 		int w2 = 2*ceil(nsigma*s2)+1;
 		
-		cv::GaussianBlur(mat, mat, cv::Size(w1,w2), s1, s2, cv::BORDER_REPLICATE);
+		cv::GaussianBlur(mat, mat, cv::Size(w2,w1), s2, s1, cv::BORDER_REPLICATE);
 	}
 }
 

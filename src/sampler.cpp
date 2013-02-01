@@ -106,9 +106,12 @@ double logP_single_star_synth(const double *x, double EBV, double RV,
 	double logL = 0.;
 	double tmp;
 	for(unsigned int i=0; i<NBANDS; i++) {
-		tmp = d.m[i] - x[_DM] - EBV * ext_model.get_A(RV, i);	// De-reddened absolute magnitude
-		tmp = (tmp_sed->absmag[i] - tmp) / d.err[i];
-		logL -= 0.5*tmp*tmp;
+		if(d.err[i] < 1.e9) {
+			tmp = tmp_sed->absmag[i] + x[_DM] + EBV * ext_model.get_A(RV, i);	// Model apparent magnitude
+			logL += log( 0.5 - 0.5 * erf((tmp - d.maglimit[i] + 0.5) / 0.25) );	// Completeness fraction
+			tmp = (d.m[i] - tmp) / d.err[i];
+			logL -= 0.5*tmp*tmp;
+		}
 	}
 	logP += logL - d.lnL_norm;
 	
@@ -152,9 +155,13 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 	double logL = 0.;
 	double tmp;
 	for(unsigned int i=0; i<NBANDS; i++) {
-		tmp = d.m[i] - x[_DM] - EBV * ext_model.get_A(RV, i);	// De-reddened absolute magnitude
-		tmp = (tmp_sed->absmag[i] - tmp) / d.err[i];
-		logL -= 0.5*tmp*tmp;
+		if(d.err[i] < 1.e9) {
+			tmp = tmp_sed->absmag[i] + x[_DM] + EBV * ext_model.get_A(RV, i);	// Model apparent magnitude
+			logL += log( 0.5 - 0.5 * erf((tmp - d.maglimit[i] + 0.5) / 0.25) );	// Completeness fraction
+			//std::cout << tmp << ", " << d.maglimit[i] << std::endl;
+			tmp = (d.m[i] - tmp) / d.err[i];
+			logL -= 0.5*tmp*tmp;
+		}
 	}
 	logP += logL - d.lnL_norm;
 	
@@ -784,6 +791,11 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		for(unsigned int i=0; i<NBANDS; i++) {
 			std::cout << std::setprecision(3) << params.data->star[n].err[i] << " ";
 		}
+		std::cout << std::endl;
+		std::cout << "maglimit = ";
+		for(unsigned int i=0; i<NBANDS; i++) {
+			std::cout << std::setprecision(3) << params.data->star[n].maglimit[i] << " ";
+		}
 		std::cout << std::endl << std::endl;
 		
 		
@@ -827,7 +839,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		chainBuffer.add(chain, converged, lnZ_tmp);
 		
 		// Save binned p(DM, EBV) surface
-		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 500.);
+		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 500.);	// TODO: Fix smoothing scales
 		if(saveSurfs) { imgBuffer->add(*(img_stack.img[n])); }
 		
 		lnZ.push_back(lnZ_tmp);

@@ -86,6 +86,7 @@ bool TStellarData::save(const std::string& fname, const std::string& group, cons
 	dtype.insertMember("err", HOFFSET(TFileData, err), f4arr);
 	dtype.insertMember("maglimit", HOFFSET(TFileData, maglimit), f4arr);
 	dtype.insertMember("nDet", HOFFSET(TFileData, N_det), u4arr);
+	dtype.insertMember("EBV", HOFFSET(TFileData, EBV), H5::PredType::NATIVE_FLOAT);
 	
 	// Dataspace
 	hsize_t dim = nstars;
@@ -110,6 +111,7 @@ bool TStellarData::save(const std::string& fname, const std::string& group, cons
 			data[i].err[k] = star[i].err[k];
 			data[i].maglimit[k] = star[i].maglimit[k];
 		}
+		data[i].EBV = star[i].EBV;
 	}
 	dataset.write(data, dtype);
 	
@@ -168,6 +170,7 @@ void TStellarData::TMagnitudes::set(const TStellarData::TFileData& dat, double e
 		}
 		N_det[i] = dat.N_det[i];
 	}
+	EBV = dat.EBV;
 }
 
 
@@ -199,6 +202,7 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	dtype.insertMember("err", HOFFSET(TFileData, err), f4arr);
 	dtype.insertMember("maglimit", HOFFSET(TFileData, maglimit), f4arr);
 	dtype.insertMember("nDet", HOFFSET(TFileData, N_det), u4arr);
+	dtype.insertMember("EBV", HOFFSET(TFileData, EBV), H5::PredType::NATIVE_FLOAT);
 	
 	// Dataspace
 	hsize_t length;
@@ -210,6 +214,28 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	dataset.read(data_buf, dtype);
 	std::cerr << "# Read in dimensions." << std::endl;
 	
+	// Fix magnitude limits
+	for(int n=0; n<nbands; n++) {
+		float tmp;
+		std::vector<float> maglimit;
+		for(hsize_t i=0; i<length; i++) {
+			tmp = data_buf[i].maglimit[n];
+			if((tmp > 10.) && (tmp < 30.)) {
+				maglimit.push_back(tmp);
+			}
+		}
+		std::sort(maglimit.begin(), maglimit.end());
+		if(maglimit.size() != 0) {
+			size_t medIdx = maglimit.size() / 2;
+			tmp = maglimit[medIdx];
+		} else {
+			tmp = 23.;
+		}
+		for(hsize_t i=0; i<length; i++) {
+			data_buf[i].maglimit[n] = tmp;
+		}
+	}
+	
 	TMagnitudes mag_tmp;
 	for(size_t i=0; i<length; i++) {
 		mag_tmp.set(data_buf[i], err_floor);
@@ -219,9 +245,6 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	/*
 	 *  Attributes
 	 */
-	
-	//hsize_t dim = 1;
-	//H5::DataSpace att_dspace(1, &dim);
 	
 	H5::Attribute att = dataset.openAttribute("healpix_index");
 	H5::DataType att_dtype = H5::PredType::NATIVE_UINT64;

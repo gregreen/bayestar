@@ -196,7 +196,7 @@ def main():
 		         "mean_ap, nmag_ok, maglimit, SFD.EBV(l, b) as EBV "
 		         "from ucal_magsqw_noref_maglimit "
 		         "where (numpy.sum(nmag_ok > 0, axis=1) >= %d) "
-		         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= %d)"
+		         "(numpy.sum(mean - mean_ap < 0.2, axis=1) >= %d)"
 		         % (values.n_bands, values.n_bands))
 	
 	query = db.query(query)

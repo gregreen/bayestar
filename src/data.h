@@ -35,6 +35,7 @@
 #include <iomanip>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
 
 //#define __STDC_LIMIT_MACROS
 #include <stdint.h>
@@ -57,6 +58,7 @@ struct TStellarData {
 		float err[NBANDS];
 		float maglimit[NBANDS];
 		uint32_t N_det[NBANDS];
+		float EBV;
 	};
 	
 	struct TMagnitudes {
@@ -66,6 +68,7 @@ struct TStellarData {
 		double err[NBANDS];
 		double maglimit[NBANDS];
 		unsigned int N_det[NBANDS];
+		double EBV;
 		double lnL_norm;
 		
 		TMagnitudes() {}
@@ -75,11 +78,12 @@ struct TStellarData {
 			for(unsigned int i=0; i<NBANDS; i++) {
 				m[i] = _m[i];
 				err[i] = _err[i];
-				maglimit[i] = 0.;	// TODO
+				maglimit[i] = 22.;
 				if(err[i] < 9.e9) {	// Ignore missing bands (otherwise, they affect evidence)
 					lnL_norm += 0.9189385332 + log(err[i]);
 				}
 			}
+			EBV = 1.;
 		}
 		
 		TMagnitudes& operator=(const TMagnitudes& rhs) {
@@ -93,6 +97,7 @@ struct TStellarData {
 				N_det[i] = rhs.N_det[i];
 			}
 			lnL_norm = rhs.lnL_norm;
+			EBV = rhs.EBV;
 			return *this;
 		}
 		
@@ -116,91 +121,6 @@ struct TStellarData {
 	// Read/write stellar photometry from/to HDF5 files
 	bool save(const std::string& fname, const std::string& group, const std::string& dset, int compression=9);
 	bool load(const std::string& fname, const std::string& group, const std::string& dset, double err_floor=0.02);
-	
-	// Load magnitudes and errors of stars along one line of sight, along with (l,b) for the given l.o.s. Same as load_data, but for binary files.
-	// Each binary file contains magnitudes and errors for stars along multiple lines of sight. The stars are grouped into lines of sight, called
-	// pixels. The file begins with the number of pixels:
-	//
-	// 	N_pixels (uint32)
-	// 
-	// Each pixel has the form
-	// 
-	// 	Header:
-	// 		healpix_index	(uint32)
-	// 		l_mean		(double)
-	// 		b_mean		(double)
-	// 		N_stars		(uint32)
-	// 	Data - For each star:
-	// 		obj_id		(uint64)
-	// 		l_star		(double)
-	// 		b_star		(double)
-	// 		mag[NBANDS]	(double)
-	// 		err[NBANDS]	(double)
-	// 
-	bool load_data(std::string infile, uint32_t pix_index, double err_floor=0.02) {
-		std::fstream f(infile.c_str(), std::ios::in | std::ios::binary);
-		if(!f) { f.close(); return false; }
-		
-		// Read in number of pixels (sets of stars) in file
-		uint32_t N_pix;
-		f.read(reinterpret_cast<char*>(&N_pix), sizeof(N_pix));
-		if(pix_index > N_pix) {
-			std::cerr << "Pixel requested (" << pix_index << ") greater than number of pixels in file (" << N_pix << ")." << std::endl;
-			f.close();
-			return false;
-		}
-		
-		// Seek to beginning of requested pixel
-		uint32_t N_stars, healpixnum;
-		for(uint32_t i=0; i<=pix_index; i++) {
-			f.read(reinterpret_cast<char*>(&healpixnum), sizeof(healpixnum));
-			f.read(reinterpret_cast<char*>(&l), sizeof(l));
-			f.read(reinterpret_cast<char*>(&b), sizeof(b));
-			f.read(reinterpret_cast<char*>(&N_stars), sizeof(N_stars));
-			if(i < pix_index) { f.seekg(N_stars * (3 + 2*NBANDS)*sizeof(double), std::ios::cur); }
-		}
-		
-		if(f.eof()) {
-			std::cerr << "End of file reached before requested pixel (" << pix_index << ") reached. File corrupted." << std::endl;
-			f.close();
-			return false;
-		}
-		
-		// Exit if N_stars is unrealistically large
-		if(N_stars > 1e7) {
-			std::cerr << "Error reading " << infile << ". Header absurdly indicates " << N_stars << " stars. Aborting attempt to read file." << std::endl;
-			f.close();
-			return false;
-		}
-		
-		// Read in each star
-		star.reserve(N_stars);
-		for(uint32_t i=0; i<N_stars; i++) {
-			TMagnitudes tmp;
-			f.read(reinterpret_cast<char*>(&(tmp.obj_id)), sizeof(uint64_t));
-			f.read(reinterpret_cast<char*>(&(tmp.l)), sizeof(double));
-			f.read(reinterpret_cast<char*>(&(tmp.b)), sizeof(double));
-			f.read(reinterpret_cast<char*>(&(tmp.m[0])), NBANDS*sizeof(double));
-			f.read(reinterpret_cast<char*>(&(tmp.err[0])), NBANDS*sizeof(double));
-			tmp.lnL_norm = 0.9189385332;
-			for(unsigned int i=0; i<NBANDS; i++) {
-				tmp.err[i] = sqrt(tmp.err[i]*tmp.err[i] + err_floor*err_floor);
-				tmp.lnL_norm += log(tmp.err[i]);
-			}
-			star.push_back(tmp);
-			
-			//for(unsigned int i=0; i<NBANDS; i++) { std::cout << tmp.m[i] << "\t"; }
-			//for(unsigned int i=0; i<NBANDS; i++) { std::cout << tmp.err[i] << "\t"; }
-			//std::cout << std::endl;
-		}
-		
-		if(f.fail()) { f.close(); return false; }
-		
-		std::cerr << "# Loaded " << N_stars << " stars from pixel " << pix_index << " of " << infile << "." << std::endl;
-		
-		f.close();
-		return true;
-	}
 };
 
 
