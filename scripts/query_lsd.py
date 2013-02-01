@@ -193,8 +193,8 @@ def main():
 			query = ("select obj_id, equgal(ra, dec) as (l, b), "
 			         "mean, err, mean_ap, nmag_ok from sdss, "
 			         "ucal_magsqw_noref(matchedto=sdss,nmax=1,dmax=5) "
-			         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
-			         "& (nmag_ok[:,0] > 0) & "
+			         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) & "
+			         "(nmag_ok[:,0] > 0) & "
 			         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2) & "
 			         "(type == 6) & (rExt <= %.4f)" % values.maxAr)
 	else:
@@ -202,10 +202,10 @@ def main():
 		         "mean_ap, nmag_ok, maglimit, SFD.EBV(l, b) as EBV "
 		         "from ucal_magsqw_noref_maglim "
 		         "where (numpy.sum(nmag_ok > 0, axis=1) >= %d) "
+		         "& (nmag_ok[:,0] > 0) "
 		         "& (numpy.sum(nmag_ok, axis=1) >= %d) "
 		         "& (numpy.sum(mean - mean_ap < 0.1, axis=1) >= %d)"
 		         % (values.n_bands, values.n_det, nPointlike))
-		         #)
 	
 	query = db.query(query)
 	
