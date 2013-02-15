@@ -37,7 +37,7 @@ using namespace std;
 
 
 void mock_test() {
-	size_t nstars = 2;
+	size_t nstars = 50;
 	unsigned int N_regions = 20;
 	double RV = 3.1;
 	double l = 90.;
@@ -61,8 +61,8 @@ void mock_test() {
 	std::string group = "photometry";
 	std::stringstream dset;
 	dset << "pixel " << healpix_index;
-	remove("mock.hdf5");
-	stellar_data.save("mock.hdf5", group, dset.str());
+	remove("mock.h5");
+	stellar_data.save("mock.h5", group, dset.str());
 	
 	// Prepare data structures for stellar parameters
 	TImgStack img_stack(stellar_data.star.size());

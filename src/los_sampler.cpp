@@ -308,6 +308,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	std::cout << "guess of EBV max = " << params.EBV_guess_max << std::endl;
 	
 	guess_EBV_profile(options, params, N_regions);
+	//monotonic_guess(img_stack, N_regions, params.EBV_prof_guess, options);
 	
 	TNullLogger logger;
 	
@@ -336,7 +337,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	std::cerr << "# Burn-in ..." << std::endl;
 	//sampler.step(int(N_steps*20./100.), false, 0., 1., 0.);
 	sampler.step(int(N_steps*40./100.), false, 0., 0.4, 0.);
-	sampler.step(int(N_steps*10./100), false, 0., 0.8, 0.);
+	sampler.step(int(N_steps*10./100), false, 0., 1.0, 0., false);
 	sampler.step(int(N_steps*40./100.), false, 0., 0.4, 0.);
 	sampler.step(int(N_steps*10./100), false, 0., 0.8, 0.);
 	//sampler.step(N_steps, false, 0., options.p_replacement, 0.);
@@ -456,8 +457,8 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 	}
 	
 	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
-	const double bias = -10.;
-	const double sigma = 5.;
+	const double bias = -5.;
+	const double sigma = 10.;
 	for(size_t i=0; i<N; i++) {
 		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
 	}
@@ -536,32 +537,6 @@ double guess_EBV_max(TImgStack &img_stack) {
 	return max * img_stack.rect->dx[1] + img_stack.rect->min[1];
 }
 
-void nonmonotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<double> Delta_EBV) {
-	// Stack images
-	cv::Mat stack;
-	img_stack.stack(stack);
-	
-	// Weighted mean of each distance
-	double * dist_weighted_sum = new double[stack.rows];
-	double * dist_sum = new double[stack.rows];
-	double y = 0.5;
-	for(int j = 0; j < stack.cols; j++, y+=1.) {
-		for(int k = 0; k < stack.rows; k++) {
-			dist_weighted_sum[k] += y * stack.at<double>(j,k);
-			dist_sum[k] += stack.at<double>(j,k);
-		}
-	}
-	
-	// 
-	Delta_EBV.resize(N_regions+1);
-	//Delta_EBV.fill();
-	for(int k = 0; k < stack.rows; k++) {
-		
-	}
-	
-	
-}
-
 void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned int N_regions) {
 	TNullLogger logger;
 	
@@ -589,17 +564,186 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned i
 	
 	sampler.get_chain().get_best(params.EBV_prof_guess);
 	for(size_t i=0; i<ndim; i++) {
+		//params.EBV_prof_guess[i] = log(params.EBV_prof_guess[i]);
 		std::cout << "\t" << params.EBV_prof_guess[i] << std::endl;
 	}
 	std::cout << std::endl;
 }
+
+
+struct TEBVGuessParams {
+	std::vector<double> EBV;
+	std::vector<double> sigma_EBV;
+	std::vector<double> sum_weight;
+	double EBV_max, EBV_ceil;
+	
+	TEBVGuessParams(std::vector<double>& _EBV, std::vector<double>& _sigma_EBV, std::vector<double>& _sum_weight, double _EBV_ceil)
+		: EBV(_EBV.size()), sigma_EBV(_sigma_EBV.size()), sum_weight(_sum_weight.size())
+	{
+		assert(_EBV.size() == _sigma_EBV.size());
+		assert(_sum_weight.size() == _sigma_EBV.size());
+		std::copy(_EBV.begin(), _EBV.end(), EBV.begin());
+		std::copy(_sigma_EBV.begin(), _sigma_EBV.end(), sigma_EBV.begin());
+		std::copy(_sum_weight.begin(), _sum_weight.end(), sum_weight.begin());
+		EBV_max = -1.;
+		for(unsigned int i=0; i<EBV.size(); i++) {
+			if(EBV[i] > EBV_max) { EBV_max = EBV[i]; }
+		}
+		EBV_ceil = _EBV_ceil;
+	}
+};
+
+double lnp_monotonic_guess(const double* Delta_EBV, unsigned int N, TEBVGuessParams& params) {
+	#define neginf -std::numeric_limits<double>::infinity()
+	
+	double lnp = 0;
+	
+	double EBV = 0.;
+	double tmp;
+	for(unsigned int i=0; i<N; i++) {
+		if(Delta_EBV[i] < 0.) { return neginf; }
+		EBV += Delta_EBV[i];
+		if(params.sum_weight[i] > 1.e-10) {
+			tmp = (EBV - params.EBV[i]) / params.sigma_EBV[i];
+			lnp -= 0.5 * tmp * tmp; //params.sum_weight[i] * tmp * tmp;
+		}
+	}
+	
+	return lnp;
+	
+	#undef neginf
+}
+
+void gen_rand_monotonic(double *const Delta_EBV, unsigned int N, gsl_rng *r, TEBVGuessParams &params) {
+	double EBV_sum = 0.;
+	double mu = 2. * params.EBV_max / (double)N;
+	for(size_t i=0; i<N; i++) {
+		Delta_EBV[i] = mu * gsl_rng_uniform(r);
+		EBV_sum += Delta_EBV[i];
+	}
+	
+	// Ensure that reddening is not more than allowed
+	if(EBV_sum >= 0.95 * params.EBV_ceil) {
+		double factor = EBV_sum / (0.95 * params.EBV_ceil);
+		for(size_t i=0; i<N; i++) { Delta_EBV[i] *= factor; }
+	}
+}
+
+void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<double>& Delta_EBV, TMCMCOptions& options) {
+	std::cout << "stacking images" << std::endl;
+	// Stack images
+	cv::Mat stack;
+	img_stack.stack(stack);
+	
+	std::cout << "calculating weighted mean at each distance" << std::endl;
+	// Weighted mean of each distance
+	double * dist_y_sum = new double[stack.rows];
+	double * dist_y2_sum = new double[stack.rows];
+	double * dist_sum = new double[stack.rows];
+	for(int k = 0; k < stack.rows; k++) {
+		dist_y_sum[k] = 0.;
+		dist_y2_sum[k] = 0.;
+		dist_sum[k] = 0.;
+	}
+	double y = 0.5;
+	for(int j = 0; j < stack.cols; j++, y += 1.) {
+		for(int k = 0; k < stack.rows; k++) {
+			dist_y_sum[k] += y * stack.at<double>(k,j);
+			dist_y2_sum[k] += y*y * stack.at<double>(k,j);
+			dist_sum[k] += stack.at<double>(k,j);
+		}
+	}
+	
+	for(int k = 0; k < stack.rows; k++) {
+		std::cout << k << "\t" << dist_y_sum[k]/dist_sum[k] << "\t" << sqrt(dist_y2_sum[k]/dist_sum[k]) << "\t" << dist_sum[k] << std::endl;
+	}
+	
+	std::cout << "calculating weighted mean about each anchor" << std::endl;
+	// Weighted mean in region of each anchor point
+	std::vector<double> y_sum(N_regions+1, 0.);
+	std::vector<double> y2_sum(N_regions+1, 0.);
+	std::vector<double> w_sum(N_regions+1, 0.);
+	int kStart = 0;
+	int kEnd;
+	double width = (double)(stack.rows) / (double)(N_regions);
+	for(int n = 0; n < N_regions+1; n++) {
+		std::cout << "n = " << n << std::endl;
+		if(n == N_regions) {
+			kEnd = stack.rows;
+		} else {
+			kEnd = ceil(((double)n + 0.5) * width);
+		}
+		for(int k = kStart; k < kEnd; k++) {
+			y_sum[n] += dist_y_sum[k];
+			y2_sum[n] += dist_y2_sum[k];
+			w_sum[n] += dist_sum[k];
+		}
+		kStart = kEnd + 1;
+	}
+	
+	delete[] dist_sum;
+	delete[] dist_y_sum;
+	delete[] dist_y2_sum;
+	
+	std::cout << "Covert to EBV and sigma_EBV" << std::endl;
+	// Create non-monotonic guess
+	Delta_EBV.resize(N_regions+1);
+	std::vector<double> sigma_EBV(N_regions+1, 0.);
+	for(int i=0; i<N_regions+1; i++) { Delta_EBV[i] = 0; }
+	for(int n = 0; n < N_regions+1; n++) {
+		Delta_EBV[n] = img_stack.rect->min[1] + img_stack.rect->dx[1] * y_sum[n] / w_sum[n];
+		sigma_EBV[n] = img_stack.rect->dx[1] * sqrt( (y2_sum[n] - (y_sum[n] * y_sum[n] / w_sum[n])) / w_sum[n] );
+		std::cout << n << "\t" << Delta_EBV[n] << "\t+-" << sigma_EBV[n] << std::endl;
+	}
+	
+	// Fit monotonic guess
+	unsigned int N_steps = 100;
+	unsigned int N_samplers = 2 * N_regions;
+	unsigned int N_threads = options.N_threads;
+	unsigned int ndim = N_regions + 1;
+	
+	std::cout << "Setting up params" << std::endl;
+	TEBVGuessParams params(Delta_EBV, sigma_EBV, w_sum, img_stack.rect->max[1]);
+	TNullLogger logger;
+	
+	TAffineSampler<TEBVGuessParams, TNullLogger>::pdf_t f_pdf = &lnp_monotonic_guess;
+	TAffineSampler<TEBVGuessParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_monotonic;
+	
+	std::cout << "Setting up sampler" << std::endl;
+	TParallelAffineSampler<TEBVGuessParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+	sampler.set_scale(1.1);
+	sampler.set_replacement_bandwidth(0.75);
+	
+	std::cout << "Stepping" << std::endl;
+	sampler.step(int(N_steps*40./100.), true, 0., 0.5, 0.);
+	sampler.step(int(N_steps*10./100), true, 0., 1., 0.);
+	sampler.step(int(N_steps*40./100.), true, 0., 0.5, 0.);
+	sampler.step(int(N_steps*10./100), true, 0., 1., 0., true);
+	
+	sampler.print_stats();
+	
+	std::cout << "Getting best value" << std::endl;
+	Delta_EBV.clear();
+	sampler.get_chain().get_best(Delta_EBV);
+	
+	std::cout << "Monotonic guess" << std::endl;
+	double EBV_sum = 0.;
+	for(size_t i=0; i<Delta_EBV.size(); i++) {
+		EBV_sum += Delta_EBV[i];
+		std::cout << EBV_sum << std::endl;
+		Delta_EBV[i] = log(Delta_EBV[i]);
+	}
+	std::cout << std::endl;
+}
+
+
 
 void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
 	assert(params.EBV_prof_guess.size() == N);
 	double EBV_ceil = params.img_stack->rect->max[1];
 	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
-		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 0.1);
+		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 0.5);
 		EBV_sum += logEBV[i];
 	}
 	
