@@ -106,6 +106,8 @@ double guess_EBV_max(TImgStack &img_stack);
 void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned int N_regions);
 void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
 
+void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<double>& Delta_EBV, TMCMCOptions& options);
+
 void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
 double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams& params);
 void los_integral_clouds(TImgStack &img_stack, double *ret, const double *Delta_mu,

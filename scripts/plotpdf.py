@@ -190,10 +190,15 @@ def main():
 		             aspect='auto', cmap='hot', interpolation='nearest')
 	
 	# Plot l.o.s. extinction to figure
-	#try:
-	los2ax(ax, fname, group, 'c')
-	#except:
-	clouds2ax(ax, fname, group, 'g')
+	try:
+		los2ax(ax, fname, group, 'c')
+	except:
+		pass
+	
+	try:
+		clouds2ax(ax, fname, group, 'g')
+	except:
+		pass
 	
 	if EBV_max != None:
 		ax.set_ylim(0., EBV_max)
