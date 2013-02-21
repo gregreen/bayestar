@@ -128,7 +128,7 @@ def to_file(f, pix_index, nside, nest, EBV, data):
 def main():
 	parser = argparse.ArgumentParser(
 	           prog='query_lsd.py',
-	           description='Generate galstar input files from PanSTARRS data.',
+	           description='Generate bayestar input files from PanSTARRS data.',
 	           add_help=True)
 	parser.add_argument('out', type=str, help='Output filename.')
 	parser.add_argument('-n', '--nside', type=int, default=512,

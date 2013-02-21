@@ -141,7 +141,13 @@ def rasterizeMap(pixels, EBV, nside=512, nest=True, oversample=4):
 def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu, nside=512, nest=True, **kwargs):
 	# Generate rasterized image of E(B-V)
 	EBV = calcEBV(muAnchor, DeltaEBV, mu)
-	EBV = np.median(EBV, axis=1) #np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1) #np.mean(EBV, axis=1)
+	idx1 = np.arange(EBV.shape[0])
+	idx2 = np.random.randint(EBV.shape[1], size=EBV.shape[1])
+	print EBV.shape
+	print np.median(EBV, axis=1).shape
+	EBV = EBV[idx1,idx2]
+	print EBV.shape
+	#EBV = np.median(EBV, axis=1) #np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1) #np.mean(EBV, axis=1)
 	img, bounds = rasterizeMap(pixels, EBV, nside, nest)
 	
 	# Configure plotting options
