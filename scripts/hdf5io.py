@@ -186,12 +186,17 @@ class TChain:
 class TProbSurf:
 	def __init__(self, fname=None, dset=None):
 		f = None
+		close = False
 		
 		if fname != None:
 			if type(dset) != str:
 				raise TypeError("If 'fname' is provided, 'dset' must be "
 				                "a string containing the name of the dataset.")
-			f = h5py.File(fname, 'r')
+			if type(fname) == h5py._hl.files.File:
+				f = fname
+			else:
+				f = h5py.File(fname, 'r')
+				close = True
 			dset = f[dset]
 		
 		if dset == None:
@@ -199,7 +204,7 @@ class TProbSurf:
 		
 		self.load(dset)
 		
-		if f != None:
+		if close:
 			f.close()
 	
 	def load(self, dset):

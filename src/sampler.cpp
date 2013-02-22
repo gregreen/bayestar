@@ -535,7 +535,8 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	TSED sed_tmp(true);
 	
 	// E(B-V)
-	x[0] = 3. * params.data->EBV * gsl_rng_uniform(r);
+	//x[0] = 3. * gsl_rng_uniform(r);
+	x[0] = 1.5 * params.data->EBV * gsl_rng_uniform(r);
 	
 	// DM
 	x[1] = 6. + 12. * gsl_rng_uniform(r);
@@ -784,7 +785,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		
 		std::cout << "mags = ";
 		for(unsigned int i=0; i<NBANDS; i++) {
-			std::cout << std::setprecision(3) << params.data->star[n].m[i] << " ";
+			std::cout << std::setprecision(4) << params.data->star[n].m[i] << " ";
 		}
 		std::cout << std::endl;
 		std::cout << "errs = ";
@@ -839,7 +840,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		chainBuffer.add(chain, converged, lnZ_tmp);
 		
 		// Save binned p(DM, EBV) surface
-		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 500.);	// TODO: Fix smoothing scales
+		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.1, 0.025, 500.);	// TODO: Fix smoothing scales
 		if(saveSurfs) { imgBuffer->add(*(img_stack.img[n])); }
 		
 		lnZ.push_back(lnZ_tmp);
