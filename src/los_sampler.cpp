@@ -328,14 +328,12 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	std::cout << "Line-of-Sight Extinction Profile" << std::endl;
 	std::cout << "====================================" << std::endl;
 	
-	//std::cerr << "# Setting up sampler" << std::endl;
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 	sampler.set_scale(1.2);
 	sampler.set_replacement_bandwidth(0.50);
 	
 	// Burn-in
 	std::cerr << "# Burn-in ..." << std::endl;
-	//sampler.step(int(N_steps*20./100.), false, 0., 1., 0.);
 	sampler.step(int(N_steps*40./100.), false, 0., 0.4, 0.);
 	sampler.step(int(N_steps*10./100), false, 0., 1.0, 0., false);
 	sampler.step(int(N_steps*40./100.), false, 0., 0.4, 0.);
@@ -382,14 +380,6 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	
 	sampler.print_stats();
 	std::cout << std::endl;
-	
-	/*
-	for(size_t k=0; k<N_threads; k++) {
-		std::cout << std::endl << "Sampler " << k+1 << ":" << std::endl;
-		sampler.get_stats(k).print();
-		std::cout << std::endl;
-	}
-	*/
 	
 	if(!converged) {
 		std::cerr << "# Failed to converge." << std::endl;
@@ -554,10 +544,10 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned i
 	sampler.set_scale(1.05);
 	sampler.set_replacement_bandwidth(0.75);
 	
-	sampler.step(int(N_steps*40./100.), true, 0., 0.5, 0.);
-	sampler.step(int(N_steps*10./100), true, 0., 1., 0.);
-	sampler.step(int(N_steps*40./100.), true, 0., 0.5, 0.);
-	sampler.step(int(N_steps*10./100), true, 0., 1., 0., true);
+	sampler.step(int(N_steps*30./100.), true, 0., 0.5, 0.);
+	sampler.step(int(N_steps*20./100), true, 0., 1., 0., true);
+	sampler.step(int(N_steps*30./100.), true, 0., 0.5, 0.);
+	sampler.step(int(N_steps*20./100), true, 0., 1., 0., true);
 	
 	sampler.print_stats();
 	std::cout << std::endl << std::endl;
