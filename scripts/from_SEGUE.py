@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#       query_lsd.py
+#       query_lsd_SEGUE.py
 #       
 #       Copyright 2012 Greg <greg@greg-G53JW>
 #       
@@ -88,13 +88,13 @@ def start_file(base_fname, index):
 	f.write(np.array([0], dtype=np.uint32).tostring())
 	return f
 
-
-def to_file(f, pix_index, nside, nest, EBV, data):
+def to_file(f, pix_index, nside, nest, EBV, data, prop):
 	close_file = False
 	if type(f) == str:
 		f = h5py.File(fname, 'a')
 		close_file = True
 	
+	# Photometry
 	ds_name = '/photometry/pixel %d' % pix_index
 	ds = f.create_dataset(ds_name, data.shape, data.dtype, chunks=True,
 	                      compression='gzip', compression_opts=9)
@@ -114,7 +114,19 @@ def to_file(f, pix_index, nside, nest, EBV, data):
 	ds.attrs['healpix_index'] = att_u8[0]
 	ds.attrs['nested'] = att_u1[0]
 	ds.attrs['nside'] = att_u4[0]
-	#ds.attrs['N_stars'] = N_stars
+	ds.attrs['l'] = gal_lb[0]
+	ds.attrs['b'] = gal_lb[1]
+	ds.attrs['EBV'] = att_f4[0]
+	
+	# SEGUE Properties
+	ds_name = '/SEGUE/pixel %d' % pix_index
+	ds = f.create_dataset(ds_name, prop.shape, prop.dtype, chunks=True,
+	                      compression='gzip', compression_opts=9)
+	ds[:] = prop[:]
+	
+	ds.attrs['healpix_index'] = att_u8[0]
+	ds.attrs['nested'] = att_u1[0]
+	ds.attrs['nside'] = att_u4[0]
 	ds.attrs['l'] = gal_lb[0]
 	ds.attrs['b'] = gal_lb[1]
 	ds.attrs['EBV'] = att_f4[0]
@@ -127,8 +139,8 @@ def to_file(f, pix_index, nside, nest, EBV, data):
 
 def main():
 	parser = argparse.ArgumentParser(
-	           prog='query_lsd.py',
-	           description='Generate bayestar input files from PanSTARRS data.',
+	           prog='from_SEGUE.py',
+	           description='Generate bayestar input files from SEGUE and PanSTARRS data.',
 	           add_help=True)
 	parser.add_argument('out', type=str, help='Output filename.')
 	parser.add_argument('-n', '--nside', type=int, default=512,
@@ -179,34 +191,20 @@ def main():
 	
 	# Set up the query
 	db = lsd.DB(os.environ['LSD_DB'])
-	query = None
-	if values.sdss:
-		if values.maxAr == None:
-			query = ("select obj_id, equgal(ra, dec) as (l, b), "
-			         "mean, err, mean_ap, nmag_ok "
-			         "from sdss, ucal_magsqw_noref "
-			         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
-			         "& (nmag_ok[:,0] > 0) "
-			         "& (numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2) "
-			         "& (type == 6)")
-		else:
-			query = ("select obj_id, equgal(ra, dec) as (l, b), "
-			         "mean, err, mean_ap, nmag_ok from sdss, "
-			         "ucal_magsqw_noref(matchedto=sdss,nmax=1,dmax=5) "
-			         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) & "
-			         "(nmag_ok[:,0] > 0) & "
-			         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2) & "
-			         "(type == 6) & (rExt <= %.4f)" % values.maxAr)
-	else:
-		query = ("select obj_id, equgal(ra, dec) as (l, b), mean, err, "
-		         "mean_ap, nmag_ok, maglimit, SFD.EBV(l, b) as EBV "
-		         "from ucal_magsqw_noref_maglim "
-		         "where (numpy.sum(nmag_ok > 0, axis=1) >= %d) "
-		         "& (nmag_ok[:,0] > 0) "
-		         "& (numpy.sum(nmag_ok, axis=1) >= %d) "
-		         "& (numpy.sum(mean - mean_ap < 0.1, axis=1) >= %d)"
-		         % (values.n_bands, values.n_det, nPointlike))
-	
+	query = ("select _id, equgal(ra, dec) as (l, b), "
+	         "ssppmag, ssppmagerr, ubermag, ubermagerr, "
+	         "teff, logz, logg, tefferr, logzerr, loggerr, "
+	         "mean, err, "
+	         "ndet_ok, nmag_ok, mean_ap, maglimit, "
+	         "SFD.EBV(l, b) as EBV "
+	         "from ucal_magsqw_noref_maglim, "
+	         "specdust_std(matchedto=ucal_magsqw_noref_maglim,nmax=1,dmax=3) "
+	         "where (goodflag == 1) "
+	         "& (numpy.sum(nmag_ok > 0, axis=1) >= %d) "
+	         "& (nmag_ok[:,0] > 0) "
+	         "& (numpy.sum(nmag_ok, axis=1) >= %d) "
+	         "& (numpy.sum(mean - mean_ap < 0.1, axis=1) >= %d)"
+	         % (values.n_bands, values.n_det, nPointlike))
 	query = db.query(query)
 	
 	# Initialize map to store number of stars in each pixel
@@ -238,9 +236,10 @@ def main():
 	
 	# Write each pixel to the same file
 	nest = (not values.ring)
-	for (pix_index, obj) in query.execute([(mapper, values.nside, nest, values.bounds), reducer],
-	                                      group_by_static_cell=True,
-	                                      bounds=query_bounds):
+	for (pix_index, obj) in query.execute(
+	                           [(mapper, values.nside, nest, values.bounds), reducer],
+	                           group_by_static_cell=True, bounds=query_bounds
+	                                     ):
 		if len(obj) < values.min_stars:
 			continue
 		
@@ -251,7 +250,7 @@ def main():
 		                                   ('maglimit','f4',5),
 		                                   ('nDet','u4',5),
 		                                   ('EBV','f4')])
-		outarr['obj_id'][:] = obj['obj_id'][:]
+		outarr['obj_id'][:] = obj['_id'][:]
 		outarr['l'][:] = obj['l'][:]
 		outarr['b'][:] = obj['b'][:]
 		outarr['mag'][:] = obj['mean'][:]
@@ -261,6 +260,27 @@ def main():
 		outarr['EBV'][:] = obj['EBV'][:]
 		EBV = np.percentile(obj['EBV'][:], 95.)
 		
+		proparr = np.empty(len(obj), dtype=[('obj_id','u8'),
+		                                    ('l','f8'), ('b','f8'),
+		                                    ('ssppmag','5f8'), ('ssppmagerr','5f8'),
+		                                    ('ubermag','5f8'), ('ubermagerr','5f8'),
+		                                    ('teff','f8'), ('tefferr','f8'),
+		                                    ('logz','f8'), ('logzerr','f8'),
+		                                    ('logg','f8'), ('loggerr','f8')])
+		proparr['obj_id'][:] = obj['_id'][:]
+		proparr['l'][:] = obj['l'][:]
+		proparr['b'][:] = obj['b'][:]
+		proparr['ssppmag'][:] = obj['ssppmag'][:]
+		proparr['ssppmagerr'][:] = obj['ssppmagerr'][:]
+		proparr['ubermag'][:] = obj['ubermag'][:]
+		proparr['ubermagerr'][:] = obj['ubermagerr'][:]
+		proparr['teff'][:] = obj['teff'][:]
+		proparr['tefferr'][:] = obj['tefferr'][:]
+		proparr['logz'][:] = obj['logz'][:]
+		proparr['logzerr'][:] = obj['logzerr'][:]
+		proparr['logg'][:] = obj['logg'][:]
+		proparr['loggerr'][:] = obj['loggerr'][:]
+		
 		# Open output file
 		if f == None:
 			fname = '%s.%.5d.%s' % (fnameBase, nFiles, fnameSuffix)
@@ -269,7 +289,8 @@ def main():
 			nFiles += 1
 		
 		# Write to file
-		gal_lb = to_file(f, pix_index, values.nside, nest, EBV, outarr)
+		gal_lb = to_file(f, pix_index, values.nside,
+		                    nest, EBV, outarr, proparr)
 		
 		# Update stats
 		N_pix += 1
