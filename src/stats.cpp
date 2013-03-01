@@ -296,7 +296,7 @@ bool TStats::write_binary(std::string fname, bool converged, double evidence, bo
 }
 
 // Read statistics from a binary file
-bool TStats::read_binary(std::string fname, std::streampos read_offset) {	
+bool TStats::read_binary(std::string fname, std::streampos read_offset) {
 	std::fstream f;
 	f.open(fname.c_str(), std::ios::in | std::ios::binary);
 	// Skip to the point in the file designated by read_offset
