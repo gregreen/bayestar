@@ -23,7 +23,7 @@ def write_infile(filename, mag, err, maglimit, l=90., b=10.):
 	pixIdx = 1
 	ds_name = '/photometry/pixel %d' % pixIdx
 	ds = f.create_dataset(ds_name, data.shape, data.dtype, chunks=True,
-	                      compression='gzip', compression_opts=1)
+	                      compression='gzip', compression_opts=9)
 	ds[:] = data[:]
 	
 	gal_lb = np.array([l, b], dtype='f8')
@@ -118,16 +118,18 @@ def probsurf_bayestar(mag, err, maglimit, l=90., b=10.):
 
 
 def main():
-	maglimit = np.array([[22.5, 22.5, 22.0, 21.5, 21.0]])
+	maglimit = np.array([[22.5, 22.5, 22.0, 21.5, 21.0]]) + 5.
 	absmag = np.array([[5.3044, 5.03, 4.9499, 4.9267, 4.9624]])
 	A = np.array([[3.172, 2.271, 1.682, 1.322, 1.087]])
 	mu = 10.
-	mag = absmag + mu + 1.*A
+	mag = absmag + mu + 5.*A
 	err = np.array([[0.02, 0.02, 0.02, 0.1, 0.1]])
 	idx = (mag > maglimit)
 	err[idx] = 1.e10
 	(bounds, surfs), (converged, lnZ), chains, log = probsurf_bayestar(mag, err, maglimit, l=180., b=89.)
 	print log
+	
+	print 'E(B-V) = %.3f +- %.3f' % (np.mean(chains[0,:,0]), np.std(chains[0,:,0]))
 	
 	import matplotlib.pyplot as plt
 	fig = plt.figure()

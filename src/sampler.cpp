@@ -840,7 +840,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		chainBuffer.add(chain, converged, lnZ_tmp);
 		
 		// Save binned p(DM, EBV) surface
-		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.1, 0.025, 500.);	// TODO: Fix smoothing scales
+		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.1, 0.025, 500.);
 		if(saveSurfs) { imgBuffer->add(*(img_stack.img[n])); }
 		
 		lnZ.push_back(lnZ_tmp);

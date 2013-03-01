@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#       query_lsd_SEGUE.py
+#       from_SEGUE.py
 #       
 #       Copyright 2012 Greg <greg@greg-G53JW>
 #       
