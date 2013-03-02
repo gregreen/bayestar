@@ -146,6 +146,7 @@ public:
 	void get_best(std::vector<double> &x) const;				// Return best point in chain
 	double get_L(unsigned int i) const;			// Return the likelihood of the i-th point
 	double get_w(unsigned int i) const;			// Return the weight of the i-th point
+	unsigned int get_ndim() const;
 	
 	// Computations on chain
 	
@@ -237,6 +238,27 @@ private:
 	TRect rect_;
 };
 
+
+
+/*************************************************************************
+ *   Convergence diagnostics in transformed parameter space
+ *       (e.g. observable space)
+ *************************************************************************/
+
+class TTransformParamSpace {
+public:
+	TTransformParamSpace(unsigned int ndim);
+	virtual ~TTransformParamSpace();
+	
+	virtual void transform(const double *const x, double *const y);
+	void operator()(const double *const x, double *const y);
+	
+private:
+	unsigned int _ndim;
+};
+
+
+void Gelman_Rubin_diagnostic(const std::vector<TChain*>& chains, std::vector<double>& R, TTransformParamSpace *const transf);
 
 
 

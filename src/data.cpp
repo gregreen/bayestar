@@ -221,7 +221,7 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 		std::vector<float> maglimit;
 		for(hsize_t i=0; i<length; i++) {
 			tmp = data_buf[i].maglimit[n];
-			if((tmp > 10.) && (tmp < 30.)) {
+			if((tmp > 10.) && (tmp < 40.)) {
 				maglimit.push_back(tmp);
 			}
 		}

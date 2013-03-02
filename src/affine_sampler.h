@@ -206,6 +206,9 @@ public:
 	void print_state() { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->print_state(); } }
 	void print_clusters() { for(unsigned int i=0; i<N_samplers; i++) { std::cout << std::endl; sampler[i]->print_clusters(); } } 
 	TAffineSampler<TParams, TLogger>* const get_sampler(unsigned int index) { assert(index < N_samplers); return sampler[index]; }
+	
+	// Calculate the GR diagnostic on a transformed space
+	void calc_GR_transformed(std::vector<double>& GR, TTransformParamSpace* transf);
 };
 
 
@@ -282,7 +285,9 @@ struct TAffineSampler<TParams, TLogger>::TState {
 // 			The logger could, for example, bin the chain, or just push back each state into a vector.
 template<class TParams, class TLogger>
 TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_state, unsigned int _N, unsigned int _L, TParams& _params, TLogger& _logger, bool _use_log)
-	: pdf(_pdf), rand_state(_rand_state), params(_params), logger(_logger), N(_N), L(_L), X(NULL), Y(NULL), accept(NULL), r(NULL), use_log(_use_log), chain(_N, 1000*_L), W(NULL), ensemble_mean(NULL), ensemble_cov(NULL), sqrt_ensemble_cov(NULL), inv_ensemble_cov(NULL), wv(NULL), ws(NULL), wm1(NULL), wm2(NULL), wp(NULL), gm_target(NULL)
+	: pdf(_pdf), rand_state(_rand_state), params(_params), logger(_logger), N(_N), L(_L), X(NULL), Y(NULL), accept(NULL),
+	  r(NULL), use_log(_use_log), chain(_N, 1000*_L), W(NULL), ensemble_mean(NULL), ensemble_cov(NULL), sqrt_ensemble_cov(NULL),
+	  inv_ensemble_cov(NULL), wv(NULL), ws(NULL), wm1(NULL), wm2(NULL), wp(NULL), gm_target(NULL)
 {
 	// Seed the random number generator
 	seed_gsl_rng(&r);
@@ -775,6 +780,42 @@ TChain TParallelAffineSampler<TParams, TLogger>::get_chain() {
 	}
 	return tmp;
 }
+
+template<class TParams, class TLogger>
+void TParallelAffineSampler<TParams, TLogger>::calc_GR_transformed(std::vector<double>& GR, TTransformParamSpace* transf) {
+	TStats **transf_stats = new TStats*[N_samplers];
+	for(size_t n=0; n<N_samplers; n++) {
+		transf_stats[n] = new TStats(N);
+	}
+	
+	#pragma omp parallel num_threads(N_samplers)
+	{
+		size_t n = omp_get_thread_num();
+		TStats& transf_comp_stat = *(transf_stats[n]);
+		TChain& chain = sampler[n]->get_chain();
+		size_t n_points = chain.get_length();
+		
+		double* y = new double[N];
+		
+		for(size_t i=0; i<n_points; i++) {
+			(*transf)(chain.get_element(i), y);
+			transf_comp_stat(y, (unsigned int)(chain.get_w(i)));
+		}
+		
+		delete y;
+		
+		#pragma omp barrier
+	}
+	
+	GR.resize(N);
+	Gelman_Rubin_diagnostic(transf_stats, N_samplers, GR.data(), N);
+	
+	for(size_t n=0; n<N_samplers; n++) {
+		delete transf_stats[n];
+	}
+	delete[] transf_stats;
+}
+
 
 
 /*************************************************************************

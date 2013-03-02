@@ -54,7 +54,8 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	unsigned int N_threads = options.N_threads;
 	unsigned int ndim = 2 * N_clouds;
 	
-	double *GR = new double[ndim];
+	std::vector<double> GR_transf;
+	TLOSCloudTransform transf(ndim);
 	double GR_threshold = 1.25;
 	
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction_clouds;
@@ -91,10 +92,16 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
 		sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
 		
+		std::cout << std::endl << "Transformed G-R Diagnostic:";
+		sampler.calc_GR_transformed(GR_transf, &transf);
+		for(unsigned int k=0; k<ndim; k++) {
+			std::cout << "  " << std::setprecision(3) << GR_transf[k];
+		}
+		std::cout << std::endl << std::endl;
+		
 		converged = true;
-		sampler.get_GR_diagnostic(GR);
 		for(size_t i=0; i<ndim; i++) {
-			if(GR[i] > GR_threshold) {
+			if(GR_transf[i] > GR_threshold) {
 				converged = false;
 				if(attempt != max_attempts-1) {
 					sampler.print_stats();
@@ -137,8 +144,6 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	std::cerr << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
 	std::cerr << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
 	std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
-	
-	delete[] GR;
 }
 
 void los_integral_clouds(TImgStack &img_stack, double *ret, const double *Delta_mu,
@@ -318,7 +323,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	unsigned int N_threads = options.N_threads;
 	unsigned int ndim = N_regions + 1;
 	
-	double *GR = new double[ndim];
+	std::vector<double> GR_transf;
+	TLOSTransform transf(ndim);
 	double GR_threshold = 1.25;
 	
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
@@ -349,10 +355,16 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
 		sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
 		
+		std::cout << std::endl << "Transformed G-R Diagnostic:";
+		sampler.calc_GR_transformed(GR_transf, &transf);
+		for(unsigned int k=0; k<ndim; k++) {
+			std::cout << "  " << std::setprecision(3) << GR_transf[k];
+		}
+		std::cout << std::endl << std::endl;
+		
 		converged = true;
-		sampler.get_GR_diagnostic(GR);
 		for(size_t i=0; i<ndim; i++) {
-			if(GR[i] > GR_threshold) {
+			if(GR_transf[i] > GR_threshold) {
 				converged = false;
 				if(attempt != max_attempts-1) {
 					sampler.print_stats();
@@ -388,8 +400,6 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	std::cerr << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
 	std::cerr << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
 	std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
-	
-	delete[] GR;
 }
 
 
@@ -869,3 +879,35 @@ void TImgStack::stack(cv::Mat& dest) {
 	}
 }
 
+TLOSTransform::TLOSTransform(unsigned int ndim)
+	: TTransformParamSpace(ndim), _ndim(ndim)
+{}
+
+TLOSTransform::~TLOSTransform()
+{}
+
+void TLOSTransform::transform(const double *const x, double *const y) {
+	y[0] = exp(x[0]);
+	for(unsigned int i=1; i<_ndim; i++) {
+		y[i] = y[i-1] + exp(x[i]);
+	}
+}
+
+TLOSCloudTransform::TLOSCloudTransform(unsigned int ndim)
+	: TTransformParamSpace(ndim), _ndim(ndim)
+{
+	assert(!((ndim >> 1) & 1));
+	n_clouds = ndim / 2;
+}
+
+TLOSCloudTransform::~TLOSCloudTransform()
+{}
+
+void TLOSCloudTransform::transform(const double *const x, double *const y) {
+	y[0] = x[0];
+	y[n_clouds] = exp(x[n_clouds]);
+	for(unsigned int i=1; i<n_clouds; i++) {
+		y[i] = x[i];
+		y[n_clouds+i] = exp(x[n_clouds+i]);
+	}
+}

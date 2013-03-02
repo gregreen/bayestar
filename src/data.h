@@ -78,7 +78,7 @@ struct TStellarData {
 			for(unsigned int i=0; i<NBANDS; i++) {
 				m[i] = _m[i];
 				err[i] = _err[i];
-				maglimit[i] = 22.;
+				maglimit[i] = 23.;
 				if(err[i] < 9.e9) {	// Ignore missing bands (otherwise, they affect evidence)
 					lnL_norm += 0.9189385332 + log(err[i]);
 				}

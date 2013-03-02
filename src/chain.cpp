@@ -111,6 +111,11 @@ double TChain::get_w(unsigned int i) const {
 	return w[i];
 }
 
+unsigned int TChain::get_ndim() const {
+	return N;
+}
+
+
 void TChain::get_best(std::vector<double> &x) const {
 	double L_max = L[0];
 	size_t i_max = 0;
@@ -1439,6 +1444,56 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string gr
 	
 	return true;
 	
+}
+
+
+/*
+ *  Convergence diagnostic in transformed parameter space (e.g. observable space)
+ */
+
+TTransformParamSpace::TTransformParamSpace(unsigned int ndim)
+	: _ndim(ndim)
+{}
+
+TTransformParamSpace::~TTransformParamSpace() {}
+
+void TTransformParamSpace::transform(const double *const x, double *const y) {
+	memcpy(y, x, _ndim * sizeof(double));
+}
+
+
+void TTransformParamSpace::operator()(const double *const x, double *const y) {
+	transform(x, y);
+}
+
+void Gelman_Rubin_diagnostic(const std::vector<TChain*>& chains, std::vector<double>& R, TTransformParamSpace *const transf) {
+	const size_t n_chains = chains.size();
+	assert(n_chains > 1);
+	const size_t ndim = chains[0]->get_ndim();
+	
+	TStats **stats = new TStats*[n_chains];
+	
+	for(size_t n=0; n<n_chains; n++) {
+		TChain *chain = chains[n];
+		assert(chain->get_ndim() == ndim);
+		
+		stats[n] = new TStats(ndim);
+		TStats& stat = *(stats[n]);
+		
+		size_t n_points = chain->get_length();
+		
+		for(size_t i=0; i<n_points; i++) {
+			stat(chain->get_element(i), (unsigned int)(chain->get_w(i)));
+		}
+	}
+	
+	R.resize(ndim);
+	Gelman_Rubin_diagnostic(stats, n_chains, R.data(), ndim);
+	
+	for(size_t n=0; n<n_chains; n++) {
+		delete stats[n];
+	}
+	delete[] stats;
 }
 
 

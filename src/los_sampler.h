@@ -92,6 +92,30 @@ struct TLOSMCMCParams {
 	void set_p0(double _p0);
 };
 
+// Transform from log(DeltaEBV) to cumulative EBV for piecewise-linear l.o.s. fit
+class TLOSTransform : public TTransformParamSpace {
+private:
+	size_t _ndim;
+public:
+	TLOSTransform(unsigned int ndim);
+	virtual ~TLOSTransform();
+	
+	virtual void transform(const double *const x, double *const y);
+};
+
+// Transform to cumulative EBV for cloud l.o.s. fit
+class TLOSCloudTransform : public TTransformParamSpace {
+private:
+	size_t _ndim;
+	size_t n_clouds;
+	
+public:
+	TLOSCloudTransform(unsigned int ndim);
+	virtual ~TLOSCloudTransform();
+	
+	virtual void transform(const double *const x, double *const y);
+};
+
 
 void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgStack& img_stack,
                            unsigned int N_regions, double p0, double EBV_max, uint64_t healpix_index);
