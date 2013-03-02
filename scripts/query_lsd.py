@@ -162,19 +162,19 @@ def main():
 		nPointlike = 1
 	
 	# Determine the query bounds
-	query_bounds = None
+	query_bounds = []
 	if values.bounds != None:
-		query_bounds = []
-		query_bounds.append(0.)
-		query_bounds.append(360.)
-		pix_height = 90. / 2**np.sqrt(values.nside / 12)
-		query_bounds.append(max(-90., values.bounds[2] - 5.*pix_height))
-		query_bounds.append(min(90., values.bounds[3] + 5.*pix_height))
-	else:
-		query_bounds = [0., 360., -90., 90.]
+		pix_scale = hp.pixelfunc.nside2resol(values.nside) * 180. / np.pi
+		query_bounds.append(max([0., values.bounds[0] - 3.*pix_scale]))
+		query_bounds.append(min([360., values.bounds[1] + 3.*pix_scale]))
+		query_bounds.append(max([-90., values.bounds[2] - 3.*pix_scale]))
+		query_bounds.append(min([90., values.bounds[3] + 3.*pix_scale]))
+	#else:
+	#	query_bounds = [0., 360., -90., 90.]
 	query_bounds = lsd.bounds.rectangle(query_bounds[0], query_bounds[2],
 	                                    query_bounds[1], query_bounds[3],
 	                                    coordsys='gal')
+	#query_bounds = (query_bounds, []) 
 	query_bounds = lsd.bounds.make_canonical(query_bounds)
 	
 	# Set up the query
@@ -239,7 +239,7 @@ def main():
 	# Write each pixel to the same file
 	nest = (not values.ring)
 	for (pix_index, obj) in query.execute([(mapper, values.nside, nest, values.bounds), reducer],
-	                                      group_by_static_cell=True,
+	                                      #group_by_static_cell=True,
 	                                      bounds=query_bounds):
 		if len(obj) < values.min_stars:
 			continue

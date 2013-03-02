@@ -282,6 +282,8 @@ def plotPercentiles(pctiles):
 	ax.fill_between([0., 1.], [lower, lower], [upper, upper], facecolor='g', alpha=0.2)
 	
 	ax.set_xlim(0., 1.)
+	ax.set_ylim(0., 1.5*upper)
+	
 	ax.set_xlabel(r'$\% \mathrm{ile}$', fontsize=16)
 	ax.set_ylabel(r'$\mathrm{\# \ of \ stars}$', fontsize=16)
 	fig.subplots_adjust(left=0.20, bottom=0.18)
@@ -400,7 +402,7 @@ def plotScatter(surfs, EBV, sigmaEBV, minEBV, maxEBV, usePeak=True):
 	mplib.rc('ytick', direction='out')
 	mplib.rc('axes', grid=False)
 	
-	fig = plt.figure(figsize=(4,3), dpi=200)
+	fig = plt.figure(figsize=(5,4), dpi=200)
 	ax = fig.add_subplot(1,1,1)
 	
 	print np.mean(EBV)
@@ -415,15 +417,15 @@ def plotScatter(surfs, EBV, sigmaEBV, minEBV, maxEBV, usePeak=True):
 	
 	xlim = [np.percentile(EBV, 2.), np.percentile(EBV, 98.)]
 	width = xlim[1] - xlim[0]
-	xlim[1] += 0.5 * width
+	xlim[1] += 1. * width
 	xlim[0] -= 0.25 * width
 	ax.set_xlim(xlim)
-	ax.set_ylim(0., 1.35*np.percentile(mu, 99.))
+	ax.set_ylim(0., 2.*np.percentile(mu, 99.))
 	
 	ax.set_xlabel(r'$\mathrm{E} \left( B - V \right)_{\mathrm{SEGUE}}$', fontsize=16)
 	ax.set_ylabel(r'$\mathrm{E} \left( B - V \right)_{\mathrm{Bayes}}$', fontsize=16)
 	
-	fig.subplots_adjust(left=0.18, bottom=0.20)
+	fig.subplots_adjust(left=0.20, bottom=0.20)
 	
 	return fig
 
@@ -489,25 +491,40 @@ def tests():
 	plt.show()
 
 def main():
-	inFName = '../input/SEGUE.00005.h5'
-	outFName = '../output/SEGUE.00005.h5'
+	inFNames = ['/n/wise/ggreen/bayestar/input/SEGUE.0000%d.h5' % i for i in range(6)]
+	outFNames = ['/n/wise/ggreen/bayestar/output/SEGUE.0000%d.h5' % i for i in range(6)]
 	
-	print 'Loading probability surfaces...'
-	surfs, good, minEBV, maxEBV, pixIdx1 = get1DProbSurfs(outFName)
-	print 'Loading SEGUE properties...'
-	props, pixIdx2 = getSEGUE(inFName)
-	print 'Calculating E(B-V)...'
-	SegueEBVs, SegueSigmaEBVs = getSegueEBV(props)
+	surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV = [], [], [], None, None
 	
-	print 'Combining pixels...'
+	for inFName, outFName in zip(inFNames, outFNames):
+		print inFName
+		print outFName
+		print 'Loading probability surfaces...'
+		surfs_tmp, good_tmp, minEBV, maxEBV, pixIdx1 = get1DProbSurfs(outFName)
+		print 'Loading SEGUE properties...'
+		props, pixIdx2 = getSEGUE(inFName)
+		print 'Calculating E(B-V)...'
+		SegueEBVs_tmp, SegueSigmaEBVs_tmp = getSegueEBV(props)
+		
+		print 'Combining pixels...'
+		surfs_tmp = np.vstack(surfs_tmp)
+		good_tmp = np.hstack(good_tmp)
+		SegueEBVs_tmp = np.hstack(SegueEBVs_tmp)
+		SegueSigmaEBVs_tmp = np.hstack(SegueSigmaEBVs_tmp)
+		
+		print good_tmp
+		nanMask = ~np.isnan(SegueEBVs_tmp)
+		good_tmp &= nanMask
+		
+		print good_tmp
+		
+		surfs.append(surfs_tmp[good_tmp])
+		SegueEBVs.append(SegueEBVs_tmp[good_tmp])
+		SegueSigmaEBVs.append(SegueSigmaEBVs_tmp[good_tmp])
+	
 	surfs = np.vstack(surfs)
-	good = np.hstack(good)
 	SegueEBVs = np.hstack(SegueEBVs)
 	SegueSigmaEBVs = np.hstack(SegueSigmaEBVs)
-	
-	surfs = surfs[good]
-	SegueEBVs = SegueEBVs[good]
-	SegueSigmaEBVs = SegueSigmaEBVs[good]
 	
 	fig1 = plotScatter(surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV)
 	fig2 = plotScatter(surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV, False)
@@ -525,10 +542,10 @@ def main():
 	fig3 = plotPercentiles(pvals)
 	fig4 = plotPercentiles(pvals_shuffled)
 	
-	fig1.savefig('../plots/SEGUE-scatter-maxprob.png', dpi=300)
-	fig2.savefig('../plots/SEGUE-scatter-mean.png', dpi=300)
-	fig3.savefig('../plots/pvals.png', dpi=300)
-	fig4.savefig('../plots/pvals-shuffled.png', dpi=300)
+	fig1.savefig('plots/SEGUE-scatter-maxprob.png', dpi=300)
+	fig2.savefig('plots/SEGUE-scatter-mean.png', dpi=300)
+	fig3.savefig('plots/pvals.png', dpi=300)
+	fig4.savefig('plots/pvals-shuffled.png', dpi=300)
 	
 	plt.show()
 	
