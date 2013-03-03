@@ -286,7 +286,13 @@ int main(int argc, char **argv) {
 		// Filter based on convergence and lnZ
 		assert(conv.size() == lnZ.size());
 		vector<bool> keep;
-		double lnZmax = *max_element(lnZ.begin(), lnZ.end());
+		double lnZmax = -numeric_limits<double>::infinity();
+		for(vector<double>::iterator it_lnZ = lnZ.begin(); it_lnZ != lnZ.end(); ++it_lnZ) {
+			if(!isnan(*it_lnZ)) {
+				if(*it_lnZ > lnZmax) { lnZmax = *it_lnZ; }
+			}
+		}
+		//double lnZmax = *max_element(lnZ.begin(), lnZ.end());
 		bool tmpFilter;
 		size_t nFiltered = 0;
 		for(size_t n=0; n<conv.size(); n++) {
@@ -299,13 +305,15 @@ int main(int argc, char **argv) {
 		cerr << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
 		
 		// Fit line-of-sight extinction profile
-		double EBV_max = -1.;
-		if(SFDPrior) { EBV_max = stellar_data.EBV; }
-		if(N_clouds != 0) {
-			sample_los_extinction_clouds(output_fname, cloud_options, img_stack, N_clouds, 1.e-15, EBV_max, *it);
-		}
-		if(N_regions != 0) {
-			sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-15, EBV_max, *it);
+		if(nFiltered < conv.size()) {
+			double EBV_max = -1.;
+			if(SFDPrior) { EBV_max = stellar_data.EBV; }
+			if(N_clouds != 0) {
+				sample_los_extinction_clouds(output_fname, cloud_options, img_stack, N_clouds, 1.e-15, EBV_max, *it);
+			}
+			if(N_regions != 0) {
+				sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-15, EBV_max, *it);
+			}
 		}
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
