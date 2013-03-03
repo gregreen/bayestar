@@ -447,7 +447,7 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 		EBV_tot += EBV_tmp;
 		
 		// Prior to prevent EBV from straying high
-		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (0.5 * 0.5);
+		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (0.2 * 0.2);
 	}
 	if(EBV_tot >= params.img_stack->rect->max[1]) { return neginf; }
 	
@@ -457,7 +457,7 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 	}
 	
 	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
-	const double bias = -4.;
+	const double bias = -6.;
 	const double sigma = 2.;
 	for(size_t i=0; i<N; i++) {
 		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
@@ -896,7 +896,7 @@ void TLOSTransform::transform(const double *const x, double *const y) {
 TLOSCloudTransform::TLOSCloudTransform(unsigned int ndim)
 	: TTransformParamSpace(ndim), _ndim(ndim)
 {
-	assert(!((ndim >> 1) & 1));
+	assert(!(ndim & 1));
 	n_clouds = ndim / 2;
 }
 
