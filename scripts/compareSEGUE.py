@@ -402,14 +402,20 @@ def plotScatter(surfs, EBV, sigmaEBV, minEBV, maxEBV, usePeak=True):
 	mplib.rc('ytick', direction='out')
 	mplib.rc('axes', grid=False)
 	
-	fig = plt.figure(figsize=(5,4), dpi=200)
-	ax = fig.add_subplot(1,1,1)
+	fig1 = plt.figure(figsize=(5,4), dpi=200)
+	ax = fig1.add_subplot(1,1,1)
 	
-	print np.mean(EBV)
-	print np.mean(mu)
+	xlim = np.percentile(EBV, [2., 98])
+	idx = (EBV >= xlim[0]) & (EBV <= xlim[1])
+	correlation_plot(ax, EBV[idx], mu[idx])
 	
-	print EBV.shape
-	print mu.shape
+	ax.set_xlim(xlim)
+	ax.set_xlabel(r'$\mathrm{E} \left( B \! - \! V \right)_{\mathrm{SEGUE}}$', fontsize=14)
+	ax.set_ylabel(r'$\mathrm{E} \left( B \! - \! V \right)_{\mathrm{Bayes}} - \mathrm{E} \left( B \! - \! V \right)_{\mathrm{SEGUE}}$', fontsize=14)
+	fig1.subplots_adjust(left=0.20, bottom=0.20)
+	
+	fig2 = plt.figure(figsize=(5,4), dpi=200)
+	ax = fig2.add_subplot(1,1,1)
 	
 	ax.scatter(EBV, mu, s=1., alpha=0.3)
 	x = [0, np.max(EBV)]
@@ -425,9 +431,44 @@ def plotScatter(surfs, EBV, sigmaEBV, minEBV, maxEBV, usePeak=True):
 	ax.set_xlabel(r'$\mathrm{E} \left( B - V \right)_{\mathrm{SEGUE}}$', fontsize=16)
 	ax.set_ylabel(r'$\mathrm{E} \left( B - V \right)_{\mathrm{Bayes}}$', fontsize=16)
 	
-	fig.subplots_adjust(left=0.20, bottom=0.20)
+	fig2.subplots_adjust(left=0.20, bottom=0.20)
 	
-	return fig
+	return fig1, fig2
+
+
+def correlation_plot(ax, x, y, nbins=(25,20)):
+	width = (1. + 1.e-5) * (np.max(x) - np.min(x)) / nbins[0]
+	diffMax = np.percentile(np.abs(y-x), 99.)
+	height = 2. * diffMax / nbins[1]
+	
+	density = np.zeros(nbins, dtype='f8')
+	thresholds = np.zeros((nbins[0], 3), dtype='f8')
+	
+	for n in xrange(nbins[0]):
+		idx = (x >= n * width) & (x < (n+1) * width)
+		if np.sum(idx) != 0:
+			diff = y[idx] - x[idx]
+			density[n,:] = np.histogram(diff, bins=nbins[1], density=True,
+			                                      range=[-diffMax,diffMax])[0]
+			diff.sort()
+			for i,q in enumerate([15.87, 51., 84.13]):
+				k = (len(diff) - 1) * q / 100.
+				kFloor = int(k)
+				#print kFloor, len(diff)
+				#a = k - kFloor
+				#pctile = a * diff[kFloor] + (1. - a) * diff[kFloor+1]
+				thresholds[n,i] = diff[kFloor] #pctile
+			#thresholds[n,:] = np.percentile(diff, [15.87, 51., 84.13])
+	
+	print density[-1,:]
+	extent = (np.min(x), np.max(x), -diffMax, diffMax)
+	ax.imshow(-density.T, extent=extent, origin='lower', aspect='auto',
+	                               cmap='gray', interpolation='nearest')
+	
+	EBVRange = np.linspace(np.min(x)-0.5*width, np.max(x)+0.5*width, nbins[0]+2)
+	for i in xrange(3):
+		y = np.hstack([[thresholds[0,i]], thresholds[:,i], [thresholds[-1,i]]])
+		ax.step(EBVRange, y, where='mid', c='b', alpha=0.5)
 
 
 def tests():
@@ -491,8 +532,9 @@ def tests():
 	plt.show()
 
 def main():
-	inFNames = ['/n/wise/ggreen/bayestar/input/SEGUE.0000%d.h5' % i for i in range(6)]
-	outFNames = ['/n/wise/ggreen/bayestar/output/SEGUE.0000%d.h5' % i for i in range(6)]
+	directory = '/n/wise/ggreen/bayestar'
+	inFNames = ['%s/input/SEGUE.0000%d.h5' % (directory, i) for i in range(5,6)]
+	outFNames = ['%s/output/SEGUE.0000%d.h5' % (directory, i) for i in range(5,6)]
 	
 	surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV = [], [], [], None, None
 	
@@ -526,8 +568,8 @@ def main():
 	SegueEBVs = np.hstack(SegueEBVs)
 	SegueSigmaEBVs = np.hstack(SegueSigmaEBVs)
 	
-	fig1 = plotScatter(surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV)
-	fig2 = plotScatter(surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV, False)
+	fig11, fig12 = plotScatter(surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV)
+	fig21, fig22 = plotScatter(surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV, False)
 	
 	print '# of pixels: %d' % (len(surfs))
 	
@@ -542,8 +584,10 @@ def main():
 	fig3 = plotPercentiles(pvals)
 	fig4 = plotPercentiles(pvals_shuffled)
 	
-	fig1.savefig('plots/SEGUE-scatter-maxprob.png', dpi=300)
-	fig2.savefig('plots/SEGUE-scatter-mean.png', dpi=300)
+	fig11.savefig('plots/SEGUE-corr-maxprob.png', dpi=300)
+	fig12.savefig('plots/SEGUE-scatter-maxprob.png', dpi=300)
+	fig21.savefig('plots/SEGUE-corr-mean.png', dpi=300)
+	fig21.savefig('plots/SEGUE-scatter-mean.png', dpi=300)
 	fig3.savefig('plots/pvals.png', dpi=300)
 	fig4.savefig('plots/pvals-shuffled.png', dpi=300)
 	
