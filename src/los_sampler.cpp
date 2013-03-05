@@ -447,7 +447,7 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 		EBV_tot += EBV_tmp;
 		
 		// Prior to prevent EBV from straying high
-		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (0.25 * 0.25);
+		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (0.1 * 0.1);
 	}
 	if(EBV_tot >= params.img_stack->rect->max[1]) { return neginf; }
 	
