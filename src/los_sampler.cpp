@@ -457,7 +457,7 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 	}
 	
 	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
-	const double bias = -4.;
+	const double bias = -5.;
 	const double sigma = 2.;
 	for(size_t i=0; i<N; i++) {
 		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);

@@ -312,7 +312,7 @@ int main(int argc, char **argv) {
 				sample_los_extinction_clouds(output_fname, cloud_options, img_stack, N_clouds, 1.e-15, EBV_max, *it);
 			}
 			if(N_regions != 0) {
-				sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-4, EBV_max, *it);
+				sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-8, EBV_max, *it);
 			}
 		}
 		
