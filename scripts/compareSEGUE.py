@@ -23,12 +23,12 @@
 #  
 
 import numpy as np
+import scipy
 import scipy.stats
 import scipy.special
 import h5py
 import time
 
-import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mplib
 
@@ -375,20 +375,47 @@ def plot2DSurfs(surfs2D, surfs1D, EBV, sigmaEBV, minEBV, maxEBV):
 	
 	fig.subplots_adjust(left=0.18, bottom=0.18)
 
-def plotScatter(surfs, EBV, sigmaEBV, minEBV, maxEBV, usePeak=True):
+def plotScatter(surfs, EBV, sigmaEBV, minEBV, maxEBV, method='max', norm=False):
 	nStars, nCells = surfs.shape
 	DeltaEBV = (maxEBV - minEBV) / nCells
 	
 	yCell = None
-	if usePeak:
+	if method == 'max':
 		yCell = np.argmax(surfs, axis=1) + 0.5
-	else:
+	elif method == 'mean':
 		y = np.linspace(0.5, nCells - 0.5, nCells)
 		y.shape = (1, nCells)
 		y = np.repeat(y, nStars, axis=0)
 		yCell = np.sum(y*surfs, axis=1) / np.sum(surfs, axis=1)
 		y2Cell = np.sum(y*y*surfs, axis=1) / np.sum(surfs, axis=1)
 		sigma2 = (y2Cell - yCell*yCell) * (DeltaEBV*DeltaEBV)
+	elif method == 'resample':
+		yIdx = np.arange(nCells)
+		yIdx.shape = (1, nCells)
+		idxStar = np.arange(nStars)
+		yIdx = np.repeat(yIdx, nStars, axis=0)
+		P = np.zeros((nStars,nCells), dtype='f8')
+		P[:,1:] = np.cumsum(surfs[:,:-1], axis=1)
+		yCell = []
+		EBVNew = []
+		
+		for i in xrange(100):
+			# Draw a set of samples from Bayestar surfaces
+			PSample = np.random.random(size=nStars)
+			PSample.shape = (nStars, 1)
+			PSample = np.repeat(PSample, nCells, axis=1)
+			idxSample = np.min(np.where(P >= PSample, yIdx, np.inf), axis=1).astype('i4')
+			pSample = surfs[idxStar, idxSample]
+			PCell = P[idxStar, idxSample]
+			idxSample = idxSample.astype('f8') + (PSample[:,0] - PCell) / pSample
+			yCell.append(idxSample[:])
+			
+			# Draw a set of of samples from SEGUE
+			nDev = np.random.normal(size=nStars)
+			EBVNew.append( EBV + nDev * sigmaEBV )
+		
+		yCell = np.hstack(yCell)
+		EBV = np.hstack(EBVNew)
 	
 	mu = yCell * DeltaEBV
 	
@@ -405,28 +432,44 @@ def plotScatter(surfs, EBV, sigmaEBV, minEBV, maxEBV, usePeak=True):
 	fig1 = plt.figure(figsize=(5,4), dpi=200)
 	ax = fig1.add_subplot(1,1,1)
 	
-	xlim = np.percentile(EBV, [2., 98])
-	idx = (EBV >= xlim[0]) & (EBV <= xlim[1])
-	correlation_plot(ax, EBV[idx], mu[idx])
+	#xlim1 = np.percentile(EBV, [2., 98])
+	#xlim2 = np.percentile(mu, [2., 98])
+	#idx = ((EBV >= xlim1[0]) & (EBV <= xlim1[1]) & 
+	#       (mu >= xlim2[0]) & (mu <= xlim2[1]))
+	EBVavg = 0.5*(EBV + mu)
+	EBVdiff = mu - EBV
+	xlim = np.percentile(EBVavg, [2., 98.])
+	#ylim = np.percentile(EBVdiff, [0.5, 99.5])
+	ylim = [-2., 2.]
+	idx = ((EBVavg >= xlim[0]) & (EBVavg <= xlim[1]) & 
+	       (EBVdiff >= ylim[0]) & (EBVdiff <= ylim[1]))
+	#xlim = np.min(EBVavg), np.max(EBVavg)
+	correlation_plot(ax, EBVavg[idx], EBVdiff[idx], nbins=(25,80))
 	
 	ax.set_xlim(xlim)
-	ax.set_xlabel(r'$\mathrm{E} \left( B \! - \! V \right)_{\mathrm{SEGUE}}$', fontsize=14)
+	ax.set_ylim([-0.5, 0.5])
+	ax.set_xlabel(r'$\frac{1}{2} \left[ \mathrm{E} \left( B \! - \! V \right)_{\mathrm{Bayes}} + \mathrm{E} \left( B \! - \! V \right)_{\mathrm{SEGUE}} \right]$', fontsize=14)
 	ax.set_ylabel(r'$\mathrm{E} \left( B \! - \! V \right)_{\mathrm{Bayes}} - \mathrm{E} \left( B \! - \! V \right)_{\mathrm{SEGUE}}$', fontsize=14)
 	fig1.subplots_adjust(left=0.20, bottom=0.20)
 	
 	fig2 = plt.figure(figsize=(5,4), dpi=200)
 	ax = fig2.add_subplot(1,1,1)
 	
-	ax.scatter(EBV, mu, s=1., alpha=0.3)
-	x = [0, np.max(EBV)]
-	ax.plot(x, x, 'b-', alpha=0.5)
-	
 	xlim = [np.percentile(EBV, 2.), np.percentile(EBV, 98.)]
 	width = xlim[1] - xlim[0]
 	xlim[1] += 1. * width
 	xlim[0] -= 0.25 * width
+	ylim = [0., 2.*np.percentile(mu, 99.)]
+	
+	idx = ((EBV >= xlim[0]) & (EBV <= xlim[1]) &
+	       (mu >= ylim[0]) & (mu <= ylim[1]))
+	density_scatter(ax, EBV[idx], mu[idx], nbins=(100,100))
+	#ax.scatter(EBV, mu, s=1., alpha=0.3)
+	x = [0, np.max(EBV)]
+	ax.plot(x, x, 'b-', alpha=0.5)
+	
 	ax.set_xlim(xlim)
-	ax.set_ylim(0., 2.*np.percentile(mu, 99.))
+	ax.set_ylim(ylim)
 	
 	ax.set_xlabel(r'$\mathrm{E} \left( B - V \right)_{\mathrm{SEGUE}}$', fontsize=16)
 	ax.set_ylabel(r'$\mathrm{E} \left( B - V \right)_{\mathrm{Bayes}}$', fontsize=16)
@@ -447,7 +490,7 @@ def correlation_plot(ax, x, y, nbins=(25,20)):
 	for n in xrange(nbins[0]):
 		idx = (x >= n * width) & (x < (n+1) * width)
 		if np.sum(idx) != 0:
-			diff = y[idx] - x[idx]
+			diff = y[idx]# - x[idx]
 			density[n,:] = np.histogram(diff, bins=nbins[1], density=True,
 			                                      range=[-diffMax,diffMax])[0]
 			diff.sort()
@@ -460,7 +503,6 @@ def correlation_plot(ax, x, y, nbins=(25,20)):
 				thresholds[n,i] = diff[kFloor] #pctile
 			#thresholds[n,:] = np.percentile(diff, [15.87, 51., 84.13])
 	
-	print density[-1,:]
 	extent = (np.min(x), np.max(x), -diffMax, diffMax)
 	ax.imshow(-density.T, extent=extent, origin='lower', aspect='auto',
 	                               cmap='gray', interpolation='nearest')
@@ -469,6 +511,40 @@ def correlation_plot(ax, x, y, nbins=(25,20)):
 	for i in xrange(3):
 		y = np.hstack([[thresholds[0,i]], thresholds[:,i], [thresholds[-1,i]]])
 		ax.step(EBVRange, y, where='mid', c='b', alpha=0.5)
+
+
+def density_scatter(ax, x, y, nbins=(50,50), binsize=None, threshold=5, c='b', s=1, cmap='jet'):
+	'''
+	Draw a combination density map / scatterplot to the given axes.
+	
+	Adapted from answer to stackoverflow question #10439961
+	'''
+	
+	# Make histogram of data
+	bounds = [[np.min(x)-1.e-10, np.max(x)+1.e-10],
+	          [np.min(y)-1.e-10, np.max(y)+1.e-10]]
+	if binsize != None:
+		nbins = []
+		if len(binsize) != 2:
+			raise Exception('binsize must have size 2. Size is %d.' % len(binsize))
+		for i in range(2):
+			nbins.append((bounds[i][1] - bounds[i][0])/float(binsize[i]))
+	h, loc_x, loc_y = scipy.histogram2d(x, y, range=bounds, bins=nbins)
+	pos_x, pos_y = np.digitize(x, loc_x), np.digitize(y, loc_y)
+	
+	# Mask histogram points below threshold
+	idx = (h[pos_x - 1, pos_y - 1] < threshold)
+	h[h < threshold] = np.nan
+	
+	# Density plot
+	img = ax.imshow(np.log(h.T), origin='lower', cmap=cmap,
+	                             extent=np.array(bounds).flatten(),
+	                             interpolation='nearest', aspect='auto')
+	
+	# Scatterplot
+	ax.scatter(x[idx], y[idx], c=c, s=s, edgecolors='none')
+	
+	return img
 
 
 def tests():
@@ -525,16 +601,13 @@ def tests():
 		#multiply1DSurfs(surfs[i], SegueEBVs[i], SegueSigmaEBVs[i], minEBV, maxEBV)
 		plot1DSurfs(surfs[i], good[i], SegueEBVs[i], SegueSigmaEBVs[i],
 		                                                 minEBV, maxEBV)
-		print ''
-		print pval1DSurfs(surfs[i], SegueEBVs[i], SegueSigmaEBVs[i],
-		                                                 minEBV, maxEBV)
 	
 	plt.show()
 
 def main():
 	directory = '/n/wise/ggreen/bayestar'
-	inFNames = ['%s/input/SEGUE.0000%d.h5' % (directory, i) for i in range(5,6)]
-	outFNames = ['%s/output/SEGUE.0000%d.h5' % (directory, i) for i in range(5,6)]
+	inFNames = ['%s/input/SEGUE.0000%d.h5' % (directory, i) for i in range(6)]
+	outFNames = ['%s/output/SEGUE.0000%d.h5' % (directory, i) for i in range(6)]
 	
 	surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV = [], [], [], None, None
 	
@@ -554,22 +627,25 @@ def main():
 		SegueEBVs_tmp = np.hstack(SegueEBVs_tmp)
 		SegueSigmaEBVs_tmp = np.hstack(SegueSigmaEBVs_tmp)
 		
-		print good_tmp
 		nanMask = ~np.isnan(SegueEBVs_tmp)
 		good_tmp &= nanMask
-		
-		print good_tmp
 		
 		surfs.append(surfs_tmp[good_tmp])
 		SegueEBVs.append(SegueEBVs_tmp[good_tmp])
 		SegueSigmaEBVs.append(SegueSigmaEBVs_tmp[good_tmp])
 	
+	print 'Combining stars from different files...'
 	surfs = np.vstack(surfs)
 	SegueEBVs = np.hstack(SegueEBVs)
 	SegueSigmaEBVs = np.hstack(SegueSigmaEBVs)
 	
-	fig11, fig12 = plotScatter(surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV)
-	fig21, fig22 = plotScatter(surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV, False)
+	print 'Making scatterplots...'
+	fig11, fig12 = plotScatter(surfs, SegueEBVs, SegueSigmaEBVs,
+	                           minEBV, maxEBV, method='max')
+	fig21, fig22 = plotScatter(surfs, SegueEBVs, SegueSigmaEBVs,
+	                           minEBV, maxEBV, method='mean')
+	fig31, fig32 = plotScatter(surfs, SegueEBVs, SegueSigmaEBVs,
+	                           minEBV, maxEBV, method='resample')
 	
 	print '# of pixels: %d' % (len(surfs))
 	
@@ -581,17 +657,21 @@ def main():
 	SegueSigmaEBVs = SegueSigmaEBVs[idx]
 	pvals_shuffled = pval1DSurfs(surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV)
 	
-	fig3 = plotPercentiles(pvals)
-	fig4 = plotPercentiles(pvals_shuffled)
+	print 'Plotting percentiles...'
+	fig4 = plotPercentiles(pvals)
+	fig5 = plotPercentiles(pvals_shuffled)
 	
+	print 'Saving plots...'
 	fig11.savefig('plots/SEGUE-corr-maxprob.png', dpi=300)
 	fig12.savefig('plots/SEGUE-scatter-maxprob.png', dpi=300)
 	fig21.savefig('plots/SEGUE-corr-mean.png', dpi=300)
-	fig21.savefig('plots/SEGUE-scatter-mean.png', dpi=300)
-	fig3.savefig('plots/pvals.png', dpi=300)
-	fig4.savefig('plots/pvals-shuffled.png', dpi=300)
+	fig22.savefig('plots/SEGUE-scatter-mean.png', dpi=300)
+	fig31.savefig('plots/SEGUE-corr-resample.png', dpi=300)
+	fig32.savefig('plots/SEGUE-scatter-resample.png', dpi=300)
+	fig4.savefig('plots/pvals.png', dpi=300)
+	fig5.savefig('plots/pvals-shuffled.png', dpi=300)
 	
-	plt.show()
+	#plt.show()
 	
 	return 0
 

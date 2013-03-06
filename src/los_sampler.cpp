@@ -384,7 +384,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	group_name << "/pixel " << healpix_index;
 	TChain chain = sampler.get_chain();
 	
-	TChainWriteBuffer writeBuffer(ndim, 100, 1);
+	TChainWriteBuffer writeBuffer(ndim, 500, 1);
 	writeBuffer.add(chain, converged);
 	writeBuffer.write(out_fname, group_name.str(), "los");
 	
@@ -447,7 +447,7 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 		EBV_tot += EBV_tmp;
 		
 		// Prior to prevent EBV from straying high
-		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (0.2 * 0.2);
+		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (0.25 * 0.25);
 	}
 	if(EBV_tot >= params.img_stack->rect->max[1]) { return neginf; }
 	
@@ -457,7 +457,7 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 	}
 	
 	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
-	const double bias = -6.;
+	const double bias = -4.;
 	const double sigma = 2.;
 	for(size_t i=0; i<N; i++) {
 		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
