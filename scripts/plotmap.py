@@ -53,7 +53,11 @@ def getClouds(fname):
 	DeltaMu = np.zeros(shape, dtype='f8')
 	DeltaLnEBV = np.zeros(shape, dtype='f8')
 	for i,pixIdx in enumerate(pixels):
-		group = f['pixel %d/clouds' % pixIdx]
+		try:
+			group = f['pixel %d/clouds' % pixIdx]
+		except:
+			continue
+		
 		try:
 			DeltaMu[i] = group[0, :, 1:nClouds+1]
 			DeltaLnEBV[i] = group[0, :, nClouds+1:]
@@ -70,8 +74,11 @@ def getCloudsFromMultiple(fnames):
 	partial = []
 	nPixels = 0
 	for fname in fnames:
-		partial.append( getClouds(fname) )
-		nPixels += len(partial[-1][1])
+		try:
+			partial.append( getClouds(fname) )
+			nPixels += len(partial[-1][1])
+		except:
+			pass
 	tmp, nSamples, nClouds = partial[0][1].shape
 	
 	pixels = np.empty(nPixels, dtype='u4')
@@ -141,13 +148,13 @@ def rasterizeMap(pixels, EBV, nside=512, nest=True, oversample=4):
 def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu, nside=512, nest=True, **kwargs):
 	# Generate rasterized image of E(B-V)
 	EBV = calcEBV(muAnchor, DeltaEBV, mu)
-	idx1 = np.arange(EBV.shape[0])
-	idx2 = np.random.randint(EBV.shape[1], size=EBV.shape[1])
+	#idx1 = np.arange(EBV.shape[0])
+	#idx2 = np.random.randint(EBV.shape[1], size=EBV.shape[1])
+	#print EBV.shape
+	#print np.median(EBV, axis=1).shape
+	#EBV = EBV[idx1,idx2]
 	print EBV.shape
-	print np.median(EBV, axis=1).shape
-	EBV = EBV[idx1,idx2]
-	print EBV.shape
-	#EBV = np.median(EBV, axis=1) #np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1) #np.mean(EBV, axis=1)
+	EBV = np.median(EBV, axis=1) #np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1) #np.mean(EBV, axis=1)
 	img, bounds = rasterizeMap(pixels, EBV, nside, nest)
 	
 	# Configure plotting options
@@ -169,7 +176,7 @@ def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu, nside=512, nest=True, **kwargs):
 
 
 def main():
-	fnames = ['/n/wise/ggreen/bayestar/output/MonR2.0000%d.h5' % i for i in xrange(5)]
+	fnames = ['/n/wise/ggreen/bayestar/output/CMa.%.5d.h5' % i for i in xrange(18)]
 	pixels, muAnchor, DeltaEBV = getCloudsFromMultiple(fnames)
 	
 	'''

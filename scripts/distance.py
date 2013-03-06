@@ -103,15 +103,18 @@ def main():
 	muEBV = 0.35
 	sigmaEBV = 0.15
 	
+	print 'loading'
 	lnp = TProbDist(args.fname, args.index, args.muEBV, args.sigmaEBV)
 	
-	DM = np.linspace(5., 20., 500)
-	lnpRange = np.zeros(len(DM), dtype='f8')
+	print 'evaluating'
+	DM = np.linspace(5., 20., 100)
+	p = np.zeros(len(DM), dtype='f8')
 	for i in xrange(lnp.get_nChains()):
-		#lnpRange.append( np.exp(lnp(DM, chainIdx=i)) )
-		lnpRange += np.exp(lnp(DM, chainIdx=i))
-	lnpRange *= (DM[-1] - DM[0]) / np.sum(lnpRange)
+		p_tmp = np.exp(lnp(DM, chainIdx=i))
+		p += p_tmp / np.sum(p_tmp)
+	p *= (DM[-1] - DM[0]) / np.sum(p)
 	
+	print 'plotting'
 	# Set matplotlib style attributes
 	mplib.rc('text', usetex=True)
 	mplib.rc('xtick.major', size=6)
@@ -122,18 +125,22 @@ def main():
 	mplib.rc('ytick', direction='out')
 	mplib.rc('axes', grid=False)
 	
-	fig = plt.figure(figsize=(7,5), dpi=150)
+	print 'creating plot'
+	fig = plt.figure()#figsize=(7,5), dpi=150)
 	ax = fig.add_subplot(1,1,1)
-	#for y in lnpRange:
-	#	ax.plot(DM, y)
-	ax.plot(DM, lnpRange)
+	print 'plot'
+	#print DM
+	#print p
+	ax.plot(DM, p)
 	
+	print 'formatting'
 	ax.set_xlim(DM[0], DM[-1])
 	ax.set_xlabel(r'$\mu$', fontsize=16)
 	ax.set_ylabel(r'$p \left( \mu \right)$', fontsize=16)
 	
 	fig.subplots_adjust(left=0.20, bottom=0.20)
 	
+	print 'displaying'
 	if args.output != None:
 		fig.savefig(args.output, dpi=300)
 	if args.show:
