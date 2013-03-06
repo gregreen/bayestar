@@ -76,8 +76,9 @@ class TProbDist:
 		return EBV
 	
 	def lnPriorDM(self, DM):
-		Delta = (DM - 12.) / 10.
-		return -0.5 * Delta * Delta
+		return 1.
+		#Delta = (DM - 12.) / 10.
+		#return -0.5 * Delta * Delta
 	
 	def get_nChains(self):
 		return self.DeltaEBV.shape[0]
@@ -107,7 +108,7 @@ def main():
 	lnp = TProbDist(args.fname, args.index, args.muEBV, args.sigmaEBV)
 	
 	print 'evaluating'
-	DM = np.linspace(5., 20., 100)
+	DM = np.linspace(5., 20., 500)
 	p = np.zeros(len(DM), dtype='f8')
 	for i in xrange(lnp.get_nChains()):
 		p_tmp = np.exp(lnp(DM, chainIdx=i))
