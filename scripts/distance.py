@@ -34,7 +34,6 @@ import matplotlib as mplib
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 
 class TProbDist:
-	
 	def __init__(self, fname, healpixIdx, muEBV, sigmaEBV):
 		f = h5py.File(fname, 'r')
 		dset = '/pixel %d/los' % healpixIdx
@@ -84,6 +83,12 @@ class TProbDist:
 		return self.DeltaEBV.shape[0]
 
 
+def idxGtrThan(x, x0):
+	idx = np.arange(len(x))
+	tmp = np.where(x > x0, idx, len(x))
+	return int(np.min(tmp))
+
+
 def main():
 	# Parse commandline arguments
 	parser = argparse.ArgumentParser(prog='distance.py',
@@ -101,13 +106,8 @@ def main():
 		offset = 1
 	args = parser.parse_args(sys.argv[offset:])
 	
-	muEBV = 0.35
-	sigmaEBV = 0.15
-	
-	print 'loading'
+	# Calculate p(DM)
 	lnp = TProbDist(args.fname, args.index, args.muEBV, args.sigmaEBV)
-	
-	print 'evaluating'
 	DM = np.linspace(5., 20., 500)
 	p = np.zeros(len(DM), dtype='f8')
 	for i in xrange(lnp.get_nChains()):
@@ -115,7 +115,17 @@ def main():
 		p += p_tmp / np.sum(p_tmp)
 	p *= (DM[-1] - DM[0]) / np.sum(p)
 	
-	print 'plotting'
+	# Calculate median, 1-sigma-equivalent percentiles
+	P = np.cumsum(p) / (DM[-1] - DM[0])
+	DeltaDM = DM[1] - DM[0]
+	lowIdx = idxGtrThan(P, 0.1587)
+	medIdx = idxGtrThan(P, 0.5)
+	highIdx = idxGtrThan(P, 0.8413)
+	lowDM = lowIdx * DeltaDM + DM[0]
+	medDM = medIdx * DeltaDM + DM[0]
+	highDM = highIdx * DeltaDM + DM[0]
+	print 'DM = %.2f + %.2f - %.2f' % (lowDM, medDM-lowDM, highDM-medDM)
+	
 	# Set matplotlib style attributes
 	mplib.rc('text', usetex=True)
 	mplib.rc('xtick.major', size=6)
@@ -126,22 +136,42 @@ def main():
 	mplib.rc('ytick', direction='out')
 	mplib.rc('axes', grid=False)
 	
-	print 'creating plot'
-	fig = plt.figure()#figsize=(7,5), dpi=150)
+	fig = plt.figure(figsize=(7,5), dpi=150)
 	ax = fig.add_subplot(1,1,1)
-	print 'plot'
-	#print DM
-	#print p
-	ax.plot(DM, p)
 	
-	print 'formatting'
+	# Plot E(B-V) vs. DM curves
+	nChains = lnp.EBV.shape[0]
+	for i in xrange(nChains):
+		ax.plot(lnp.DM, lnp.EBV[i,:], 'k-', alpha=0.01)
+	
+	# Plot E(B-V) data
+	for i in xrange(1,3):
+		lowEBV = args.muEBV - i*args.sigmaEBV
+		highEBV = args.muEBV + i*args.sigmaEBV
+		ax.fill_between(DM, lowEBV, highEBV, facecolor='red', alpha=0.3)
+	
+	# Plot p(DM)
+	p *= np.max(lnp.EBV) / np.max(p)
+	ax.plot(DM, p)
+	ax.fill_between(DM[:lowIdx+1], 0, p[:lowIdx+1], facecolor='blue', alpha=0.25)
+	ax.fill_between(DM[lowIdx:highIdx+1], 0, p[lowIdx:highIdx+1], facecolor='blue', alpha=0.5)
+	ax.fill_between(DM[highIdx:], 0, p[highIdx:], facecolor='blue', alpha=0.25)
+	
+	# Format p(DM) axis
+	ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
+	ax.xaxis.set_minor_locator(AutoMinorLocator())
+	ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
+	ax.yaxis.set_minor_locator(AutoMinorLocator())
 	ax.set_xlim(DM[0], DM[-1])
+	ylim = ax.get_ylim()
+	ax.set_ylim(0, ylim[1])
 	ax.set_xlabel(r'$\mu$', fontsize=16)
 	ax.set_ylabel(r'$p \left( \mu \right)$', fontsize=16)
 	
-	fig.subplots_adjust(left=0.20, bottom=0.20)
+	# Format figure
+	fig.subplots_adjust(left=0.15, bottom=0.15)
 	
-	print 'displaying'
+	# Show / save plot
 	if args.output != None:
 		fig.savefig(args.output, dpi=300)
 	if args.show:
