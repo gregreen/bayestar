@@ -166,7 +166,7 @@ def main():
 	ylim = ax.get_ylim()
 	ax.set_ylim(0, ylim[1])
 	ax.set_xlabel(r'$\mu$', fontsize=16)
-	ax.set_ylabel(r'$p \left( \mu \right)$', fontsize=16)
+	ax.set_ylabel(r'$\mathrm{E} \left( B \! - \! V \right)$', fontsize=16)
 	
 	# Format figure
 	fig.subplots_adjust(left=0.15, bottom=0.15)
