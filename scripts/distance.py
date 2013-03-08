@@ -112,7 +112,7 @@ def main():
 	p = np.zeros(len(DM), dtype='f8')
 	for i in xrange(lnp.get_nChains()):
 		p_tmp = np.exp(lnp(DM, chainIdx=i))
-		p += p_tmp / np.sum(p_tmp)
+		p += p_tmp #/ np.sum(p_tmp)
 	p *= (DM[-1] - DM[0]) / np.sum(p)
 	
 	# Calculate median, 1-sigma-equivalent percentiles
