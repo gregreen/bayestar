@@ -29,6 +29,8 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 from mpl_toolkits.axes_grid1 import ImageGrid
 
+import argparse, sys
+
 import healpy as hp
 import h5py
 
@@ -103,6 +105,9 @@ def calcEBV(muAnchor, DeltaEBV, mu):
 def rasterizeMap(pixels, EBV, nside=512, nest=True, oversample=4):
 	# Determine pixel centers and bounds
 	pixels = np.array(pixels)
+	#print type(nside), nside
+	#print pixels.dtype, pixels
+	#print type(nest), nest
 	theta, phi = hp.pix2ang(nside, pixels, nest=nest)
 	lCenter, bCenter = 180./np.pi * phi, 90. - 180./np.pi * theta
 	
@@ -153,7 +158,7 @@ def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu, nside=512, nest=True, **kwargs):
 	#print EBV.shape
 	#print np.median(EBV, axis=1).shape
 	#EBV = EBV[idx1,idx2]
-	print EBV.shape
+	#print EBV.shape
 	EBV = np.median(EBV, axis=1) #np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1) #np.mean(EBV, axis=1)
 	img, bounds = rasterizeMap(pixels, EBV, nside, nest)
 	
@@ -169,14 +174,32 @@ def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu, nside=512, nest=True, **kwargs):
 	if 'extent' in kwargs:
 		print "Ignoring option 'extent'."
 	kwargs['origin'] = 'lower'
-	kwargs['extent'] = bounds
+	kwargs['extent'] = [bounds[1], bounds[0], bounds[2], bounds[3]]
 	
 	# Plot
 	ax.imshow(img.T, **kwargs)
 
 
 def main():
-	fnames = ['/n/wise/ggreen/bayestar/output/CMa.%.5d.h5' % i for i in xrange(18)]
+	parser = argparse.ArgumentParser(prog='plotmap.py',
+	                                 description='Generate a map of E(B-V) from bayestar output.',
+	                                 add_help=True)
+	parser.add_argument('input', type=str, nargs='+', help='Bayestar output files.')
+	parser.add_argument('--output', '-o', type=str, help='Output filename for plot.')
+	parser.add_argument('--show', '-sh', action='store_true', help='Show plot.')
+	parser.add_argument('--dists', '-d', type=float, nargs=3,
+	                                     default=(5., 20., 6),
+	                                     help='DM min, DM max, # of distance slices.')
+	parser.add_argument('--nside', '-n', type=int, default=512,
+	                                     help='HealPIX nside parameter.')
+	if 'python' in sys.argv[0]:
+		offset = 2
+	else:
+		offset = 1
+	args = parser.parse_args(sys.argv[offset:])
+	
+	fnames = args.input
+	#fnames = ['/n/wise/ggreen/bayestar/output/CMa.%.5d.h5' % i for i in xrange(18)]
 	pixels, muAnchor, DeltaEBV = getCloudsFromMultiple(fnames)
 	
 	'''
@@ -207,24 +230,42 @@ def main():
 	mplib.rc('ytick', direction='out')
 	mplib.rc('axes', grid=False)
 	
-	fig = plt.figure(figsize=(7., 7.), dpi=150)
-	grid = ImageGrid(fig, 111, nrows_ncols=(3, 3), axes_pad=0.05)
+	muMin, muMax = args.dists[:2]
+	muN = int(args.dists[2])
+	mu = np.linspace(muMin, muMax, muN)
 	
-	mu = np.linspace(5., 11., 9)
-	print mu
-	for i in xrange(9):
-		ax = grid[i]
-		plotEBV(ax, pixels, muAnchor, DeltaEBV, mu[i], vmin=0., vmax=1.)
+	EBVs = calcEBV(muAnchor, DeltaEBV, mu[-1])
+	EBVmax = np.percentile(EBVs, 98.)
+	del EBVs
 	
-	#ax.set_xlabel(r'$\ell$', fontsize=16)
-	#ax.set_ylabel(r'$b$', fontsize=16)
+	fname = args.output
+	if fname != None:
+		if fname.endswith('.png'):
+			fname = fname[:-4]
 	
-	#ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
-	#ax.xaxis.set_minor_locator(AutoMinorLocator())
-	#ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
-	#ax.yaxis.set_minor_locator(AutoMinorLocator())
+	for i in xrange(muN):
+		print 'mu = %.2f (%d of %d)' % (mu[i], i+1, muN)
+		
+		fig = plt.figure(dpi=150)
+		#grid = ImageGrid(fig, 111, nrows_ncols=(3, 3), axes_pad=0.05)
+		ax = fig.add_subplot(1,1,1)
+		plotEBV(ax, pixels, muAnchor, DeltaEBV, mu[i],
+		        nside=args.nside, nest=True, vmin=0., vmax=EBVmax)
 	
-	plt.show()
+		ax.set_xlabel(r'$\ell$', fontsize=16)
+		ax.set_ylabel(r'$b$', fontsize=16)
+		
+		ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
+		ax.xaxis.set_minor_locator(AutoMinorLocator())
+		ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+		ax.yaxis.set_minor_locator(AutoMinorLocator())
+		
+		if fname != None:
+			full_fname = '%s.%.2d.png' % (fname, i)
+			fig.savefig(full_fname, dpi=150)
+	
+	if args.show:
+		plt.show()
 	
 	return 0
 
