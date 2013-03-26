@@ -250,7 +250,8 @@ def rasterizeMap(pixels, EBV, nside=512, nest=True, oversample=4):
 	return img, bounds
 
 def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu,
-                nside=512, nest=True, model='piecewise', **kwargs):
+                nside=512, nest=True, model='piecewise',
+                maxSpread=None, plotSpread=False, **kwargs):
 	# Generate rasterized image of E(B-V)
 	EBV = None
 	if model == 'piecewise':
@@ -259,8 +260,18 @@ def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu,
 		EBV = calcCloudEBV(muAnchor, DeltaEBV, mu)
 	else:
 		raise ValueError("Unrecognized extinction model: '%s'" % model)
-	EBV = np.median(EBV, axis=1) #np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1) #np.mean(EBV, axis=1)
-	img, bounds = rasterizeMap(pixels, EBV, nside, nest)
+	
+	EBVcenter = None
+	if plotSpread:
+		EBVcenter = np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1)
+	else:
+		EBVcenter = np.median(EBV, axis=1)
+		if maxSpread != None:
+			EBVspread = np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1) #np.mean(EBV, axis=1)
+			idx = EBVspread > maxSpread
+			EBVcenter[idx] = np.nan
+		
+	img, bounds = rasterizeMap(pixels, EBVcenter, nside, nest)
 	
 	# Configure plotting options
 	if 'vmin' not in kwargs:
@@ -269,15 +280,29 @@ def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu,
 		kwargs['vmax'] = np.max(img[np.isfinite(img)])
 	if 'aspect' not in kwargs:
 		kwargs['aspect'] = 'auto'
+	if 'interpolation' not in kwargs:
+		kwargs['interpolation'] = 'nearest'
 	if 'origin' in kwargs:
 		print "Ignoring option 'origin'."
 	if 'extent' in kwargs:
 		print "Ignoring option 'extent'."
 	kwargs['origin'] = 'lower'
 	kwargs['extent'] = [bounds[1], bounds[0], bounds[2], bounds[3]]
+	kwargs['cmap'] = 'binary'
 	
 	# Plot
 	ax.imshow(img.T, **kwargs)
+	
+	#kwargs['cmap'] = 'blue'
+	kwargs['vmin'] = 0.
+	kwargs['vmax'] = 1.
+	mask = np.isnan(img.T)
+	shape = (img.shape[1], img.shape[0], 4)
+	maskImg = np.zeros(shape, dtype='f8')
+	maskImg[:,:,1] = 0.4
+	maskImg[:,:,2] = 1.
+	maskImg[:,:,3] = 0.65 * mask.astype('f8')
+	ax.imshow(maskImg, **kwargs)
 
 
 def main():
@@ -295,6 +320,10 @@ def main():
 	parser.add_argument('--model', '-m', type=str, default='piecewise',
 	                                     choices=('piecewise', 'clouds'),
 	                                     help="Extinction model: 'piecewise' or 'clouds'")
+	parser.add_argument('--mask', '-msk', type=float, default=None,
+	                                      help='Hide parts of map where 95\% - 5\% of E(B-V) is greater than given value')
+	parser.add_argument('--spread', '-sp', action='store_true',
+	                                       help='Plot 95\% - 5\% of E(B-V)')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -307,25 +336,6 @@ def main():
 	
 	tmp1, tmp2, nSlices = PiecewiseDeltaEBV.shape
 	PiecewiseMuAnchor = np.linspace(5., 20., nSlices)
-	
-	'''
-	nMu = 100
-	xRange = np.linspace(5., 15., nMu)
-	yRange = np.empty(nMu, dtype='f8')
-	yPctile = np.empty((4, nMu), dtype='f8')
-	pctile = [5., 25., 75., 95.]
-	for i,x in enumerate(xRange):
-		tmpEBV = calcEBV(muAnchor, DeltaEBV, x)[1]
-		yRange[i] = np.mean(tmpEBV)
-		yPctile[:,i] = np.percentile(tmpEBV, pctile)
-	
-	fig = plt.figure(figsize=(7,5), dpi=150)
-	ax = fig.add_subplot(1,1,1)
-	ax.fill_between(xRange, yPctile[0], yPctile[-1], facecolor='b', alpha=0.5)
-	ax.fill_between(xRange, yPctile[1], yPctile[-2], facecolor='b', alpha=0.5)
-	#ax.plot(xRange, yRange, 'b')
-	plt.show()
-	'''
 	
 	mplib.rc('text', usetex=True)
 	mplib.rc('xtick.major', size=6)
@@ -364,10 +374,14 @@ def main():
 		ax = fig.add_subplot(1,1,1)
 		if args.model == 'piecewise':
 			plotEBV(ax, pixels, PiecewiseMuAnchor, PiecewiseDeltaEBV, mu[i],
-			        nside=args.nside, nest=True, model=args.model, vmin=0., vmax=EBVmax)
+			        nside=args.nside, nest=True, model=args.model,
+			        maxSpread=args.mask, plotSpread=args.spread,
+			        vmin=0., vmax=EBVmax)
 		elif args.model == 'clouds':
 			plotEBV(ax, pixels, CloudMuAnchor, CloudDeltaEBV, mu[i],
-			        nside=args.nside, nest=True, model=args.model, vmin=0., vmax=EBVmax)
+			        nside=args.nside, nest=True, model=args.model,
+			        maxSpread=args.mask, plotSpread=args.spread,
+			        vmin=0., vmax=EBVmax)
 		
 		ax.set_xlabel(r'$\ell$', fontsize=16)
 		ax.set_ylabel(r'$b$', fontsize=16)
