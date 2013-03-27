@@ -42,6 +42,7 @@ namespace H5Utils {
 	
 	H5::H5File* openFile(const std::string &fname, int accessmode = (READ | WRITE));
 	H5::Group* openGroup(H5::H5File* file, const std::string &name, int accessmode = 0);
+	H5::DataSet* openDataSet(H5::H5File* file, const std::string &name);
 	
 	H5::Attribute openAttribute(H5::Group* group, const std::string &name, H5::DataType &dtype, H5::DataSpace &dspace);
 	H5::Attribute openAttribute(H5::DataSet* dataset, const std::string &name, H5::DataType &dtype, H5::DataSpace &dspace);
