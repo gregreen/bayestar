@@ -33,7 +33,7 @@ import argparse, sys
 
 import healpy as hp
 import h5py
-		
+
 
 def getLOS(fname):
 	f = h5py.File(fname, 'r')
@@ -103,8 +103,7 @@ def getLOS(fname):
 def getLOSFromMultiple(fnames):
 	partial = []
 	nPixels = 0
-	for i,fname in enumerate(fnames):
-		print 'Reading in %s (%d of %d) ...' % (fname, i+1, len(fnames))
+	for fname in fnames:
 		try:
 			partial.append(getLOS(fname))
 			nPixels += len(partial[-1][0])
