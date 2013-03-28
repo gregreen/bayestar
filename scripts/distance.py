@@ -124,7 +124,7 @@ def main():
 	lowDM = lowIdx * DeltaDM + DM[0]
 	medDM = medIdx * DeltaDM + DM[0]
 	highDM = highIdx * DeltaDM + DM[0]
-	print 'DM = %.2f + %.2f - %.2f' % (lowDM, medDM-lowDM, highDM-medDM)
+	print 'DM = %.2f + %.2f - %.2f' % (medDM, highDM-medDM, medDM-lowDM)
 	
 	# Set matplotlib style attributes
 	mplib.rc('text', usetex=True)
@@ -151,7 +151,7 @@ def main():
 		ax.fill_between(DM, lowEBV, highEBV, facecolor='red', alpha=0.3)
 	
 	# Plot p(DM)
-	p *= np.max(lnp.EBV) / np.max(p)
+	p *= np.mean(lnp.EBV[:,-1]) / np.max(p)
 	ax.plot(DM, p)
 	ax.fill_between(DM[:lowIdx+1], 0, p[:lowIdx+1], facecolor='blue', alpha=0.25)
 	ax.fill_between(DM[lowIdx:highIdx+1], 0, p[lowIdx:highIdx+1], facecolor='blue', alpha=0.5)
