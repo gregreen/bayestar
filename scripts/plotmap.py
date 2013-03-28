@@ -249,10 +249,7 @@ def rasterizeMap(pixels, EBV, nside=512, nest=True, oversample=4):
 	bounds = (lMin, lMax, bMin, bMax)
 	return img, bounds
 
-def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu,
-                nside=512, nest=True, model='piecewise',
-                maxSpread=None, plotSpread=False, **kwargs):
-	# Generate rasterized image of E(B-V)
+def calcEBV(muAnchor, DeltaEBV, mu, model='piecewise', maxSpread=None, calcSpread=False):
 	EBV = None
 	if model == 'piecewise':
 		EBV = calcPiecewiseEBV(muAnchor, DeltaEBV, mu)
@@ -262,15 +259,22 @@ def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu,
 		raise ValueError("Unrecognized extinction model: '%s'" % model)
 	
 	EBVcenter = None
-	if plotSpread:
+	if calcSpread:
 		EBVcenter = np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1)
 	else:
 		EBVcenter = np.median(EBV, axis=1)
 		if maxSpread != None:
-			EBVspread = np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1) #np.mean(EBV, axis=1)
+			EBVspread = np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1)
 			idx = EBVspread > maxSpread
 			EBVcenter[idx] = np.nan
-		
+	
+	return EBVcenter
+
+def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu,
+                nside=512, nest=True, model='piecewise',
+                maxSpread=None, plotSpread=False, **kwargs):
+	# Generate rasterized image of E(B-V)
+	calcEBV(muAnchor, DeltaEBV, model, maxSpread, plotSpread)
 	img, bounds = rasterizeMap(pixels, EBVcenter, nside, nest)
 	
 	# Configure plotting options
@@ -293,7 +297,6 @@ def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu,
 	# Plot
 	ax.imshow(img.T, **kwargs)
 	
-	#kwargs['cmap'] = 'blue'
 	kwargs['vmin'] = 0.
 	kwargs['vmax'] = 1.
 	mask = np.isnan(img.T)
@@ -313,7 +316,7 @@ def main():
 	parser.add_argument('--output', '-o', type=str, help='Output filename for plot.')
 	parser.add_argument('--show', '-sh', action='store_true', help='Show plot.')
 	parser.add_argument('--dists', '-d', type=float, nargs=3,
-	                                     default=(5., 20., 6),
+	                                     default=(5., 20., 21),
 	                                     help='DM min, DM max, # of distance slices.')
 	parser.add_argument('--nside', '-n', type=int, default=512,
 	                                     help='HealPIX nside parameter.')
@@ -331,7 +334,6 @@ def main():
 	args = parser.parse_args(sys.argv[offset:])
 	
 	fnames = args.input
-	#fnames = ['/n/wise/ggreen/bayestar/output/CMa.%.5d.h5' % i for i in xrange(18)]
 	pixels, CloudMuAnchor, CloudDeltaEBV, PiecewiseDeltaEBV = getLOSFromMultiple(fnames)
 	
 	tmp1, tmp2, nSlices = PiecewiseDeltaEBV.shape
@@ -350,12 +352,18 @@ def main():
 	muN = int(args.dists[2])
 	mu = np.linspace(muMin, muMax, muN)
 	
+	pixels, muAnchor, DeltaEBV, mu,
+            nside=512, nest=True, model='piecewise',
+            maxSpread=None, calcSpread=False
+            
 	# Get upper limit on E(B-V)
 	EBVs = None
 	if args.model == 'piecewise':
-		EBVs = calcPiecewiseEBV(PiecewiseMuAnchor, PiecewiseDeltaEBV, mu[-1])
+		EBVs = calcEBV(PiecewiseMuAnchor, PiecewiseDeltaEBV, mu[-1],
+		               args.model, args.mask, args.spread)
 	elif args.model == 'clouds':
-		EBVs = calcCloudEBV(CloudMuAnchor, CloudDeltaEBV, mu[-1])
+		EBVs = calcEBV(CloudMuAnchor, CloudDeltaEBV, mu[-1],
+		               args.model, args.mask, args.spread)
 	EBVmax = np.percentile(EBVs, 98.)
 	del EBVs
 	
@@ -370,8 +378,8 @@ def main():
 		print 'mu = %.2f (%d of %d)' % (mu[i], i+1, muN)
 		
 		fig = plt.figure(dpi=150)
-		#grid = ImageGrid(fig, 111, nrows_ncols=(3, 3), axes_pad=0.05)
 		ax = fig.add_subplot(1,1,1)
+		
 		if args.model == 'piecewise':
 			plotEBV(ax, pixels, PiecewiseMuAnchor, PiecewiseDeltaEBV, mu[i],
 			        nside=args.nside, nest=True, model=args.model,
