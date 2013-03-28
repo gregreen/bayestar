@@ -73,7 +73,8 @@ def getClouds(fname):
 def getCloudsFromMultiple(fnames):
 	partial = []
 	nPixels = 0
-	for fname in fnames:
+	for i,fname in enumerate(fnames):
+		print 'Reading in %s (%d of %d) ...' % (fname, i+1, len(fnames))
 		try:
 			partial.append( getClouds(fname) )
 			nPixels += len(partial[-1][1])
