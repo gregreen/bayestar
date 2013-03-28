@@ -216,7 +216,6 @@ int main(int argc, char **argv) {
 		}
 	}
 	
-	
 	/*
 	 *  MCMC Options
 	 */
@@ -316,6 +315,10 @@ int main(int argc, char **argv) {
 			}
 		}
 		
+		stringstream group_name;
+		group_name << "/pixel " << *it;
+		H5Utils::add_watermark<uint64_t>(output_fname, group_name.str(), "nside", stellar_data.nside);
+		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		t_tot = (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec);
 		t_star = (t_mid.tv_sec - t_start.tv_sec) + 1.e-9*(t_mid.tv_nsec - t_start.tv_nsec);
@@ -332,6 +335,13 @@ int main(int argc, char **argv) {
 	
 	string watermark = GIT_BUILD_VERSION;
 	H5Utils::add_watermark<string>(output_fname, "/", "bayestar git commit", watermark);
+	
+	stringstream commandline_args;
+	for(int i=0; i<argc; i++) {
+		commandline_args << argv[i] << " ";
+	}
+	string commandline_args_str(commandline_args.str());
+	H5Utils::add_watermark<string>(output_fname, "/", "commandline invocation", commandline_args_str);
 	
 	/*
 	 *  Cleanup

@@ -388,6 +388,11 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	writeBuffer.add(chain, converged);
 	writeBuffer.write(out_fname, group_name.str(), "los");
 	
+	std::stringstream los_group_name;
+	los_group_name << group_name.str() << "/los";
+	H5Utils::add_watermark<double>(out_fname, los_group_name.str(), "DM_min", img_stack.rect->min[0]);
+	H5Utils::add_watermark<double>(out_fname, los_group_name.str(), "DM_max", img_stack.rect->max[0]);
+	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
 	
 	sampler.print_stats();

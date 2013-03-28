@@ -119,6 +119,22 @@ H5::Group* H5Utils::openGroup(H5::H5File* file, const std::string& name, int acc
 }
 
 /* 
+ * Opens an existing dataset.
+ * 
+ */
+H5::DataSet* H5Utils::openDataSet(H5::H5File* file, const std::string& name) {
+	H5::DataSet* dataset = NULL;
+	
+	try {
+		dataset = new H5::DataSet(file->openDataSet(name.c_str()));
+	} catch(const H5::FileIException& err_does_not_exist) {
+		return dataset;
+	}
+	
+	return dataset;
+}
+
+/* 
  * 
  * Opens an attribute, creating it if it does not exist.
  * 
@@ -172,21 +188,44 @@ bool add_watermark_helper(const std::string &filename, const std::string &group_
 	H5::H5File *file = H5Utils::openFile(filename);
 	if(file == NULL) { return false; }
 	
-	H5::Group *group = H5Utils::openGroup(file, group_name);
-	if(group == NULL) {
-		delete file;
-		return false;
+	H5::Group *group = NULL;
+	
+	bool is_group = true;
+	try {
+		group = H5Utils::openGroup(file, group_name);
+	} catch(H5::FileIException err_not_group) {
+		is_group = false;
 	}
 	
-	if(strtype == NULL) {
-		H5::Attribute att = group->createAttribute(attribute_name, *dtype, dspace);
-		att.write(*dtype, reinterpret_cast<const void*>(&value));
+	if(is_group) {
+		if(group == NULL) {
+			delete file;
+			return false;
+		}
+		
+		if(strtype == NULL) {
+			H5::Attribute att = group->createAttribute(attribute_name, *dtype, dspace);
+			att.write(*dtype, reinterpret_cast<const void*>(&value));
+		} else {
+			H5::Attribute att = group->createAttribute(attribute_name, *strtype, dspace);
+			att.write(*strtype, reinterpret_cast<const void*>(&value));
+		}
+		
+		delete group;
 	} else {
-		H5::Attribute att = group->createAttribute(attribute_name, *strtype, dspace);
-		att.write(*strtype, reinterpret_cast<const void*>(&value));
+		H5::DataSet *dataset = H5Utils::openDataSet(file, group_name);
+		
+		if(strtype == NULL) {
+			H5::Attribute att = dataset->createAttribute(attribute_name, *dtype, dspace);
+			att.write(*dtype, reinterpret_cast<const void*>(&value));
+		} else {
+			H5::Attribute att = dataset->createAttribute(attribute_name, *strtype, dspace);
+			att.write(*strtype, reinterpret_cast<const void*>(&value));
+		}
+		
+		delete dataset;
 	}
 	
-	delete group;
 	delete file;
 	
 	return true;
