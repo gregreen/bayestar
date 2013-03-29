@@ -122,6 +122,7 @@ int main(int argc, char **argv) {
 	unsigned int star_samplers = 20;
 	double star_p_replacement = 0.2;
 	double sigma_RV = -1.;
+	double minEBV = 0.;
 	
 	unsigned int N_regions = 20;
 	unsigned int los_steps = 100;
@@ -160,6 +161,7 @@ int main(int argc, char **argv) {
 		("star-samplers", po::value<unsigned int>(&star_samplers), "# of samplers per dimension (stellar fit)")
 		("star-p-replacement", po::value<double>(&star_p_replacement), "Probability of taking replacement step (stellar fit)")
 		("sigma-RV", po::value<double>(&sigma_RV), "Variation in R_V (per star) (default: -1, interpreted as no variance)")
+		("minEBV", po::value<double>(&minEBV), "Minimum stellar E(B-V) (default: 0)")
 		
 		("regions", po::value<unsigned int>(&N_regions), "# of piecewise-linear regions in l.o.s. extinction profile (default: 20)")
 		("los-steps", po::value<unsigned int>(&los_steps), "# of MCMC steps in l.o.s. fit (per sampler)")
@@ -274,10 +276,10 @@ int main(int argc, char **argv) {
 		
 		if(synthetic) {
 			sample_indiv_synth(output_fname, star_options, los_model, *synthlib, ext_model,
-			                   stellar_data, img_stack, conv, lnZ, sigma_RV, saveSurfs);
+			                   stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs);
 		} else {
 			sample_indiv_emp(output_fname, star_options, los_model, *emplib, ext_model,
-			                 stellar_data, img_stack, conv, lnZ, sigma_RV, saveSurfs);
+			                 stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs);
 		}
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);

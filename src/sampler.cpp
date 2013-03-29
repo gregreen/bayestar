@@ -495,10 +495,10 @@ void gen_rand_state_indiv_synth(double *const x, unsigned int N, gsl_rng *r, TMC
 	TSED sed_tmp(true);
 	
 	// E(B-V)
-	x[0] = 1.5 * params.data->EBV * gsl_rng_uniform(r);
+	x[0] = params.EBV_floor + (1.5 * params.data->EBV - params.EBV_floor) * (0.05 + 0.9 * gsl_rng_uniform(r));
 	
 	// DM
-	x[1] = 5. + 13. * gsl_rng_uniform(r);
+	x[1] = params.DM_min + (params.DM_max - params.DM_min) * (0.05 + 0.9 * gsl_rng_uniform(r));
 	
 	// Stellar type
 	double logMass, logtau, FeH, tau;
@@ -535,11 +535,10 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	TSED sed_tmp(true);
 	
 	// E(B-V)
-	//x[0] = 3. * gsl_rng_uniform(r);
-	x[0] = 1.5 * params.data->EBV * gsl_rng_uniform(r);
+	x[0] = params.EBV_floor + (1.5 * params.data->EBV - params.EBV_floor) * (0.05 + 0.9 * gsl_rng_uniform(r));
 	
 	// DM
-	x[1] = 6. + 12. * gsl_rng_uniform(r);
+	x[1] = params.DM_min + (params.DM_max - params.DM_min) * (0.05 + 0.9 * gsl_rng_uniform(r));
 	
 	// Stellar type
 	double Mr, FeH;
@@ -595,11 +594,12 @@ double logP_indiv_simple_emp(const double *x, unsigned int N, TMCMCParams &param
 void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                         TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                         TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                        double RV_sigma, bool saveSurfs) {
+                        double RV_sigma, double minEBV, bool saveSurfs) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
 	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
+	params.EBV_floor = minEBV;
 	
 	if(RV_sigma > 0.) {
 		params.vary_RV = true;
@@ -728,11 +728,12 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                       TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                      double RV_sigma, bool saveSurfs) {
+                      double RV_sigma, double minEBV, bool saveSurfs) {
 	unsigned int N_DM = 20;
 	double DM_min = 5.;
 	double DM_max = 20.;
 	TMCMCParams params(&galactic_model, NULL, &stellar_model, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
+	params.EBV_floor = minEBV;
 	
 	if(RV_sigma > 0.) {
 		params.vary_RV = true;
@@ -741,7 +742,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	
 	std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
 	
-	double min[2] = {5., 0.};
+	double min[2] = {5., minEBV};
 	double max[2] = {20., 5.};
 	unsigned int N_bins[2] = {120, 500};
 	TRect rect(min, max, N_bins);
