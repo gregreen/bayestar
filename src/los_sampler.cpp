@@ -151,7 +151,7 @@ void los_integral_clouds(TImgStack &img_stack, double *ret, const double *Delta_
 	int x = 0;
 	int x_next = ceil((Delta_mu[0] - img_stack.rect->min[0]) / img_stack.rect->dx[0]);
 	
-	double y = 0.;
+	double y = -img_stack.rect->min[1] / img_stack.rect->dx[1];
 	int y_max = img_stack.rect->N_bins[1];
 	double y_ceil, y_floor, dy;
 	
