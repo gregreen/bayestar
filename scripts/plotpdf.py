@@ -34,9 +34,9 @@ from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 
 import hdf5io
 
-def los2ax(ax, fname, group, *args, **kwargs):
+def los2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	chain = hdf5io.TChain(fname, '%s/los' % group)
-	mu = np.linspace(5., 20., chain.get_nDim())
+	mu = np.linspace(DM_lim[0], DM_lim[1], chain.get_nDim())
 	if 'alpha' not in kwargs:
 		kwargs['alpha'] = 1. / np.power(chain.get_nSamples(), 0.55)
 	
@@ -61,11 +61,11 @@ def los2ax(ax, fname, group, *args, **kwargs):
 	#	ax.plot(mu, EBV_all[ii], 'k-', alpha=alpha)
 	#	alpha *= 0.85
 	
-	ax.set_xlim(5., 20.) 
+	ax.set_xlim(DM_lim[0], DM_lim[1]) 
 
-def clouds2ax(ax, fname, group, *args, **kwargs):
+def clouds2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	chain = hdf5io.TChain(fname, '%s/clouds' % group)
-	mu_range = np.linspace(5., 20., chain.get_nDim())
+	mu_range = np.linspace(DM_lim[0], DM_lim[1], chain.get_nDim())
 	if 'alpha' not in kwargs:
 		kwargs['alpha'] = 1. / np.power(chain.get_nSamples(), 0.55)
 	
@@ -103,7 +103,7 @@ def clouds2ax(ax, fname, group, *args, **kwargs):
 	#	ax.plot(mu, EBV_all[ii], 'k-', alpha=alpha)
 	#	alpha *= 0.85
 	
-	ax.set_xlim(5., 20.) 
+	ax.set_xlim(DM_lim[0], DM_lim[1]) 
 
 def main():
 	# Parse commandline arguments
@@ -192,18 +192,19 @@ def main():
 		             aspect='auto', cmap='hot', interpolation='nearest')
 	
 	# Plot l.o.s. extinction to figure
+	DM_lim = [x_min[0], x_max[0]]
 	try:
-		los2ax(ax, fname, group, 'c')
+		los2ax(ax, fname, group, DM_lim, 'c')
 	except:
 		pass
 	
 	try:
-		clouds2ax(ax, fname, group, 'g')
+		clouds2ax(ax, fname, group, DM_lim, 'g')
 	except:
 		pass
 	
 	if EBV_max != None:
-		ax.set_ylim(0., EBV_max)
+		ax.set_ylim(x_min[1], EBV_max)
 	
 	# Save/show plot
 	if args.output != None:
