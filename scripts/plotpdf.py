@@ -136,11 +136,13 @@ def main():
 	group = 'pixel %d' % (args.index)
 	
 	# Load in pdfs
+	x_min, x_max = None, None
 	pdf_stack = None
 	EBV_max = None
 	if args.show_pdfs:
 		dset = '%s/stellar pdfs' % group
 		pdf = hdf5io.TProbSurf(fname, dset)
+		x_min, x_max = pdf.x_min, pdf.x_max
 		pdf_stack = np.sum(pdf.get_p(), axis=0)
 		#pdf_stack = pdf.get_p()[1,:,:]
 		#del pdf
@@ -184,7 +186,7 @@ def main():
 	ax.yaxis.set_minor_locator(AutoMinorLocator())
 	fig.subplots_adjust(bottom=0.12)
 	
-	bounds = [5., 20., 0., 5.]
+	bounds = [x_min[0], x_max[0], x_min[1], x_max[1]]
 	if args.show_pdfs:
 		ax.imshow(pdf_stack.T, extent=bounds, origin='lower',
 		             aspect='auto', cmap='hot', interpolation='nearest')
