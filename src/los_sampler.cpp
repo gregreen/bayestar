@@ -155,7 +155,8 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 	int x = 0;
 	int x_next = ceil((Delta_mu[0] - img_stack.rect->min[0]) / img_stack.rect->dx[0]);
 	
-	double y = -img_stack.rect->min[1] / img_stack.rect->dx[1];
+	double y_0 = -img_stack.rect->min[1] / img_stack.rect->dx[1];
+	double y = 0.;
 	int y_max = img_stack.rect->N_bins[1];
 	double y_ceil, y_floor, dy, y_scaled;
 	
@@ -180,7 +181,7 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 		
 		int x_start = x;
 		for(int k=0; k<img_stack.N_images; k++) {
-			y_scaled = y*subpixel[k];
+			y_scaled = y_0 + y*subpixel[k];
 			y_floor = floor(y_scaled);
 			y_ceil = y_floor + 1.;
 			if((int)y_ceil >= y_max) { break; }
@@ -420,30 +421,38 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 	unsigned int N_samples = img_stack.rect->N_bins[0] / N_regions;
 	int y_max = img_stack.rect->N_bins[1];
 	
-	double y = (exp(logEBV[0]) - img_stack.rect->min[1]) / img_stack.rect->dx[1];
-	double y_ceil, y_floor, dy, y_scaled;
 	int x = 0;
+	double y = 0;
+	double y_ceil, y_floor, dy, y_scaled;
 	
-	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
+	double *y_0 = new double[img_stack.N_images];
+	for(size_t i=0; i<img_stack.N_images; i++) {
+		ret[i] = 0.;
+		y_0[i] = (exp(logEBV[0]) * subpixel[i] - img_stack.rect->min[1]) / img_stack.rect->dx[1];
+	}
 	
 	for(int i=1; i<N_regions+1; i++) {
 		dy = (double)(exp(logEBV[i])) / (double)(N_samples) / img_stack.rect->dx[1];
 		//std::cout << "(" << x << ", " << y << ", " << tmp << ") ";
 		for(int j=0; j<N_samples; j++, x++, y+=dy) {
 			for(int k=0; k<img_stack.N_images; k++) {
-				y_scaled = y * subpixel[k];
+				y_scaled = y_0[k] + y * subpixel[k];
 				y_floor = floor(y_scaled);
 				y_ceil = y_floor + 1.;
 				if((int)y_ceil >= y_max) { break; }
 				if((int)y_floor < 0) { break; }
-				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(x, (int)y_floor)
-				          + (y_scaled - y_floor) * img_stack.img[k]->at<double>(x, (int)y_ceil);
+				if( ((int)y_floor >= 0) && ((int)y_ceil < y_max) ) {
+					ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(x, (int)y_floor)
+					           + (y_scaled - y_floor) * img_stack.img[k]->at<double>(x, (int)y_ceil);
+				}
 			}
 		}
 		
 		//if((int)y_ceil >= y_max) { break; }
 		//if((int)y_floor < 0) { break; }
 	}
+	
+	delete[] y_0;
 }
 
 double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCParams& params) {

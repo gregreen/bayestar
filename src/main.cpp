@@ -351,7 +351,6 @@ int main(int argc, char **argv) {
 		cerr << "===================================================" << endl << endl;
 	}
 	
-	
 	/*
 	 *  Add additional metadata to output file
 	 */
