@@ -124,10 +124,10 @@ public:
 void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
                            unsigned int N_regions, uint64_t healpix_index);
 
-void los_integral(TImgStack& img_stack, double* ret,
-                  const double* Delta_EBV, unsigned int N_regions);
+void los_integral(TImgStack& img_stack, const double *const subpixel, double *const ret,
+                  const double *const Delta_EBV, unsigned int N_regions);
 
-double lnp_los_extinction(const double *Delta_EBV, unsigned int N_regions, TLOSMCMCParams &params);
+double lnp_los_extinction(const double *const Delta_EBV, unsigned int N_regions, TLOSMCMCParams &params);
 void gen_rand_los_extinction(double *const Delta_EBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
 
 double guess_EBV_max(TImgStack &img_stack);
@@ -138,8 +138,8 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 
 void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
 double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams& params);
-void los_integral_clouds(TImgStack &img_stack, double *subpixel, double *ret, const double *Delta_mu,
-                         const double *logDelta_EBV, unsigned int N_clouds);
+void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, double *const ret, const double *const Delta_mu,
+                         const double *const logDelta_EBV, unsigned int N_clouds);
 void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
                                   unsigned int N_clouds, uint64_t healpix_index);
 
