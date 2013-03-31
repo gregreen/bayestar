@@ -86,7 +86,7 @@ struct TLOSMCMCParams {
 	double EBV_guess_max;
 	std::vector<double> EBV_prof_guess;
 	std::vector<double> subpixel;
-	double subpixel_max;
+	double subpixel_min, subpixel_max;
 	
 	TLOSMCMCParams(TImgStack* _img_stack, double _p0, double _EBV_max=-1.);
 	~TLOSMCMCParams();

@@ -226,7 +226,7 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	}
 	
 	// Extinction must not exceed maximum value
-	if(EBV_tot >= params.img_stack->rect->max[1]) { return neginf; }
+	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neginf; }
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
@@ -422,25 +422,20 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 	int y_max = img_stack.rect->N_bins[1];
 	
 	int x = 0;
-	double y = 0;
+	double y = exp(logEBV[0]) / img_stack.rect->dx[1];
+	double y_0 = -img_stack.rect->min[1] / img_stack.rect->dx[1];
 	double y_ceil, y_floor, dy, y_scaled;
 	
-	double *y_0 = new double[img_stack.N_images];
-	for(size_t i=0; i<img_stack.N_images; i++) {
-		ret[i] = 0.;
-		y_0[i] = (exp(logEBV[0]) * subpixel[i] - img_stack.rect->min[1]) / img_stack.rect->dx[1];
-	}
+	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
 	
 	for(int i=1; i<N_regions+1; i++) {
 		dy = (double)(exp(logEBV[i])) / (double)(N_samples) / img_stack.rect->dx[1];
 		//std::cout << "(" << x << ", " << y << ", " << tmp << ") ";
 		for(int j=0; j<N_samples; j++, x++, y+=dy) {
 			for(int k=0; k<img_stack.N_images; k++) {
-				y_scaled = y_0[k] + y * subpixel[k];
+				y_scaled = y_0 + y * subpixel[k];
 				y_floor = floor(y_scaled);
 				y_ceil = y_floor + 1.;
-				if((int)y_ceil >= y_max) { break; }
-				if((int)y_floor < 0) { break; }
 				if( ((int)y_floor >= 0) && ((int)y_ceil < y_max) ) {
 					ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(x, (int)y_floor)
 					           + (y_scaled - y_floor) * img_stack.img[k]->at<double>(x, (int)y_ceil);
@@ -451,8 +446,6 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 		//if((int)y_ceil >= y_max) { break; }
 		//if((int)y_floor < 0) { break; }
 	}
-	
-	delete[] y_0;
 }
 
 double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCParams& params) {
@@ -470,7 +463,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		// Prior to prevent EBV from straying high
 		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (1. * 1.);
 	}
-	if(EBV_tot >= params.img_stack->rect->max[1]) { return neginf; }
+	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neginf; }
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
@@ -779,6 +772,7 @@ TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0, double _EBV_ma
 	EBV_max = _EBV_max;
 	EBV_guess_max = guess_EBV_max(*img_stack);
 	subpixel_max = 1.;
+	subpixel_min = 1.;
 }
 
 TLOSMCMCParams::~TLOSMCMCParams() { }
@@ -792,10 +786,12 @@ void TLOSMCMCParams::set_subpixel_mask(TStellarData& data) {
 	assert(data.star.size() == img_stack->N_images);
 	subpixel.clear();
 	subpixel_max = 0.;
+	subpixel_min = std::numeric_limits<double>::infinity();
 	double EBV;
 	for(size_t i=0; i<data.star.size(); i++) {
 		EBV = data.star[i].EBV;
 		if(EBV > subpixel_max) { subpixel_max = EBV; }
+		if(EBV < subpixel_min) { subpixel_min = EBV; }
 		subpixel.push_back(EBV);
 	}
 }
@@ -804,8 +800,10 @@ void TLOSMCMCParams::set_subpixel_mask(std::vector<double>& new_mask) {
 	assert(new_mask.size() == img_stack->N_images);
 	subpixel.clear();
 	subpixel_max = 0.;
+	subpixel_min = std::numeric_limits<double>::infinity();
 	for(size_t i=0; i<new_mask.size(); i++) {
 		if(new_mask[i] > subpixel_max) { subpixel_max = new_mask[i]; }
+		if(new_mask[i] < subpixel_min) { subpixel_min = new_mask[i]; }
 		subpixel.push_back(new_mask[i]);
 	}
 }
