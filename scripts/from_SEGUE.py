@@ -182,12 +182,12 @@ def main():
 		pix_height = 90. / 2**np.sqrt(values.nside / 12)
 		query_bounds.append(max(-90., values.bounds[2] - 5.*pix_height))
 		query_bounds.append(min(90., values.bounds[3] + 5.*pix_height))
-	else:
-		query_bounds = [0., 360., -90., 90.]
-	query_bounds = lsd.bounds.rectangle(query_bounds[0], query_bounds[2],
-	                                    query_bounds[1], query_bounds[3],
-	                                    coordsys='gal')
-	query_bounds = lsd.bounds.make_canonical(query_bounds)
+	#else:
+	#	query_bounds = [0., 360., -90., 90.]
+	#query_bounds = lsd.bounds.rectangle(query_bounds[0], query_bounds[2],
+	#                                    query_bounds[1], query_bounds[3],
+	#                                    coordsys='gal')
+	#query_bounds = lsd.bounds.make_canonical(query_bounds)
 	
 	# Set up the query
 	db = lsd.DB(os.environ['LSD_DB'])

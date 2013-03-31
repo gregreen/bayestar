@@ -274,7 +274,7 @@ def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu,
                 nside=512, nest=True, model='piecewise',
                 maxSpread=None, plotSpread=False, **kwargs):
 	# Generate rasterized image of E(B-V)
-	calcEBV(muAnchor, DeltaEBV, model, maxSpread, plotSpread)
+	EBVcenter = calcEBV(muAnchor, DeltaEBV, mu, model, maxSpread, plotSpread)
 	img, bounds = rasterizeMap(pixels, EBVcenter, nside, nest)
 	
 	# Configure plotting options
@@ -352,10 +352,6 @@ def main():
 	muN = int(args.dists[2])
 	mu = np.linspace(muMin, muMax, muN)
 	
-	pixels, muAnchor, DeltaEBV, mu,
-            nside=512, nest=True, model='piecewise',
-            maxSpread=None, calcSpread=False
-            
 	# Get upper limit on E(B-V)
 	EBVs = None
 	if args.model == 'piecewise':
