@@ -36,6 +36,7 @@ import h5py
 
 
 def getLOS(fname):
+	print 'Loading %s ...' % fname
 	f = h5py.File(fname, 'r')
 	
 	# Get a list of pixels in the file
@@ -324,9 +325,9 @@ def main():
 	                                     choices=('piecewise', 'clouds'),
 	                                     help="Extinction model: 'piecewise' or 'clouds'")
 	parser.add_argument('--mask', '-msk', type=float, default=None,
-	                                      help='Hide parts of map where 95\% - 5\% of E(B-V) is greater than given value')
+	                                      help=r'Hide parts of map where 95%% - 5%% of E(B-V) is greater than given value')
 	parser.add_argument('--spread', '-sp', action='store_true',
-	                                       help='Plot 95\% - 5\% of E(B-V)')
+	                                       help='Plot 95%% - 5%% of E(B-V)')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -360,7 +361,22 @@ def main():
 	elif args.model == 'clouds':
 		EBVs = calcEBV(CloudMuAnchor, CloudDeltaEBV, mu[-1],
 		               args.model, args.mask, args.spread)
-	EBVmax = np.percentile(EBVs, 98.)
+		dist = np.power(10., CloudMuAnchor/5. + 1.)
+		print 'd = %.3f +- %.3f pc' % (np.mean(dist), np.std(dist))
+		print 'distance percentiles:'
+		print '  15.84%%: %.3f pc' % (np.percentile(dist, 15.84))
+		print '  50.00%%: %.3f pc' % (np.percentile(dist, 50.))
+		print '  84.16%%: %.3f pc' % (np.percentile(dist, 84.16))
+		print 'E(B-V) = %.3f +- %.3f pc' % (np.mean(CloudDeltaEBV), np.std(CloudDeltaEBV))
+		print 'E(B-V) percentiles:'
+		print '  15.84%%: %.3f pc' % (np.percentile(CloudDeltaEBV, 15.84))
+		print '  50.00%%: %.3f pc' % (np.percentile(CloudDeltaEBV, 50.))
+		print '  84.16%%: %.3f pc' % (np.percentile(CloudDeltaEBV, 84.16))
+		print 'mu = %.3f +- %.3f' % (np.mean(CloudMuAnchor), np.std(CloudMuAnchor))
+	idx = ~np.isnan(EBVs)
+	EBVmax = np.percentile(EBVs[idx], 98.)
+	print 'max EBV = %.3f' % EBVmax
+	print 'EBV(mu=%.2f) = %.3f +- %.3f' % (mu[-1], np.mean(EBVs[idx]), np.std(EBVs[idx]))
 	del EBVs
 	
 	# Determine output filename

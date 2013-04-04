@@ -37,6 +37,12 @@ import hdf5io
 def get2DProbSurfs(fname):
 	f = h5py.File(fname, 'r')
 	
+	# Hack to get the file to read properly
+	try:
+		f.items()
+	except:
+		pass
+	
 	# Load in probability surfaces from each pixel
 	surfs = []
 	pixIdx = []
@@ -54,10 +60,18 @@ def get2DProbSurfs(fname):
 			maxEBV = f[dset].attrs['max'][1]
 			break
 	
+	f.close()
+	
 	return surfs, minEBV, maxEBV, pixIdx
 	
 def get1DProbSurfs(fname):
 	f = h5py.File(fname, 'r')
+	
+	# Hack to get the file to read properly
+	try:
+		f.items()
+	except:
+		pass
 	
 	# Load in probability surfaces from each pixel
 	surfs = []
@@ -82,10 +96,19 @@ def get1DProbSurfs(fname):
 			mask = conv & (lnZ > np.max(lnZ) - 20.)
 			good.append(mask.astype(np.bool))
 	
+	f.close()
+	
 	return surfs, good, minEBV, maxEBV, pixIdx
 
 def getSEGUE(fname):
 	f = h5py.File(fname, 'r')
+	
+	# Hack to get the file to read properly
+	try:
+		f.items()
+	except:
+		pass
+	
 	SEGUE = f['SEGUE']
 	
 	# Load in properties from each pixel
@@ -606,8 +629,8 @@ def tests():
 
 def main():
 	directory = '/n/wise/ggreen/bayestar'
-	inFNames = ['%s/input/SEGUE.0000%d.h5' % (directory, i) for i in range(6)]
-	outFNames = ['%s/output/SEGUE.0000%d.h5' % (directory, i) for i in range(6)]
+	inFNames = ['%s/input/SEGUEsmall.0000%d.h5' % (directory, i) for i in range(1)]
+	outFNames = ['%s/output/SEGUEsmall.0000%d.h5' % (directory, i) for i in range(1)]
 	
 	surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV = [], [], [], None, None
 	
@@ -662,14 +685,14 @@ def main():
 	fig5 = plotPercentiles(pvals_shuffled)
 	
 	print 'Saving plots...'
-	fig11.savefig('plots/SEGUE-corr-maxprob.png', dpi=300)
-	fig12.savefig('plots/SEGUE-scatter-maxprob.png', dpi=300)
-	fig21.savefig('plots/SEGUE-corr-mean.png', dpi=300)
-	fig22.savefig('plots/SEGUE-scatter-mean.png', dpi=300)
-	fig31.savefig('plots/SEGUE-corr-resample.png', dpi=300)
-	fig32.savefig('plots/SEGUE-scatter-resample.png', dpi=300)
-	fig4.savefig('plots/pvals.png', dpi=300)
-	fig5.savefig('plots/pvals-shuffled.png', dpi=300)
+	fig11.savefig('plots/SEGUEsmall-corr-maxprob.png', dpi=300)
+	fig12.savefig('plots/SEGUEsmall-scatter-maxprob.png', dpi=300)
+	fig21.savefig('plots/SEGUEsmall-corr-mean.png', dpi=300)
+	fig22.savefig('plots/SEGUEsmall-scatter-mean.png', dpi=300)
+	fig31.savefig('plots/SEGUEsmall-corr-resample.png', dpi=300)
+	fig32.savefig('plots/SEGUEsmall-scatter-resample.png', dpi=300)
+	fig4.savefig('plots/SEGUEsmall-pvals.png', dpi=300)
+	fig5.savefig('plots/SEGUEsmall-pvals-shuffled.png', dpi=300)
 	
 	#plt.show()
 	
