@@ -313,7 +313,7 @@ int main(int argc, char **argv) {
 		cerr << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
 		
 		// Fit line-of-sight extinction profile
-		if(nFiltered < conv.size()) {
+		if((nFiltered < conv.size()) && ((N_clouds != 0) || (N_regions != 0))) {
 			double p0 = 1.e-15;
 			double EBV_max = -1.;
 			if(SFDPrior) {

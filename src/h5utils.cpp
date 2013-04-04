@@ -214,6 +214,10 @@ bool add_watermark_helper(const std::string &filename, const std::string &group_
 		delete group;
 	} else {
 		H5::DataSet *dataset = H5Utils::openDataSet(file, group_name);
+		if(dataset == NULL) {
+			delete file;
+			return false;
+		}
 		
 		if(strtype == NULL) {
 			H5::Attribute att = dataset->createAttribute(attribute_name, *dtype, dspace);
@@ -227,7 +231,6 @@ bool add_watermark_helper(const std::string &filename, const std::string &group_
 	}
 	
 	delete file;
-	
 	return true;
 }
 
