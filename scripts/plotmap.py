@@ -296,7 +296,7 @@ def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu,
 	kwargs['cmap'] = 'binary'
 	
 	# Plot
-	ax.imshow(img.T, **kwargs)
+	imgRes = ax.imshow(img.T, **kwargs)
 	
 	kwargs['vmin'] = 0.
 	kwargs['vmax'] = 1.
@@ -307,6 +307,8 @@ def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu,
 	maskImg[:,:,2] = 1.
 	maskImg[:,:,3] = 0.65 * mask.astype('f8')
 	ax.imshow(maskImg, **kwargs)
+	
+	return imgRes
 
 
 def main():
@@ -393,15 +395,19 @@ def main():
 		ax = fig.add_subplot(1,1,1)
 		
 		if args.model == 'piecewise':
-			plotEBV(ax, pixels, PiecewiseMuAnchor, PiecewiseDeltaEBV, mu[i],
-			        nside=args.nside, nest=True, model=args.model,
-			        maxSpread=args.mask, plotSpread=args.spread,
-			        vmin=0., vmax=EBVmax)
+			img = plotEBV(ax, pixels, PiecewiseMuAnchor, PiecewiseDeltaEBV, mu[i],
+			              nside=args.nside, nest=True, model=args.model,
+			              maxSpread=args.mask, plotSpread=args.spread,
+			              vmin=0., vmax=EBVmax)
 		elif args.model == 'clouds':
-			plotEBV(ax, pixels, CloudMuAnchor, CloudDeltaEBV, mu[i],
-			        nside=args.nside, nest=True, model=args.model,
-			        maxSpread=args.mask, plotSpread=args.spread,
-			        vmin=0., vmax=EBVmax)
+			img = plotEBV(ax, pixels, CloudMuAnchor, CloudDeltaEBV, mu[i],
+			              nside=args.nside, nest=True, model=args.model,
+			              maxSpread=args.mask, plotSpread=args.spread,
+			              vmin=0., vmax=EBVmax)
+		
+		fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.9)
+		cax = fig.add_axes([0.9, 0.12, 0.03, 0.78])
+		cb = fig.colorbar(img, cax=cax)
 		
 		ax.set_xlabel(r'$\ell$', fontsize=16)
 		ax.set_ylabel(r'$b$', fontsize=16)

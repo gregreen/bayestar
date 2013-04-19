@@ -101,7 +101,7 @@ def to_file(f, target_idx, target_name, gal_lb, EBV, data):
 	nest = True
 	
 	att_f4 = np.array([EBV], dtype='f8')
-	att_u8 = np.array([pix_idx, target_index], dtype='u8')
+	att_u8 = np.array([pix_idx, target_idx], dtype='u8')
 	att_u4 = np.array([nside, N_stars], dtype='u4')
 	att_u1 = np.array([nest], dtype='u1')
 	
@@ -175,8 +175,8 @@ def main():
 	           prog='query_lsd_multiple.py',
 	           description='Generate bayestar input files from PS1 photometry, given list of targets.',
 	           add_help=True)
-	parser.add_argument('in', type=str, help='Input target list.\n'
-	                                         'Each line should be of the form "name l b radius (deg)".')
+	parser.add_argument('targets', type=str, help='Input target list.\n'
+	                                              'Each line should be of the form "name l b radius (deg)".')
 	parser.add_argument('out', type=str, help='Output filename.')
 	parser.add_argument('-min', '--min-stars', type=int, default=1,
 	                    help='Minimum # of stars in pixel (default: 1).')
@@ -201,13 +201,13 @@ def main():
 		nPointlike = 1
 	
 	# Determine the query bounds
-	query_bounds, target_name, l, b, radius = get_bounds(values.in)
+	query_bounds, target_name, l, b, target_radius = get_bounds(values.targets)
 	query_bounds = lsd.bounds.make_canonical(query_bounds)
 	
 	# Convert target positions to useful forms
 	target_lb = np.empty((len(l), 2), dtype='f8')
 	target_lb[0,:] = l
-	target_lb[0,1] = b
+	target_lb[1,:] = b
 	target_tp = np.empty((len(l), 2), dtype='f8')
 	target_tp[0,:] = np.pi/180. * (90. - b)
 	target_tp[1,:] = np.pi/180. * l
@@ -267,7 +267,6 @@ def main():
 	nInFile = 0
 	
 	# Write each pixel to the same file
-	nest = (not values.ring)
 	for (t_idx, obj) in query.execute([(mapper, target_tp, target_radius), reducer],
 	                                      bounds=query_bounds):
 		if len(obj) < values.min_stars:
@@ -298,8 +297,8 @@ def main():
 			nFiles += 1
 		
 		# Write to file
-		gal_lb = to_file(f, t_idx, target_name[t_idx], target_lb[t_idx],
-		                                                      EBV, data)
+		gal_lb = to_file(f, t_idx, target_name[t_idx],
+		                    target_lb[t_idx], EBV, outarr)
 		
 		# Update stats
 		N_pix += 1
@@ -330,9 +329,9 @@ def main():
 		f.close()
 	
 	if N_pix != 0:
-		print '# of stars in footprint: %d.' % N_stars
-		print '# of pixels in footprint: %d.' % N_pix
-		print 'Stars per pixel:'
+		print '# of stars: %d.' % N_stars
+		print '# of targets: %d.' % N_pix
+		print 'Stars per target:'
 		print '    min: %d' % N_min
 		print '    mean: %d' % (N_stars / N_pix)
 		print '    max: %d' % N_max
