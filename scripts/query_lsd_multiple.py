@@ -37,7 +37,7 @@ import iterators
 import matplotlib.pyplot as plt
 
 
-def mapper(qresult, target_pos, target_radius):
+def mapper(qresult, target_tp, target_radius):
 	obj = lsd.colgroup.fromiter(qresult, blocks=True)
 	
 	if (obj != None) and (len(obj) > 0):
@@ -45,7 +45,7 @@ def mapper(qresult, target_pos, target_radius):
 		theta = np.pi/180. * (90. - obj['b'])
 		phi = np.pi/180. * obj['l']
 		tp_star = np.array([theta, phi]).T
-		d = great_circle_dist(tp_star, target_pos) / target_radius
+		d = great_circle_dist(tp_star, target_tp) / target_radius
 		min_idx = np.argmin(d, axis=1)
 		
 		# Group together stars belonging to the same target
@@ -206,11 +206,11 @@ def main():
 	
 	# Convert target positions to useful forms
 	target_lb = np.empty((len(l), 2), dtype='f8')
-	target_lb[0,:] = l
-	target_lb[1,:] = b
+	target_lb[:,0] = l
+	target_lb[:,1] = b
 	target_tp = np.empty((len(l), 2), dtype='f8')
-	target_tp[0,:] = np.pi/180. * (90. - b)
-	target_tp[1,:] = np.pi/180. * l
+	target_tp[:,0] = np.pi/180. * (90. - b)
+	target_tp[:,1] = np.pi/180. * l
 	
 	# Set up the query
 	db = lsd.DB(os.environ['LSD_DB'])
