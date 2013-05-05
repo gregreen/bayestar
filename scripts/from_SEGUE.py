@@ -143,8 +143,8 @@ def main():
 	           description='Generate bayestar input files from SEGUE and PanSTARRS data.',
 	           add_help=True)
 	parser.add_argument('out', type=str, help='Output filename.')
-	parser.add_argument('-n', '--nside', type=int, default=512,
-	                    help='Healpix nside parameter (default: 512).')
+	parser.add_argument('-n', '--nside', type=int, default=32,
+	                    help='Healpix nside parameter (default: 32).')
 	parser.add_argument('-b', '--bounds', type=float, nargs=4, default=None,
 	                    help='Restrict pixels to region enclosed by: l_min, l_max, b_min, b_max.')
 	parser.add_argument('-min', '--min-stars', type=int, default=1,
@@ -182,9 +182,7 @@ def main():
 		pix_height = 90. / 2**np.sqrt(values.nside / 12)
 		query_bounds.append(max(-90., values.bounds[2] - 5.*pix_height))
 		query_bounds.append(min(90., values.bounds[3] + 5.*pix_height))
-	else:
-		query_bounds = [0., 360., -90., 90.]
-	query_bounds = lsd.bounds.rectangle(query_bounds[0], query_bounds[2],
+		query_bounds = lsd.bounds.rectangle(query_bounds[0], query_bounds[2],
 	                                    query_bounds[1], query_bounds[3],
 	                                    coordsys='gal')
 	query_bounds = lsd.bounds.make_canonical(query_bounds)
