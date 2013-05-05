@@ -149,7 +149,7 @@ def main():
 	                    help='Restrict pixels to region enclosed by: l_min, l_max, b_min, b_max.')
 	parser.add_argument('-min', '--min-stars', type=int, default=1,
 	                    help='Minimum # of stars in pixel (default: 1).')
-	parser.add_argument('-max', '--max-stars', type=int, default=50000,
+	parser.add_argument('-max', '--max-stars', type=int, default=25000,
 	                    help='Maximum # of stars in file')
 	parser.add_argument('-sdss', '--sdss', action='store_true',
 	                    help='Only select objects identified in the SDSS catalog as stars.')
@@ -192,7 +192,7 @@ def main():
 	# Set up the query
 	db = lsd.DB(os.environ['LSD_DB'])
 	query = ("select _id, equgal(ra, dec) as (l, b), "
-	         "ssppmag, ssppmagerr, ubermag, ubermagerr, "
+	         "ssppmag, ssppmagerr, ssppmagcovar, ubermag, ubermagerr, "
 	         "teff, logz, logg, tefferr, logzerr, loggerr, "
 	         "mean, err, "
 	         "ndet_ok, nmag_ok, mean_ap, maglimit, "
@@ -262,16 +262,18 @@ def main():
 		
 		proparr = np.empty(len(obj), dtype=[('obj_id','u8'),
 		                                    ('l','f8'), ('b','f8'),
-		                                    ('ssppmag','5f8'), ('ssppmagerr','5f8'),
-		                                    ('ubermag','5f8'), ('ubermagerr','5f8'),
-		                                    ('teff','f8'), ('tefferr','f8'),
-		                                    ('logz','f8'), ('logzerr','f8'),
-		                                    ('logg','f8'), ('loggerr','f8')])
+		                                    ('ssppmag','5f4'), ('ssppmagerr','5f4'),
+		                                    ('ssppmagcovar','25f4'),
+		                                    ('ubermag','5f4'), ('ubermagerr','5f4'),
+		                                    ('teff','f4'), ('tefferr','f4'),
+		                                    ('logz','f4'), ('logzerr','f4'),
+		                                    ('logg','f4'), ('loggerr','f4')])
 		proparr['obj_id'][:] = obj['_id'][:]
 		proparr['l'][:] = obj['l'][:]
 		proparr['b'][:] = obj['b'][:]
 		proparr['ssppmag'][:] = obj['ssppmag'][:]
 		proparr['ssppmagerr'][:] = obj['ssppmagerr'][:]
+		proparr['ssppmagcovar'][:] = obj['ssppmagcovar'][:]
 		proparr['ubermag'][:] = obj['ubermag'][:]
 		proparr['ubermagerr'][:] = obj['ubermagerr'][:]
 		proparr['teff'][:] = obj['teff'][:]
