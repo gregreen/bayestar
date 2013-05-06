@@ -158,13 +158,63 @@ def getPhotometry(fname):
 	
 	return mags, errs, EBV_SFD, pixIdx
 
+def calc_color_stats(mags, cov):
+	'''
+	Transform from magnitudes to colors.
+	
+	Inputs:
+	    mags.shape = (# of samples, # of bands)
+	    cov.shape = (# of samples, # of bands, # of bands)
+	
+	Outputs:
+	    colors.shape = (# of samples, # of bands - 1)
+	    cov_colors = (# of samples, # of bands - 1, # of bands - 1)
+	'''
+	dtype = mags.dtype
+	n_samples, n_bands = mags.shape
+	
+	colors = -np.diff(mags, axis=1)
+	cov_colors = cov[:,1:,1:] + cov[:,:-1,:-1] - cov[:,1:,:-1] - cov[:,:-1,1:]
+	
+	return colors, cov_colors
+
+def calc_mu_sigma(cov, mu, A):
+	inv_cov = np.array([np.linalg.inv(c) for c in cov])
+	inv_cov_A = np.einsum('ijk,ik->ij', inv_cov, A)
+	denom = np.einsum('ij,ij->i', A, inv_cov_A)
+	num = np.einsum('ij,ij->i', mu, inv_cov_A)
+	
+	sigma = np.sqrt(1./denom)
+	mu_scalar = num / denom
+	
+	return mu_scalar, sigma
+
 def getSegueEBV(props):
-	ACoeff = np.array([4.239, 3.303, 2.285, 1.698, 1.263])
-	ADiff = np.diff(ACoeff)
+	A_coeff = np.array([4.239, 3.303, 2.285, 1.698, 1.263])
+	A_diff = -np.diff(A_coeff)
 	
 	EBVs = []
 	sigmaEBVs = []
 	for prop in props:
+		cov_SSPP = prop['ssppcovar'][:]
+		mags_SSPP = prop['ssppmag'][:]
+		
+		errs_SDSS = prop['ubermagerr'][:]
+		mags_SDSS = prop['ubermag'][:]
+		
+		colors_SSPP, cov_tot = calc_color_stats(mags_SSPP, cov_SSPP)
+		colors_SDSS = -np.diff(mags_SDSS, axis=1)
+		
+		n_bands = mags_SDSS.shape[1]
+		for k in xrange(n_bands):
+			cov_tot[:,k,k] += errs_SDSS[:,k] * errs_SDSS[:,k] + errs_SDSS[:,k+1] * errs_SDSS[:,k+1]
+		
+		E = mags_SSPP - mags_SDSS
+		
+		EBV, sigma_EBV = calc_mu_sigma(cov_tot, E, A_diff)
+		
+		'''
+		
 		E = np.diff(prop['ubermag'] - prop['ssppmag'], axis=1)
 		#print E.shape
 		s1 = prop['ubermagerr'][:,:-1]
@@ -182,9 +232,10 @@ def getSegueEBV(props):
 		
 		EBV = num / den1
 		sigmaEBV = np.sqrt(1. / den2)
+		'''
 		
 		EBVs.append(EBV)
-		sigmaEBVs.append(sigmaEBV)
+		sigmaEBVs.append(sigma_EBV)
 	
 	return EBVs, sigmaEBVs
 
