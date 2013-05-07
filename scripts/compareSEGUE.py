@@ -179,9 +179,13 @@ def calc_color_stats(mags, cov):
 	return colors, cov_colors
 
 def calc_mu_sigma(cov, mu, A):
+	#print cov.shape
+	#print mu.shape
+	#print A.shape
 	inv_cov = np.array([np.linalg.inv(c) for c in cov])
-	inv_cov_A = np.einsum('ijk,ik->ij', inv_cov, A)
-	denom = np.einsum('ij,ij->i', A, inv_cov_A)
+	inv_cov_A = np.einsum('ijk,k->ij', inv_cov, A)
+	#print inv_cov_A.shape
+	denom = np.einsum('j,ij->i', A, inv_cov_A)
 	num = np.einsum('ij,ij->i', mu, inv_cov_A)
 	
 	sigma = np.sqrt(1./denom)
@@ -196,7 +200,9 @@ def getSegueEBV(props):
 	EBVs = []
 	sigmaEBVs = []
 	for prop in props:
-		cov_SSPP = prop['ssppcovar'][:]
+		n_stars, n_bands = prop['ssppmag'].shape
+		cov_SSPP = np.reshape(prop['ssppmagcovar'][:], (n_stars, n_bands, n_bands))
+		
 		mags_SSPP = prop['ssppmag'][:]
 		
 		errs_SDSS = prop['ubermagerr'][:]
@@ -206,15 +212,16 @@ def getSegueEBV(props):
 		colors_SDSS = -np.diff(mags_SDSS, axis=1)
 		
 		n_bands = mags_SDSS.shape[1]
-		for k in xrange(n_bands):
-			cov_tot[:,k,k] += errs_SDSS[:,k] * errs_SDSS[:,k] + errs_SDSS[:,k+1] * errs_SDSS[:,k+1]
+		for k in xrange(n_bands-1):
+			cov_tot[:,k,k] += (errs_SDSS[:,k] * errs_SDSS[:,k]
+			                   + errs_SDSS[:,k+1] * errs_SDSS[:,k+1]
+			                   + 4. * 0.02 * 0.02)
 		
-		E = mags_SSPP - mags_SDSS
+		E = colors_SDSS - colors_SSPP
 		
 		EBV, sigma_EBV = calc_mu_sigma(cov_tot, E, A_diff)
 		
 		'''
-		
 		E = np.diff(prop['ubermag'] - prop['ssppmag'], axis=1)
 		#print E.shape
 		s1 = prop['ubermagerr'][:,:-1]
@@ -523,9 +530,6 @@ def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
 			EBV = EBV[~dwarf]
 			EBV_SFD = EBV_SFD[~dwarf]
 	
-	#mu = minEBV + yCell * DeltaEBV
-	#print mu
-	
 	# Set matplotlib style attributes
 	mplib.rc('text', usetex=True)
 	mplib.rc('xtick.major', size=6)
@@ -539,25 +543,15 @@ def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
 	fig1 = plt.figure(figsize=(5,4), dpi=200)
 	ax = fig1.add_subplot(1,1,1)
 	
-	#xlim1 = np.percentile(EBV, [2., 98])
-	#xlim2 = np.percentile(mu, [2., 98])
-	#idx = ((EBV >= xlim1[0]) & (EBV <= xlim1[1]) & 
-	#       (mu >= xlim2[0]) & (mu <= xlim2[1]))
-	#print '\n'
-	#for i in xrange(100):
-	#	print mu[i], EBV[i]
-	#print '\n'
 	EBVavg = EBV[:] #0.5 * (EBV + mu)
+	print np.mean(EBVavg), np.std(EBVavg)
 	EBVdiff = mu - EBV
 	xlim = np.percentile(EBVavg, [1., 99.9])
-	#print np.max(EBVavg), np.percentile(EBVavg, [0.1, 99.9, 99.95])
-	#xlim[0] = 0.
-	#print xlim
-	#ylim = np.percentile(EBVdiff, [0.5, 99.5])
 	ylim = [-3., 3.]
+	print xlim
 	idx = ((EBVavg >= xlim[0]) & (EBVavg <= xlim[1]) & 
 	       (EBVdiff >= ylim[0]) & (EBVdiff <= ylim[1]))
-	#xlim = np.min(EBVavg), np.max(EBVavg)
+	print np.sum(idx)
 	correlation_plot(ax, EBVavg[idx], EBVdiff[idx], nbins=(25,80))
 	
 	ax.set_xlim(xlim)
@@ -572,7 +566,7 @@ def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
 	ax = fig2.add_subplot(1,1,1)
 	
 	xlim = [-0.8, 1.6]
-	ylim = [-1.0, 1.2]
+	ylim = [-1.0, 1.5]
 	#xlim = [np.percentile(EBV, 0.5), np.percentile(EBV, 99.5)]
 	#width = xlim[1] - xlim[0]
 	#xlim[1] += 1. * width
@@ -585,7 +579,9 @@ def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
 	       (mu >= ylim[0]) & (mu <= ylim[1]))
 	density_scatter(ax, EBV[idx], mu[idx], nbins=(100,100))
 	#ax.scatter(EBV, mu, s=1., alpha=0.3)
-	x = [-np.max(EBV), np.max(EBV)]
+	print np.max(EBV)
+	max_x = max(np.abs(xlim + ylim))
+	x = [-max_x, max_x]
 	ax.plot(x, x, 'b-', alpha=0.5)
 	
 	ax.set_xlim(xlim)
@@ -801,8 +797,8 @@ def tests():
 
 def main():
 	directory = '/n/wise/ggreen/bayestar'
-	inFNames = ['%s/input/SEGUEsmall2.%.5d.h5' % (directory, i) for i in range(1,12)]
-	outFNames = ['%s/output/SEGUEsmall2.%.5d.h5' % (directory, i) for i in range(1,12)]
+	inFNames = ['%s/input/SEGUEcovar.%.5d.h5' % (directory, i) for i in xrange(10)]
+	outFNames = ['%s/output/SEGUEcovar.%.5d.h5' % (directory, i) for i in xrange(10)]
 	
 	surfs, EBV_samples, Mr_samples, SegueEBVs, SegueSigmaEBVs, EBV_SFD = [], [], [], [], [], []
 	lnZ = []
@@ -831,11 +827,13 @@ def main():
 		mags = np.vstack(mags)
 		EBV_SFD_tmp = np.hstack(EBV_SFD_tmp)
 		
-		nanMask = ~np.isnan(SegueEBVs_tmp)
+		nanMask = np.isfinite(SegueEBVs_tmp)
+		nanSigmaMask = np.isfinite(SegueSigmaEBVs_tmp)
 		brightMask = np.all(mags > 14., axis=1)
 		print 'Filtered out %d stars based on NaN E(B-V).' % (nanMask.size - np.sum(nanMask))
+		print 'Filtered out %d stars based on NaN sigma E(B-V).' % (nanSigmaMask.size - np.sum(nanSigmaMask))
 		print 'Filtered out %d stars based on brightness.' % (brightMask.size - np.sum(brightMask))
-		good_tmp &= nanMask & brightMask
+		good_tmp &= nanMask & nanSigmaMask & brightMask
 		
 		surfs.append(surfs_tmp[good_tmp])
 		EBV_samples.append(EBV_samples_tmp[good_tmp])
@@ -854,6 +852,7 @@ def main():
 	lnZ = np.hstack(lnZ)
 	EBV_SFD = np.hstack(EBV_SFD)
 	
+	print '# of stars: %d' % (lnZ.size)
 	print 'SEGUE:'
 	print '  E(B-V) = %.3f +- %.3f' % (np.mean(SegueEBVs), np.std(SegueEBVs))
 	print '           (%.3f, %.3f, %.3f)' % (np.percentile(SegueEBVs, 5.),
@@ -866,6 +865,7 @@ def main():
 	print 'Making scatterplots...'
 	fig11, fig12, fig13, fig14 = plotScatter(surfs, EBV_samples, SegueEBVs, SegueSigmaEBVs,
 	                                  Mr_samples, minEBV, maxEBV, EBV_SFD, method='max')
+	print '  E(B-V) = %.3f +- %.3f' % (np.mean(SegueEBVs), np.std(SegueEBVs))
 	fig21, fig22, fig23, fig24 = plotScatter(surfs, EBV_samples, SegueEBVs, SegueSigmaEBVs,
 	                                  Mr_samples, minEBV, maxEBV, EBV_SFD, method='mean')
 	fig31, fig32, fig33, fig34 = plotScatter(surfs, EBV_samples, SegueEBVs, SegueSigmaEBVs,
@@ -875,8 +875,7 @@ def main():
 	                                  Mr_samples, minEBV, maxEBV, EBV_SFD, method='resample',
 	                                  filt_giant=True)
 	
-	print '# of pixels: %d' % (len(surfs))
-	
+	'''
 	print 'Calculating p-values...'
 	pvals = pval1DSurfs(surfs, SegueEBVs, SegueSigmaEBVs, minEBV, maxEBV)
 	idx = np.arange(len(SegueEBVs))
@@ -888,9 +887,10 @@ def main():
 	print 'Plotting percentiles...'
 	fig4 = plotPercentiles(pvals)
 	fig5 = plotPercentiles(pvals_shuffled)
+	'''
 	
 	print 'Saving plots...'
-	name = 'SEGUE'
+	name = 'SEGUEcovar'
 	fig11.savefig('plots/SEGUE/%s-corr-maxprob.png' % name, dpi=300)
 	fig12.savefig('plots/SEGUE/%s-scatter-maxprob.png' % name, dpi=300)
 	fig13.savefig('plots/SEGUE/%s-SFDcorr-maxprob.png' % name, dpi=300)
@@ -907,8 +907,8 @@ def main():
 	fig42.savefig('plots/SEGUE/%s-scatter-resample-nodwarf.png' % name, dpi=300)
 	fig43.savefig('plots/SEGUE/%s-SFDcorr-resample-nodwarf.png' % name, dpi=300)
 	fig44.savefig('plots/SEGUE/%s-hist-resample-nodwarf.png' % name, dpi=300)
-	fig4.savefig('plots/SEGUE/%s-pvals.png' % name, dpi=300)
-	fig5.savefig('plots/SEGUE/%s-pvals-shuffled.png' % name, dpi=300)
+	#fig4.savefig('plots/SEGUE/%s-pvals.png' % name, dpi=300)
+	#fig5.savefig('plots/SEGUE/%s-pvals-shuffled.png' % name, dpi=300)
 	fig6.savefig('plots/SEGUE/%s-lnZ-vs-EBV.png' % name, dpi=300)
 	
 	#plt.show()
