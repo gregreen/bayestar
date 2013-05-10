@@ -33,6 +33,8 @@ import argparse, sys, os
 
 import matplotlib.pyplot as plt
 import matplotlib as mplib
+from mpl_toolkits.axes_grid1 import Grid
+from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 
 import hdf5io
 
@@ -172,11 +174,21 @@ def main():
 	mplib.rc('xtick.minor', size=4)
 	mplib.rc('ytick.major', size=6)
 	mplib.rc('ytick.minor', size=4)
-	mplib.rc('xtick', direction='out')
-	mplib.rc('ytick', direction='out')
+	mplib.rc('xtick', direction='in')
+	mplib.rc('ytick', direction='in')
 	mplib.rc('axes', grid=False)
 	
-	fig = plt.figure(figsize=(8,3*n_clusters), dpi=150)
+	fig = plt.figure(figsize=(8.,2.*n_clusters), dpi=150)
+	axgrid = Grid(fig, 111,
+	              nrows_ncols=(n_clusters,4),
+	              axes_pad=0.1,
+	              add_all=True,
+	              label_mode='L')
+	
+	color_min = np.empty(len(colors), dtype='f8')
+	color_max = np.empty(len(colors), dtype='f8')
+	color_min[:] = np.inf
+	color_max[:] = -np.inf
 	
 	for cluster_num, cluster_name in enumerate(args.clusters):
 		ret = None
@@ -190,7 +202,7 @@ def main():
 		mags, errs, EBV, FeH, mu, name, ID = ret
 		mags = dereddened_mags(mags, EBV)
 		
-		print '== Cluster information =='
+		print '== Cluster #%d ==' % cluster_num
 		print '  ID: %s' % (ID)
 		print '  name: %s' % (name)
 		print '  FeH: %.2f' % (FeH)
@@ -201,8 +213,10 @@ def main():
 		
 		isochrone = templates.get_isochrone(FeH)
 		
+		Mr_min, Mr_max = np.inf, -np.inf
+		
 		for i,c in enumerate(colors):
-			ax = fig.add_subplot(n_clusters, 4, 4*cluster_num + i + 1)
+			ax = axgrid[4*cluster_num + i]
 			
 			b1, b2 = i, i+1
 			idx = (mags[:,b1] > 10.) & (mags[:,b1] < 25.) & (mags[:,b2] > 10.) & (mags[:,b2] < 25.)
@@ -214,25 +228,57 @@ def main():
 			mags_tmp = mags_tmp[idx]
 			Mr = mags_tmp[:,1] - mu
 			color = mags_tmp[:,b1] - mags_tmp[:,b2]
-			idx = ((color > np.percentile(color, 2.))
-			        & (color < np.percentile(color, 98.))
-			        & (Mr > -5.))
-			ax.scatter(color[idx], Mr[idx], c='b', s=1.5, alpha=0.8, edgecolor='none')
+			idx = (Mr > -5.)
+			#      ((color > np.percentile(color, 2.))
+			#        & (color < np.percentile(color, 98.))
+			#        & (Mr > -5.))
+			ax.scatter(color[idx], Mr[idx], c='b', s=1., alpha=0.25, edgecolor='none')
 			
 			xlim = ax.get_xlim()
 			ylim = ax.get_ylim()
 			
 			ax.plot(isochrone[c], isochrone['Mr'], 'g-', lw=2, alpha=0.5)
 			
-			ax.set_xlim(xlim)
-			ax.set_ylim(ylim[1], ylim[0])
+			Mr_min_tmp, Mr_max_tmp = np.percentile(Mr[idx], [0.5, 99.])
+			if Mr_min_tmp < Mr_min:
+				Mr_min = Mr_min_tmp
+			if Mr_max_tmp > Mr_max:
+				Mr_max = Mr_max_tmp
+			
+			color_min_tmp, color_max_tmp = np.percentile(color[idx], [0.5, 99.])
+			if color_min_tmp < color_min[i]:
+				color_min[i] = color_min_tmp
+			if color_max_tmp > color_max[i]:
+				color_max[i] = color_max_tmp
 			
 			txt += '  %s: %d' % (c, np.sum(idx))
 		
 		print txt
 		print ''
+		
+		axgrid[4*cluster_num].set_ylim(Mr_max+0.5, Mr_min-0.5)
+		
+		cluster_label = ''
+		if len(name) == 0:
+			cluster_label = ID
+		else:
+			cluster_label = name
+		cluster_label = cluster_label.replace(' ', '\ ')
+		axgrid[4*cluster_num].set_ylabel('$\mathrm{%s}$\n$M_{r}$' % cluster_label,
+		                                 fontsize=16,
+		                                 multialignment='center')
+		axgrid[4*cluster_num].yaxis.set_major_locator(MaxNLocator(nbins=5))
+		axgrid[4*cluster_num].yaxis.set_minor_locator(AutoMinorLocator())
 	
-	fig.subplots_adjust(left=0.10, right=0.95, top=0.95, bottom=0.15)
+	for i,c in enumerate(colors):
+		axgrid[i].set_xlim(color_min[i], color_max[i])
+		
+		color_label = r'$%s - %s$' % (c[0], c[1])
+		axgrid[4*(n_clusters-1) + i].set_xlabel(color_label, fontsize=16)
+		axgrid[4*(n_clusters-1) + i].xaxis.set_major_locator(MaxNLocator(nbins=4))
+		axgrid[4*(n_clusters-1) + i].xaxis.set_minor_locator(AutoMinorLocator())
+	
+	fig.subplots_adjust(left=0.12, right=0.98, top=0.98, bottom=0.10)
 	
 	if args.output != None:
 		fig.savefig(args.output, dpi=300)
