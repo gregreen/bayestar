@@ -193,8 +193,8 @@ def calc_mu_sigma(cov, mu, A):
 	
 	return mu_scalar, sigma
 
-def getSegueEBV(props):
-	A_coeff = np.array([4.239, 3.303, 2.285, 1.698, 1.263])
+def getSegueEBV(props, bands=5):
+	A_coeff = np.array([4.239, 3.303, 2.285, 1.698, 1.263])[:bands]
 	A_diff = -np.diff(A_coeff)
 	
 	EBVs = []
@@ -202,11 +202,14 @@ def getSegueEBV(props):
 	for prop in props:
 		n_stars, n_bands = prop['ssppmag'].shape
 		cov_SSPP = np.reshape(prop['ssppmagcovar'][:], (n_stars, n_bands, n_bands))
+		if n_bands > bands:
+			n_bands = bands
+			cov_SSPP = cov_SSPP[:,:bands,:bands]
 		
-		mags_SSPP = prop['ssppmag'][:]
+		mags_SSPP = prop['ssppmag'][:,:bands]
 		
-		errs_SDSS = prop['ubermagerr'][:]
-		mags_SDSS = prop['ubermag'][:]
+		errs_SDSS = prop['ubermagerr'][:,:bands]
+		mags_SDSS = prop['ubermag'][:,:bands]
 		
 		colors_SSPP, cov_tot = calc_color_stats(mags_SSPP, cov_SSPP)
 		colors_SDSS = -np.diff(mags_SDSS, axis=1)
@@ -215,7 +218,7 @@ def getSegueEBV(props):
 		for k in xrange(n_bands-1):
 			cov_tot[:,k,k] += (errs_SDSS[:,k] * errs_SDSS[:,k]
 			                   + errs_SDSS[:,k+1] * errs_SDSS[:,k+1]
-			                   + 4. * 0.02 * 0.02)
+			                   + 0.02 * 0.02)
 		
 		E = colors_SDSS - colors_SSPP
 		
@@ -229,7 +232,7 @@ def getSegueEBV(props):
 		s3 = prop['ssppmagerr'][:,:-1]
 		s4 = prop['ssppmagerr'][:,1:]
 		#s1 = np.sqrt(s1*s1+0.02*0.02)
-		sigmaE = np.sqrt(s1*s1 + s2*s2 + s3*s3 + s4*s4 + 0.02*0.02*4.)
+		sigmaE = np.sqrt(s1*s1 + s2*s2 + s3*s3 + s4*s4 + 0.02*0.02*(bands-1.))
 		EBV = E / ADiff
 		sigmaEBV = np.abs(sigmaE / E) * EBV
 		
@@ -799,6 +802,8 @@ def main():
 	directory = '/n/wise/ggreen/bayestar'
 	inFNames = ['%s/input/SEGUEcovar.%.5d.h5' % (directory, i) for i in xrange(10)]
 	outFNames = ['%s/output/SEGUEcovar.%.5d.h5' % (directory, i) for i in xrange(10)]
+	bands = 5
+	max_SEGUE_sigma_EBV = 0.05
 	
 	surfs, EBV_samples, Mr_samples, SegueEBVs, SegueSigmaEBVs, EBV_SFD = [], [], [], [], [], []
 	lnZ = []
@@ -814,7 +819,7 @@ def main():
 		print 'Loading PS1 photometry...'
 		mags, errs, EBV_SFD_tmp, pixIdx3 = getPhotometry(inFName)
 		print 'Calculating E(B-V)...'
-		SegueEBVs_tmp, SegueSigmaEBVs_tmp = getSegueEBV(props)
+		SegueEBVs_tmp, SegueSigmaEBVs_tmp = getSegueEBV(props, bands=bands)
 		
 		print 'Combining pixels...'
 		surfs_tmp = np.vstack(surfs_tmp)
@@ -830,10 +835,12 @@ def main():
 		nanMask = np.isfinite(SegueEBVs_tmp)
 		nanSigmaMask = np.isfinite(SegueSigmaEBVs_tmp)
 		brightMask = np.all(mags > 14., axis=1)
+		sigma_lowpass_mask = (SegueSigmaEBVs_tmp < max_SEGUE_sigma_EBV)
 		print 'Filtered out %d stars based on NaN E(B-V).' % (nanMask.size - np.sum(nanMask))
 		print 'Filtered out %d stars based on NaN sigma E(B-V).' % (nanSigmaMask.size - np.sum(nanSigmaMask))
+		print 'Filtered out %d stars based on high sigma E(B-V).' % (sigma_lowpass_mask.size - np.sum(sigma_lowpass_mask))
 		print 'Filtered out %d stars based on brightness.' % (brightMask.size - np.sum(brightMask))
-		good_tmp &= nanMask & nanSigmaMask & brightMask
+		good_tmp &= nanMask & nanSigmaMask & sigma_lowpass_mask & brightMask
 		
 		surfs.append(surfs_tmp[good_tmp])
 		EBV_samples.append(EBV_samples_tmp[good_tmp])
@@ -890,7 +897,7 @@ def main():
 	'''
 	
 	print 'Saving plots...'
-	name = 'SEGUEcovar'
+	name = 'SEGUEcovar-lowerr'
 	fig11.savefig('plots/SEGUE/%s-corr-maxprob.png' % name, dpi=300)
 	fig12.savefig('plots/SEGUE/%s-scatter-maxprob.png' % name, dpi=300)
 	fig13.savefig('plots/SEGUE/%s-SFDcorr-maxprob.png' % name, dpi=300)
