@@ -149,38 +149,38 @@ T TBilinearInterp<T>::operator()(double x, double y) const {
 	double idx = floor((x-x_min)*inv_dx);
 	
 	// DEBUG:
-	if((idx < 0) || (idx >= Nx)) {
+	/*if((idx < 0) || (idx >= Nx)) {
 		#pragma omp critical
 		{
 			std::cout << x_min << " < " << x << " < " << x_max << std::endl;
 			std::cout << "Nx = " << Nx << std::endl;
 			std::cout << "inv_dx = " << inv_dx << std::endl;
 		}
-	}
+	}*/
 	
-	#pragma omp critical
-	{
-		std::cout << "0 <= " << idx << " < " << Nx << std::endl;
-	}
+	//#pragma omp critical
+	//{
+	//	std::cout << "0 <= " << idx << " < " << Nx << std::endl;
+	//}
 	
 	assert((idx >= 0) && (idx < Nx));
 	
 	double idy = floor((y-y_min)*inv_dy);
 	
 	// DEBUG:
-	if((idy < 0) || (idy >= Ny)) {
+	/*if((idy < 0) || (idy >= Ny)) {
 		#pragma omp critical
 		{
 			std::cout << y_min << " < " << y << " < " << y_max << std::endl;
 			std::cout << "Ny = " << Ny << std::endl;
 			std::cout << "inv_dy = " << inv_dy << std::endl;
 		}
-	}
+	}*/
 	
-	#pragma	omp critical
-        {
-                std::cout << "0 <= " << idy << " < " << Nx << std::endl;
-        }
+	//#pragma	omp critical
+        //{
+        //        std::cout << "0 <= " << idy << " < " << Nx << std::endl;
+        //}
 	
 	assert((idy >= 0) && (idy < Ny));
 	
