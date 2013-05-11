@@ -980,7 +980,7 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 	
 	H5::DataSet* dataset = NULL;
 	try {
-		new H5::DataSet(h5group->createDataSet(chain, H5::PredType::NATIVE_FLOAT, dspace, plist));
+		dataset = new H5::DataSet(h5group->createDataSet(chain, H5::PredType::NATIVE_FLOAT, dspace, plist));
 	} catch(H5::GroupIException &group_exception) {
 		std::cerr << "Could not create dataset for chain." << std::endl;
 		std::cerr << "Dataset '" << group << "/" << chain << "' most likely already exists." << std::endl;
