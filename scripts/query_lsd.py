@@ -106,7 +106,7 @@ def to_file(f, pix_index, nside, nest, EBV, data):
 	p *= 180. / np.pi
 	gal_lb = np.array([p, 90. - t], dtype='f8')
 	
-	att_f4 = np.array([EBV], dtype='f8')
+	att_f8 = np.array([EBV], dtype='f8')
 	att_u8 = np.array([pix_index], dtype='u8')
 	att_u4 = np.array([nside, N_stars], dtype='u4')
 	att_u1 = np.array([nest], dtype='u1')
@@ -117,7 +117,7 @@ def to_file(f, pix_index, nside, nest, EBV, data):
 	#ds.attrs['N_stars'] = N_stars
 	ds.attrs['l'] = gal_lb[0]
 	ds.attrs['b'] = gal_lb[1]
-	ds.attrs['EBV'] = att_f4[0]
+	ds.attrs['EBV'] = att_f8[0]
 	
 	if close_file:
 		f.close()

@@ -100,7 +100,7 @@ def to_file(f, target_idx, target_name, gal_lb, EBV, data):
 	nside = 512
 	nest = True
 	
-	att_f4 = np.array([EBV], dtype='f8')
+	att_f8 = np.array([EBV], dtype='f8')
 	att_u8 = np.array([pix_idx, target_idx], dtype='u8')
 	att_u4 = np.array([nside, N_stars], dtype='u4')
 	att_u1 = np.array([nest], dtype='u1')
@@ -110,7 +110,7 @@ def to_file(f, target_idx, target_name, gal_lb, EBV, data):
 	ds.attrs['nside'] = att_u4[0]
 	ds.attrs['l'] = gal_lb[0]
 	ds.attrs['b'] = gal_lb[1]
-	ds.attrs['EBV'] = att_f4[0]
+	ds.attrs['EBV'] = att_f8[0]
 	ds.attrs['target_index'] = att_u8[1]
 	ds.attrs['target_name'] = target_name
 	
