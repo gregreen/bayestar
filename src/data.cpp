@@ -175,7 +175,8 @@ void TStellarData::TMagnitudes::set(const TStellarData::TFileData& dat, double e
 }
 
 
-bool TStellarData::load(const std::string& fname, const std::string& group, const std::string& dset, double err_floor) {
+bool TStellarData::load(const std::string& fname, const std::string& group, const std::string& dset,
+			double err_floor, double default_EBV) {
 	H5::H5File *file = H5Utils::openFile(fname);
 	if(file == NULL) { return false; }
 	
@@ -270,6 +271,8 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	att = dataset.openAttribute("EBV");
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	att.read(att_dtype, reinterpret_cast<void*>(&EBV));
+	
+	if((EBV <= 0.) || isnan(EBV)) { EBV = default_EBV; }
 	
 	delete[] data_buf;
 	delete gp;

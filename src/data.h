@@ -120,7 +120,8 @@ struct TStellarData {
 	
 	// Read/write stellar photometry from/to HDF5 files
 	bool save(const std::string& fname, const std::string& group, const std::string& dset, int compression=9);
-	bool load(const std::string& fname, const std::string& group, const std::string& dset, double err_floor=0.02);
+	bool load(const std::string& fname, const std::string& group, const std::string& dset,
+		  double err_floor=0.02, double default_EBV=5.);
 };
 
 
