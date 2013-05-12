@@ -175,6 +175,9 @@ def get_bounds(infname, n_radii=5.):
 	
 	props = props[idx]
 	
+	print props['radius']
+	print n_radii**2. * np.sum(np.pi * np.power(props['radius'], 2.))
+	
 	bounds = []
 	for gc in props:
 		bounds.append( lsd.bounds.beam(gc['l'], gc['b'], n_radii * gc['radius'], coordsys='gal') )
@@ -197,18 +200,20 @@ def main():
 	                    help='Min. # of passbands with detection.')
 	parser.add_argument('--n-det', type=int, default=4,
 	                    help='Min. # of detections.')
+	parser.add_argument('--n-workers', '-w', type=int, default=4,
+	                    help='# of LSD workers.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
 		offset = 1
-	values = parser.parse_args(sys.argv[offset:])
+	args = parser.parse_args(sys.argv[offset:])
 	
-	nPointlike = values.n_bands - 1
+	nPointlike = args.n_bands - 1
 	if nPointlike == 0:
 		nPointlike = 1
 	
 	# Determine the query bounds
-	query_bounds, props = get_bounds(values.targets, n_radii=5.)
+	query_bounds, props = get_bounds(args.targets, n_radii=5.)
 	query_bounds = lsd.bounds.make_canonical(query_bounds)
 	
 	# Convert target positions to useful forms
@@ -228,7 +233,7 @@ def main():
 	         "& (nmag_ok[:,0] > 0) "
 	         "& (numpy.sum(nmag_ok, axis=1) >= %d) "
 	         "& (numpy.sum(mean - mean_ap < 0.1, axis=1) >= %d)"
-	         % (values.n_bands, values.n_det, nPointlike))
+	         % (args.n_bands, args.n_det, nPointlike))
 	
 	query = db.query(query)
 	
@@ -243,7 +248,7 @@ def main():
 	N_min = np.inf
 	N_max = -np.inf
 	
-	fnameBase = abspath(values.out)
+	fnameBase = abspath(args.out)
 	fnameSuffix = 'h5'
 	if fnameBase.endswith('.h5'):
 		fnameBase = fnameBase[:-3]
@@ -256,8 +261,8 @@ def main():
 	
 	# Write each pixel to the same file
 	for (t_idx, obj) in query.execute([(mapper, target_tp, props['radius']), reducer],
-	                                      bounds=query_bounds):
-		if len(obj) < values.min_stars:
+	                                      bounds=query_bounds, nworkers=args.n_workers):
+		if len(obj) < args.min_stars:
 			continue
 		
 		# Prepare output for pixel
@@ -308,7 +313,7 @@ def main():
 			N_max = stars_in_pix
 		
 		# Close file if size exceeds max_stars
-		if nInFile >= values.max_stars:
+		if nInFile >= args.max_stars:
 			f.close()
 			f = None
 	
