@@ -276,12 +276,14 @@ int main(int argc, char **argv) {
 		vector<bool> conv;
 		vector<double> lnZ;
 		
+		bool gatherSurfs = (N_regions || N_clouds || saveSurfs);
+		
 		if(synthetic) {
 			sample_indiv_synth(output_fname, star_options, los_model, *synthlib, ext_model,
-			                   stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs);
+			                   stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs, gatherSurfs);
 		} else {
 			sample_indiv_emp(output_fname, star_options, los_model, *emplib, ext_model,
-			                 stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs);
+			                 stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs, gatherSurfs);
 		}
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);
@@ -308,7 +310,7 @@ int main(int argc, char **argv) {
 				nFiltered++;
 			}
 		}
-		img_stack.cull(keep);
+		if(gatherSurfs) { img_stack.cull(keep); }
 		cerr << "# of stars filtered: " << nFiltered << " of " << conv.size();
 		cerr << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
 		
