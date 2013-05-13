@@ -999,6 +999,14 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 			lnZ[i] = metadata[i].lnZ;
 		}
 		
+		// Allow large attributes to be stored in dense storage, versus compact (which has 64 kB limit)
+		if(length_ > 2500) {
+			herr_t res = H5Pset_attr_phase_change(dataset->getId(), 0, 0);
+			if(herr_t < 0) {
+				std::cerr << "Failed to specify dense storage." << std::endl;
+			}
+		}
+		
 		//std::cerr << "Writing convergence ..." << std::endl;
 		
 		H5::DataSpace convSpace(1, &(dim[0]));
