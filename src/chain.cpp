@@ -975,6 +975,7 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 	plist.setChunk(rank, &(dim[0]));
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
+	plist.setProperty();
 	
 	//std::cerr << "dataset = " << chain << std::endl;
 	
@@ -1000,12 +1001,14 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 		}
 		
 		// Allow large attributes to be stored in dense storage, versus compact (which has 64 kB limit)
-		if(length_ > 2500) {
-			herr_t res = H5Pset_attr_phase_change(dataset->getId(), 0, 0);
-			if(herr_t < 0) {
-				std::cerr << "Failed to specify dense storage." << std::endl;
-			}
-		}
+		//if(length_ > 5) {
+		//	hid_t dID = dataset->getCreatePlist().getId();
+		//	herr_t res = H5Pset_attr_phase_change(dID, 0, 0);
+		//	std::cerr << res << std::endl;
+		//	if(res < 0) {
+		//		std::cerr << "Failed to specify dense storage." << std::endl;
+		//	}
+		//}
 		
 		//std::cerr << "Writing convergence ..." << std::endl;
 		
