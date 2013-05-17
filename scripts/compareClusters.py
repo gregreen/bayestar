@@ -34,9 +34,10 @@ import argparse, sys, os
 import matplotlib.pyplot as plt
 import matplotlib as mplib
 from mpl_toolkits.axes_grid1 import Grid
-from matplotlib.ticker import MaxNLocator, AutoMinorLocator
+from matplotlib.ticker import MaxNLocator, AutoMinorLocator, FormatStrFormatter
 
 import hdf5io
+
 
 class TStellarModel:
 	def __init__(self, fname):
@@ -127,11 +128,29 @@ def read_photometry(fname, target_name):
 				EBV_SFD = item['EBV'][:]
 				FeH = item.attrs['target_FeH']
 				mu = item.attrs['target_DM']
-				return mags, errs, EBV_SFD, FeH, mu, t_name, t_ID
+				pix_idx = int(name.split()[1])
+				return mags, errs, EBV_SFD, FeH, mu, t_name, t_ID, pix_idx
 	return None
 
+def read_evidences(fname, pix_idx):
+	f = h5py.File(fname, 'r')
+	
+	lnZ = None
+	
+	dset = '/pixel %d/stellar chains' % pix_idx
+	
+	try:
+		lnZ = f[dset].attrs['ln(Z)'][:]
+	except:
+		print 'Dataset "%s" does not exist.' % dset
+	
+	return lnZ
+
+def get_reddening_vector():
+	return np.array([3.172, 2.271, 1.682, 1.322, 1.087])
+
 def dereddened_mags(mags, EBV):
-	R = np.array([3.172, 2.271, 1.682, 1.322, 1.087])
+	R = get_reddening_vector()
 	if type(EBV) == float:
 		R.shape = (1, R.size)
 		R = np.repeat(R, len(mags), axis=0)
@@ -149,11 +168,13 @@ def main():
 	                                 description='Compare cluster photometry to stellar templates.',
 	                                 add_help=True)
 	parser.add_argument('--templates', '-t', type=str, required=True,
-	                                   help='Stellar templates (in ASCII format).')
+	                    help='Stellar templates (in ASCII format).')
 	parser.add_argument('--photometry', '-ph', type=str, nargs='+', required=True,
-	                                    help='Bayestar input file with photometry.')
+	                    help='Bayestar input file(s) with photometry.')
+	parser.add_argument('--evidences', '-ev', type=str, nargs='+', default=None,
+	                    help='Bayestar output file(s) with evidences.')
 	parser.add_argument('--clusters', '-c', type=str, nargs='+', required=True,
-	                                        help='Cluster names.')
+	                    help='Cluster names.')
 	parser.add_argument('--output', '-o', type=str, default=None, help='Plot filename.')
 	parser.add_argument('--show', '-sh', action='store_true', help='Show plot.')
 	
@@ -178,10 +199,10 @@ def main():
 	mplib.rc('ytick', direction='in')
 	mplib.rc('axes', grid=False)
 	
-	fig = plt.figure(figsize=(8.,2.*n_clusters), dpi=150)
+	fig = plt.figure(figsize=(8., 2.*n_clusters), dpi=150)
 	axgrid = Grid(fig, 111,
-	              nrows_ncols=(n_clusters,4),
-	              axes_pad=0.1,
+	              nrows_ncols=(n_clusters, 4),
+	              axes_pad=0.05,
 	              add_all=True,
 	              label_mode='L')
 	
@@ -191,6 +212,7 @@ def main():
 	color_max[:] = -np.inf
 	
 	for cluster_num, cluster_name in enumerate(args.clusters):
+		# Load photometry
 		ret = None
 		for fname in args.photometry:
 			ret = read_photometry(fname, cluster_name)
@@ -199,8 +221,17 @@ def main():
 		if ret == None:
 			print 'Cluster "%s" not found.' % cluster_name
 			return 0
-		mags, errs, EBV, FeH, mu, name, ID = ret
+		mags, errs, EBV, FeH, mu, name, ID, pix_idx = ret
 		mags = dereddened_mags(mags, EBV)
+		
+		# Load evidences
+		lnZ = np.zeros(len(mags), dtype='f8')
+		if args.evidences != None:
+			for fname in args.evidences:
+				ret = read_evidences(fname, pix_idx)
+				if ret != None:
+					lnZ = ret[:]
+					break
 		
 		print '== Cluster #%d ==' % cluster_num
 		print '  ID: %s' % (ID)
@@ -215,48 +246,75 @@ def main():
 		
 		Mr_min, Mr_max = np.inf, -np.inf
 		
+		# Plot color-Magnitude diagrams
 		for i,c in enumerate(colors):
 			ax = axgrid[4*cluster_num + i]
 			
+			# Empirical
 			b1, b2 = i, i+1
-			idx = (mags[:,b1] > 10.) & (mags[:,b1] < 25.) & (mags[:,b2] > 10.) & (mags[:,b2] < 25.)
+			idx = ( (mags[:,b1] > 10.) & (mags[:,b1] < 25.)
+			      & (mags[:,b2] > 10.) & (mags[:,b2] < 25.) )
 			mags_tmp = mags[idx]
-			idx = (  (mags_tmp[:,b1] > np.percentile(mags_tmp[:,b1], 2.))
-			       & (mags_tmp[:,b1] < np.percentile(mags_tmp[:,b1], 98.))
-			       & (mags_tmp[:,b2] > np.percentile(mags_tmp[:,b2], 2.))
-			       & (mags_tmp[:,b2] < np.percentile(mags_tmp[:,b2], 98.)) )
-			mags_tmp = mags_tmp[idx]
+			lnZ_tmp = lnZ[idx]
+			#idx = (  (mags_tmp[:,b1] > np.percentile(mags_tmp[:,b1], 1.))
+			#       & (mags_tmp[:,b1] < np.percentile(mags_tmp[:,b1], 99.))
+			#       & (mags_tmp[:,b2] > np.percentile(mags_tmp[:,b2], 1.))
+			#       & (mags_tmp[:,b2] < np.percentile(mags_tmp[:,b2], 99.)) )
+			#mags_tmp = mags_tmp[idx]
+			#lnZ_tmp = lnZ_tmp[idx]
 			Mr = mags_tmp[:,1] - mu
 			color = mags_tmp[:,b1] - mags_tmp[:,b2]
 			idx = (Mr > -5.)
-			#      ((color > np.percentile(color, 2.))
-			#        & (color < np.percentile(color, 98.))
-			#        & (Mr > -5.))
-			ax.scatter(color[idx], Mr[idx], c='b', s=1., alpha=0.25, edgecolor='none')
+			
+			lnZ_max = 0. #np.percentile(lnZ_tmp[idx], 97.)
+			Delta_lnZ = 25.
+			
+			ax.scatter(color[idx], Mr[idx],
+			           c=lnZ_tmp[idx], cmap='Spectral',
+			           vmin=lnZ_max-Delta_lnZ, vmax=lnZ_max,
+			           s=3., alpha=0.25, edgecolor='none')
 			
 			xlim = ax.get_xlim()
 			ylim = ax.get_ylim()
 			
+			# Model
 			ax.plot(isochrone[c], isochrone['Mr'], 'g-', lw=2, alpha=0.5)
 			
-			Mr_min_tmp, Mr_max_tmp = np.percentile(Mr[idx], [0.5, 99.])
+			Mr_min_tmp, Mr_max_tmp = np.percentile(Mr[idx], [1., 99.])
 			if Mr_min_tmp < Mr_min:
 				Mr_min = Mr_min_tmp
 			if Mr_max_tmp > Mr_max:
 				Mr_max = Mr_max_tmp
 			
-			color_min_tmp, color_max_tmp = np.percentile(color[idx], [0.5, 99.])
+			color_min_tmp, color_max_tmp = np.percentile(color[idx], [4., 96.])
 			if color_min_tmp < color_min[i]:
 				color_min[i] = color_min_tmp
 			if color_max_tmp > color_max[i]:
 				color_max[i] = color_max_tmp
 			
-			txt += '  %s: %d' % (c, np.sum(idx))
+			txt += '  %s: %d stars\n' % (c, np.sum(idx))
+			txt += '      ln(Z_max) = %.2f\n' % lnZ_max
 		
 		print txt
 		print ''
 		
-		axgrid[4*cluster_num].set_ylim(Mr_max+0.5, Mr_min-0.5)
+		# Reddening vectors
+		R = get_reddening_vector()
+		EBV_0 = np.median(EBV)
+		for i in range(len(colors)):
+			A_r = EBV_0 * R[1]
+			A_xy = EBV_0 * (R[i] - R[i+1])
+			r_0 = Mr_min
+			w = color_max[i] - color_min[i]
+			h = Mr_max - Mr_min
+			xy_0 = color_min[i] + 0.1 * w
+			axgrid[4*cluster_num + i].arrow(xy_0, r_0, A_xy, A_r,
+			                                head_width=0.03*w, head_length=0.01*h,
+			                                color='r', alpha=0.5)
+			
+		
+		# Format y-axes
+		axgrid[4*cluster_num].set_ylim(Mr_max+0.5, Mr_min-1.0)
 		
 		cluster_label = ''
 		if len(name) == 0:
@@ -270,6 +328,7 @@ def main():
 		axgrid[4*cluster_num].yaxis.set_major_locator(MaxNLocator(nbins=5))
 		axgrid[4*cluster_num].yaxis.set_minor_locator(AutoMinorLocator())
 	
+	# Format x-axes
 	for i,c in enumerate(colors):
 		axgrid[i].set_xlim(color_min[i], color_max[i])
 		
@@ -278,7 +337,19 @@ def main():
 		axgrid[4*(n_clusters-1) + i].xaxis.set_major_locator(MaxNLocator(nbins=4))
 		axgrid[4*(n_clusters-1) + i].xaxis.set_minor_locator(AutoMinorLocator())
 	
-	fig.subplots_adjust(left=0.12, right=0.98, top=0.98, bottom=0.10)
+	fig.subplots_adjust(left=0.12, right=0.85, top=0.98, bottom=0.10)
+	
+	cax = fig.add_axes([0.87, 0.10, 0.03, 0.88])
+	norm = mplib.colors.Normalize(vmin=-25., vmax=0.)
+	mappable = mplib.cm.ScalarMappable(cmap='Spectral', norm=norm)
+	mappable.set_array(np.array([-25., 0.]))
+	fig.colorbar(mappable, cax=cax, ticks=[0., -5., -10., -15., -20., -25.])
+	
+	cax.yaxis.set_label_position('right')
+	cax.yaxis.tick_right()
+	#cax.yaxis.set_major_formatter(FormatStrFormatter('%d'))
+	#cax.set_yticks([0., -5., -10., -15., -20., -25.])
+	cax.set_ylabel(r'$\mathrm{ln} \left( Z \right)$', rotation='vertical', fontsize=16)
 	
 	if args.output != None:
 		fig.savefig(args.output, dpi=300)
