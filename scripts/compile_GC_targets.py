@@ -95,7 +95,7 @@ def to_file(f, target_idx, props, data):
 	ds[:] = data[:]
 	
 	N_stars = data.shape[0]
-	gal_lb = np.array([props['b'], props['b']], dtype='f8')
+	gal_lb = np.array([props['l'], props['b']], dtype='f8')
 	pix_idx = target_idx
 	nside = 512
 	nest = True
@@ -263,6 +263,8 @@ def main():
 	for (t_idx, obj) in query.execute([(mapper, target_tp, props['radius']), reducer],
 	                                      bounds=query_bounds, nworkers=args.n_workers):
 		if len(obj) < args.min_stars:
+			continue
+		if len(obj) > 25000:
 			continue
 		
 		# Prepare output for pixel
