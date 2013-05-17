@@ -960,6 +960,9 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 }
 
 void TChainWriteBuffer::write(const std::string& fname, const std::string& group, const std::string& chain, const std::string& meta) {
+	// DEBUG:
+	//std::cerr << "group = " << group << std::endl;
+	
 	H5::H5File* h5file = H5Utils::openFile(fname);
 	H5::Group* h5group = H5Utils::openGroup(h5file, group);
 	
@@ -973,7 +976,19 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
 	
-	H5::DataSet* dataset = new H5::DataSet(h5group->createDataSet(chain, H5::PredType::NATIVE_FLOAT, dspace, plist));
+	//std::cerr << "dataset = " << chain << std::endl;
+	
+	H5::DataSet* dataset = NULL;
+	try {
+		dataset = new H5::DataSet(h5group->createDataSet(chain, H5::PredType::NATIVE_FLOAT, dspace, plist));
+	} catch(H5::GroupIException &group_exception) {
+		std::cerr << "Could not create dataset for chain." << std::endl;
+		std::cerr << "Dataset '" << group << "/" << chain << "' most likely already exists." << std::endl;
+		throw;
+	}
+	
+	//std::cerr << "Writing chain ..." << std::endl;
+	
 	dataset->write(buf, H5::PredType::NATIVE_FLOAT);
 	
 	if(meta == "") {	// Store metadata as attributes
@@ -984,13 +999,29 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 			lnZ[i] = metadata[i].lnZ;
 		}
 		
+		// Allow large attributes to be stored in dense storage, versus compact (which has 64 kB limit)
+		//if(length_ > 5) {
+		//	hid_t dID = dataset->getCreatePlist().getId();
+		//	herr_t res = H5Pset_attr_phase_change(dID, 0, 0);
+		//	std::cerr << res << std::endl;
+		//	if(res < 0) {
+		//		std::cerr << "Failed to specify dense storage." << std::endl;
+		//	}
+		//}
+		
+		//std::cerr << "Writing convergence ..." << std::endl;
+		
 		H5::DataSpace convSpace(1, &(dim[0]));
 		H5::Attribute convAtt = dataset->createAttribute("converged", H5::PredType::NATIVE_CHAR, convSpace);
 		convAtt.write(H5::PredType::NATIVE_CHAR, reinterpret_cast<char*>(converged));
 		
+		//std::cerr << "Writing evidence ..." << std::endl;
+		
 		H5::DataSpace lnZSpace(1, &(dim[0]));
 		H5::Attribute lnZAtt = dataset->createAttribute("ln(Z)", H5::PredType::NATIVE_FLOAT, lnZSpace);
 		lnZAtt.write(H5::PredType::NATIVE_FLOAT, lnZ);
+		
+		//std::cerr << "Done." << std::endl;
 		
 		delete[] converged;
 		delete[] lnZ;
@@ -1017,6 +1048,8 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 	delete dataset;
 	delete h5group;
 	delete h5file;
+	
+	//std::cerr << "Cleaned up." << std::endl;
 }
 
 

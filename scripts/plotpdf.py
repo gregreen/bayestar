@@ -34,9 +34,9 @@ from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 
 import hdf5io
 
-def los2ax(ax, fname, group, *args, **kwargs):
+def los2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	chain = hdf5io.TChain(fname, '%s/los' % group)
-	mu = np.linspace(5., 20., chain.get_nDim())
+	mu = np.linspace(DM_lim[0], DM_lim[1], chain.get_nDim())
 	if 'alpha' not in kwargs:
 		kwargs['alpha'] = 1. / np.power(chain.get_nSamples(), 0.55)
 	
@@ -61,11 +61,11 @@ def los2ax(ax, fname, group, *args, **kwargs):
 	#	ax.plot(mu, EBV_all[ii], 'k-', alpha=alpha)
 	#	alpha *= 0.85
 	
-	ax.set_xlim(5., 20.) 
+	ax.set_xlim(DM_lim[0], DM_lim[1]) 
 
-def clouds2ax(ax, fname, group, *args, **kwargs):
+def clouds2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	chain = hdf5io.TChain(fname, '%s/clouds' % group)
-	mu_range = np.linspace(5., 20., chain.get_nDim())
+	mu_range = np.linspace(DM_lim[0], DM_lim[1], chain.get_nDim())
 	if 'alpha' not in kwargs:
 		kwargs['alpha'] = 1. / np.power(chain.get_nSamples(), 0.55)
 	
@@ -103,7 +103,7 @@ def clouds2ax(ax, fname, group, *args, **kwargs):
 	#	ax.plot(mu, EBV_all[ii], 'k-', alpha=alpha)
 	#	alpha *= 0.85
 	
-	ax.set_xlim(5., 20.) 
+	ax.set_xlim(DM_lim[0], DM_lim[1]) 
 
 def main():
 	# Parse commandline arguments
@@ -136,11 +136,13 @@ def main():
 	group = 'pixel %d' % (args.index)
 	
 	# Load in pdfs
+	x_min, x_max = None, None
 	pdf_stack = None
 	EBV_max = None
 	if args.show_pdfs:
 		dset = '%s/stellar pdfs' % group
 		pdf = hdf5io.TProbSurf(fname, dset)
+		x_min, x_max = pdf.x_min, pdf.x_max
 		pdf_stack = np.sum(pdf.get_p(), axis=0)
 		#pdf_stack = pdf.get_p()[1,:,:]
 		#del pdf
@@ -184,24 +186,25 @@ def main():
 	ax.yaxis.set_minor_locator(AutoMinorLocator())
 	fig.subplots_adjust(bottom=0.12)
 	
-	bounds = [5., 20., 0., 5.]
+	bounds = [x_min[0], x_max[0], x_min[1], x_max[1]]
 	if args.show_pdfs:
 		ax.imshow(pdf_stack.T, extent=bounds, origin='lower',
 		             aspect='auto', cmap='hot', interpolation='nearest')
 	
 	# Plot l.o.s. extinction to figure
+	DM_lim = [x_min[0], x_max[0]]
 	try:
-		los2ax(ax, fname, group, 'c')
+		los2ax(ax, fname, group, DM_lim, 'c')
 	except:
 		pass
 	
 	try:
-		clouds2ax(ax, fname, group, 'g')
+		clouds2ax(ax, fname, group, DM_lim, 'g')
 	except:
 		pass
 	
 	if EBV_max != None:
-		ax.set_ylim(0., EBV_max)
+		ax.set_ylim(x_min[1], EBV_max)
 	
 	# Save/show plot
 	if args.output != None:
