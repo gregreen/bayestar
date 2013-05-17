@@ -975,7 +975,6 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 	plist.setChunk(rank, &(dim[0]));
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
-	plist.setProperty();
 	
 	//std::cerr << "dataset = " << chain << std::endl;
 	
