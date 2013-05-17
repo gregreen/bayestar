@@ -31,12 +31,10 @@
  *  Discrete cloud model
  */
 
-void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, TImgStack& img_stack,
-                                  unsigned int N_clouds, double p0, double EBV_max, uint64_t healpix_index) {
+void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
+                                  unsigned int N_clouds, uint64_t healpix_index) {
 	timespec t_start, t_write, t_end;
 	clock_gettime(CLOCK_MONOTONIC, &t_start);
-	
-	TLOSMCMCParams params(&img_stack, p0, EBV_max);
 	
 	/*double x[] = {8., 4., -0.693, -1.61};
 	gsl_rng *r;
@@ -45,6 +43,12 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	double lnp_tmp = lnp_los_extinction_clouds(&(x[0]), 4, params);
 	std::cout << lnp_tmp << std::endl;
 	gsl_rng_free(r);*/
+	
+	std::cout << "subpixel: " << std::endl;
+	for(size_t i=0; i<params.subpixel.size(); i++) {
+		std::cout << " " << params.subpixel[i];
+	}
+	std::cout << std::endl;
 	
 	TNullLogger logger;
 	
@@ -146,14 +150,15 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
 }
 
-void los_integral_clouds(TImgStack &img_stack, double *ret, const double *Delta_mu,
-                         const double *logDelta_EBV, unsigned int N_clouds) {
+void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, double *const ret, const double *const Delta_mu,
+                         const double *const logDelta_EBV, unsigned int N_clouds) {
 	int x = 0;
 	int x_next = ceil((Delta_mu[0] - img_stack.rect->min[0]) / img_stack.rect->dx[0]);
 	
-	double y = -img_stack.rect->min[1] / img_stack.rect->dx[1];
+	double y_0 = -img_stack.rect->min[1] / img_stack.rect->dx[1];
+	double y = 0.;
 	int y_max = img_stack.rect->N_bins[1];
-	double y_ceil, y_floor, dy;
+	double y_ceil, y_floor, dy, y_scaled;
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
 	
@@ -174,15 +179,17 @@ void los_integral_clouds(TImgStack &img_stack, double *ret, const double *Delta_
 			y += exp(logDelta_EBV[i-1]) / img_stack.rect->dx[1];
 		}
 		
-		y_floor = floor(y);
-		y_ceil = y_floor + 1.;
-		if((int)y_ceil >= y_max) { break; }
-		if((int)y_floor < 0) { break; }
-		
-		for(; x<x_next; x++) {
-			for(int k=0; k<img_stack.N_images; k++) {
-				ret[k] += (y_ceil - y) * img_stack.img[k]->at<double>(x, (int)y_floor)
-				          + (y - y_floor) * img_stack.img[k]->at<double>(x, (int)y_ceil);
+		int x_start = x;
+		for(int k=0; k<img_stack.N_images; k++) {
+			y_scaled = y_0 + y*subpixel[k];
+			y_floor = floor(y_scaled);
+			y_ceil = y_floor + 1.;
+			if((int)y_ceil >= y_max) { break; }
+			if((int)y_floor < 0) { break; }
+			
+			for(x = x_start; x<x_next; x++) {
+				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(x, (int)y_floor)
+				          + (y_scaled - y_floor) * img_stack.img[k]->at<double>(x, (int)y_ceil);
 			}
 		}
 	}
@@ -219,7 +226,7 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	}
 	
 	// Extinction must not exceed maximum value
-	if(EBV_tot >= params.img_stack->rect->max[1]) { return neginf; }
+	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neginf; }
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
@@ -240,14 +247,14 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	
 	// Compute line integrals through probability surfaces
 	double *line_int = new double[params.img_stack->N_images];
-	los_integral_clouds(*(params.img_stack), line_int, Delta_mu, logDelta_EBV, N_clouds);
+	los_integral_clouds(*(params.img_stack), params.subpixel.data(), line_int, Delta_mu, logDelta_EBV, N_clouds);
 	
 	// Soften and multiply line integrals
 	for(size_t i=0; i<params.img_stack->N_images; i++) {
 		if(line_int[i] < 1.e5*params.p0) {
 			line_int[i] += params.p0 * exp(-line_int[i]/params.p0);
 		}
-		lnp += log( line_int[i] );
+		lnp += log(line_int[i]);
 		//std::cerr << line_int[i] << std::endl;
 	}
 	
@@ -261,10 +268,10 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
 	double mu_floor = params.img_stack->rect->min[0];
 	double mu_ceil = params.img_stack->rect->max[0];
-	double EBV_ceil = params.img_stack->rect->max[1];
+	double EBV_ceil = params.img_stack->rect->max[1] / params.subpixel_max;
 	unsigned int N_clouds = N / 2;
 	
-	double logEBV_mean = log(1.5 * params.EBV_guess_max / (double)N_clouds);
+	double logEBV_mean = log(1.5 * params.EBV_guess_max / params.subpixel_max / (double)N_clouds);
 	double mu_mean = (mu_ceil - mu_floor) / N_clouds;
 	double EBV_sum = 0.;
 	double mu_sum = mu_floor;
@@ -304,12 +311,11 @@ void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r,
  *  Piecewise-linear line-of-sight model
  */
 
-void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgStack& img_stack,
-                           unsigned int N_regions, double p0, double EBV_max, uint64_t healpix_index) {
+void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
+                           unsigned int N_regions, uint64_t healpix_index) {
 	timespec t_start, t_write, t_end;
 	clock_gettime(CLOCK_MONOTONIC, &t_start);
 	
-	TLOSMCMCParams params(&img_stack, p0, EBV_max);
 	std::cout << "guess of EBV max = " << params.EBV_guess_max << std::endl;
 	
 	guess_EBV_profile(options, params, N_regions);
@@ -390,8 +396,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 	
 	std::stringstream los_group_name;
 	los_group_name << group_name.str() << "/los";
-	H5Utils::add_watermark<double>(out_fname, los_group_name.str(), "DM_min", img_stack.rect->min[0]);
-	H5Utils::add_watermark<double>(out_fname, los_group_name.str(), "DM_max", img_stack.rect->max[0]);
+	H5Utils::add_watermark<double>(out_fname, los_group_name.str(), "DM_min", params.img_stack->rect->min[0]);
+	H5Utils::add_watermark<double>(out_fname, los_group_name.str(), "DM_max", params.img_stack->rect->max[0]);
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
 	
@@ -408,15 +414,17 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TImgSta
 }
 
 
-void los_integral(TImgStack &img_stack, double *ret, const double *logEBV, unsigned int N_regions) {
+void los_integral(TImgStack &img_stack, const double *const subpixel, double *const ret,
+                                        const double *const logEBV, unsigned int N_regions) {
 	assert(img_stack.rect->N_bins[0] % N_regions == 0);
 	
 	unsigned int N_samples = img_stack.rect->N_bins[0] / N_regions;
 	int y_max = img_stack.rect->N_bins[1];
 	
-	double y = (exp(logEBV[0]) - img_stack.rect->min[1]) / img_stack.rect->dx[1];
-	double y_ceil, y_floor, dy;
 	int x = 0;
+	double y = exp(logEBV[0]) / img_stack.rect->dx[1];
+	double y_0 = -img_stack.rect->min[1] / img_stack.rect->dx[1];
+	double y_ceil, y_floor, dy, y_scaled;
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
 	
@@ -424,22 +432,23 @@ void los_integral(TImgStack &img_stack, double *ret, const double *logEBV, unsig
 		dy = (double)(exp(logEBV[i])) / (double)(N_samples) / img_stack.rect->dx[1];
 		//std::cout << "(" << x << ", " << y << ", " << tmp << ") ";
 		for(int j=0; j<N_samples; j++, x++, y+=dy) {
-			y_floor = floor(y);
-			y_ceil = y_floor + 1.;
-			if((int)y_ceil >= y_max) { break; }
-			if((int)y_floor < 0) { break; }
 			for(int k=0; k<img_stack.N_images; k++) {
-				ret[k] += (y_ceil - y) * img_stack.img[k]->at<double>(x, (int)y_floor)
-				          + (y - y_floor) * img_stack.img[k]->at<double>(x, (int)y_ceil);
+				y_scaled = y_0 + y * subpixel[k];
+				y_floor = floor(y_scaled);
+				y_ceil = y_floor + 1.;
+				if( ((int)y_floor >= 0) && ((int)y_ceil < y_max) ) {
+					ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(x, (int)y_floor)
+					           + (y_scaled - y_floor) * img_stack.img[k]->at<double>(x, (int)y_ceil);
+				}
 			}
 		}
 		
-		if((int)y_ceil >= y_max) { break; }
-		if((int)y_floor < 0) { break; }
+		//if((int)y_ceil >= y_max) { break; }
+		//if((int)y_floor < 0) { break; }
 	}
 }
 
-double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& params) {
+double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCParams& params) {
 	#define neginf -std::numeric_limits<double>::infinity()
 	
 	double lnp = 0.;
@@ -454,7 +463,7 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 		// Prior to prevent EBV from straying high
 		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (1. * 1.);
 	}
-	if(EBV_tot >= params.img_stack->rect->max[1]) { return neginf; }
+	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neginf; }
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
@@ -470,14 +479,14 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 	
 	// Compute line integrals through probability surfaces
 	double *line_int = new double[params.img_stack->N_images];
-	los_integral(*(params.img_stack), line_int, logEBV, N-1);
+	los_integral(*(params.img_stack), params.subpixel.data(), line_int, logEBV, N-1);
 	
 	// Soften and multiply line integrals
 	for(size_t i=0; i<params.img_stack->N_images; i++) {
 		if(line_int[i] < 1.e5*params.p0) {
 			line_int[i] += params.p0 * exp(-line_int[i]/params.p0);
 		}
-		lnp += log( line_int[i] );
+		lnp += log(line_int[i]);
 		//std::cerr << line_int[i] << std::endl;
 	}
 	
@@ -489,13 +498,11 @@ double lnp_los_extinction(const double* logEBV, unsigned int N, TLOSMCMCParams& 
 }
 
 void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
-	double EBV_ceil = params.img_stack->rect->max[1];
-	double mu = log(1.5 * params.EBV_guess_max / (double)N);
+	double EBV_ceil = params.img_stack->rect->max[1] / params.subpixel_max;
+	double mu = log(1.5 * params.EBV_guess_max / params.subpixel_max / (double)N);
 	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
-		//logEBV[i] = mu * gsl_rng_uniform(r);
 		logEBV[i] = mu + gsl_ran_gaussian_ziggurat(r, 0.5);
-		//logEBV[i] = 0.5 * mu * gsl_ran_chisq(r, 1.);
 		EBV_sum += exp(logEBV[i]);
 	}
 	
@@ -508,30 +515,18 @@ void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, T
 	}
 }
 
+// Guess upper limit for E(B-V) based on stacked probability surfaces
 double guess_EBV_max(TImgStack &img_stack) {
 	cv::Mat stack, row_avg, col_avg;
 	
 	// Stack images
 	img_stack.stack(stack);
 	
-	// Normalize at each distance
-	/*cv::reduce(stack, col_avg, 1, CV_REDUCE_MAX);
-	double tmp;
-	for(size_t i=0; i<col_avg.rows; i++) {
-		tmp = col_avg.at<double>(i, 0);
-		if(tmp > 0) { stack.row(i) /= tmp; }
-	}*/
-	
 	// Sum across each EBV
 	cv::reduce(stack, row_avg, 0, CV_REDUCE_AVG);
 	double max_sum = *std::max_element(row_avg.begin<double>(), row_avg.end<double>());
 	int max = 1;
-	/*for(int i = row_avg.cols - 1; i >= 0; i--) {
-		std::cout << i << "\t" << row_avg.at<double>(0, i) << std::endl;
-	}*/
-	//std::cout << std::endl;
 	for(int i = row_avg.cols - 1; i > 0; i--) {
-		//std::cout << i << "\t" << row_avg.at<double>(0, i) << std::endl;
 		if(row_avg.at<double>(0, i) > 0.001 * max_sum) {
 			max = i;
 			break;
@@ -770,12 +765,14 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
  ****************************************************************************************************************************/
 
 TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0, double _EBV_max)
-	: img_stack(_img_stack)
+	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.)
 {
 	p0 = _p0;
 	lnp0 = log(p0);
 	EBV_max = _EBV_max;
 	EBV_guess_max = guess_EBV_max(*img_stack);
+	subpixel_max = 1.;
+	subpixel_min = 1.;
 }
 
 TLOSMCMCParams::~TLOSMCMCParams() { }
@@ -784,6 +781,33 @@ void TLOSMCMCParams::set_p0(double _p0) {
 	p0 = _p0;
 	lnp0 = log(p0);
 }
+
+void TLOSMCMCParams::set_subpixel_mask(TStellarData& data) {
+	assert(data.star.size() == img_stack->N_images);
+	subpixel.clear();
+	subpixel_max = 0.;
+	subpixel_min = std::numeric_limits<double>::infinity();
+	double EBV;
+	for(size_t i=0; i<data.star.size(); i++) {
+		EBV = data.star[i].EBV;
+		if(EBV > subpixel_max) { subpixel_max = EBV; }
+		if(EBV < subpixel_min) { subpixel_min = EBV; }
+		subpixel.push_back(EBV);
+	}
+}
+
+void TLOSMCMCParams::set_subpixel_mask(std::vector<double>& new_mask) {
+	assert(new_mask.size() == img_stack->N_images);
+	subpixel.clear();
+	subpixel_max = 0.;
+	subpixel_min = std::numeric_limits<double>::infinity();
+	for(size_t i=0; i<new_mask.size(); i++) {
+		if(new_mask[i] > subpixel_max) { subpixel_max = new_mask[i]; }
+		if(new_mask[i] < subpixel_min) { subpixel_min = new_mask[i]; }
+		subpixel.push_back(new_mask[i]);
+	}
+}
+
 
 
 

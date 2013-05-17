@@ -234,7 +234,7 @@ double logP_los_synth(const double *x, unsigned int N, TMCMCParams &p, double *l
 
 void sample_model_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data) {
 	unsigned int N_DM = 20;
-	double DM_min = 5.;
+	double DM_min = 4.;
 	double DM_max = 20.;
 	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
 	TMCMCParams params_tmp(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
@@ -439,8 +439,8 @@ double logP_los_simple_synth(const double *x, unsigned int N, TMCMCParams &param
 
 void sample_model_affine_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarModel &stellar_model, TExtinctionModel &extinction_model, TStellarData &stellar_data) {
 	unsigned int N_DM = 20;
-	double DM_min = 5.;
-	double DM_max = 20.;
+	double DM_min = 4.;
+	double DM_max = 19.;
 	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
 	TStats EBV_stats(N_DM);
 	
@@ -594,10 +594,13 @@ double logP_indiv_simple_emp(const double *x, unsigned int N, TMCMCParams &param
 void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                         TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                         TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                        double RV_sigma, double minEBV, bool saveSurfs) {
+                        double RV_sigma, double minEBV, const bool saveSurfs, const bool gatherSurfs) {
+	// Parameters must be consistent - cannot save surfaces without gathering them
+	assert(!(saveSurfs & (!gatherSurfs)));
+	
 	unsigned int N_DM = 20;
-	double DM_min = 5.;
-	double DM_max = 20.;
+	double DM_min = 4.;
+	double DM_max = 19.;
 	TMCMCParams params(&galactic_model, &stellar_model, NULL, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
 	params.EBV_floor = minEBV;
 	
@@ -606,13 +609,15 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		params.RV_variance = RV_sigma*RV_sigma;
 	}
 	
-	double min[2] = {5., 0.};
-	double max[2] = {20., 5.};
+	double min[2] = {DM_min, 0.};
+	double max[2] = {DM_max, 5.};
 	unsigned int N_bins[2] = {120, 500};
 	TRect rect(min, max, N_bins);
 	
-	img_stack.resize(params.N_stars);
-	img_stack.set_rect(rect);
+	if(gatherSurfs) {
+		img_stack.resize(params.N_stars);
+		img_stack.set_rect(rect);
+	}
 	
 	TImgWriteBuffer *imgBuffer = NULL;
 	if(saveSurfs) { imgBuffer = new TImgWriteBuffer(rect, params.N_stars); }
@@ -690,7 +695,9 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		chainBuffer.add(chain, converged, lnZ_tmp);
 		
 		// Save binned p(DM, EBV) surface
-		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.02, 0.02, 500.);
+		if(gatherSurfs) {
+			chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.1, 0.025, 500.);
+		}
 		if(saveSurfs) { imgBuffer->add(*(img_stack.img[n])); }
 		
 		lnZ.push_back(lnZ_tmp);
@@ -728,10 +735,13 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                       TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                      double RV_sigma, double minEBV, bool saveSurfs) {
+                      double RV_sigma, double minEBV, const bool saveSurfs, const bool gatherSurfs) {
+	// Parameters must be consistent - cannot save surfaces without gathering them
+	assert(!(saveSurfs & (!gatherSurfs)));
+	
 	unsigned int N_DM = 20;
-	double DM_min = 5.;
-	double DM_max = 20.;
+	double DM_min = 4.;
+	double DM_max = 19.;
 	TMCMCParams params(&galactic_model, NULL, &stellar_model, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
 	params.EBV_floor = minEBV;
 	
@@ -742,13 +752,15 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	
 	std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
 	
-	double min[2] = {5., minEBV};
-	double max[2] = {20., 5.};
+	double min[2] = {DM_min, minEBV};
+	double max[2] = {DM_max, 5.};
 	unsigned int N_bins[2] = {120, 500};
 	TRect rect(min, max, N_bins);
 	
-	img_stack.resize(params.N_stars);
-	img_stack.set_rect(rect);
+	if(gatherSurfs) {
+		img_stack.resize(params.N_stars);
+		img_stack.set_rect(rect);
+	}
 	TImgWriteBuffer *imgBuffer = NULL;
 	if(saveSurfs) { imgBuffer = new TImgWriteBuffer(rect, params.N_stars); }
 	
@@ -841,7 +853,9 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		chainBuffer.add(chain, converged, lnZ_tmp);
 		
 		// Save binned p(DM, EBV) surface
-		chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.1, 0.025, 500.);
+		if(gatherSurfs) {
+			chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.1, 0.025, 500.);
+		}
 		if(saveSurfs) { imgBuffer->add(*(img_stack.img[n])); }
 		
 		lnZ.push_back(lnZ_tmp);

@@ -77,7 +77,7 @@ void mock_test() {
 	// Fit line-of-sight extinction profile
 	img_stack.cull(conv);
 	TMCMCOptions los_options(250, 15, 0.1, 4);
-	sample_los_extinction(out_fname, los_options, img_stack, N_regions, 1.e-50, 5., healpix_index);
+	//sample_los_extinction(out_fname, los_options, img_stack, N_regions, 1.e-50, 5., healpix_index);
 	
 	/*
 	TLOSMCMCParams params(&img_stack, 1.e-100, -1.);
@@ -104,8 +104,6 @@ void mock_test() {
 }
 
 int main(int argc, char **argv) {
-	//mock_test();
-	
 	/*
 	 *  Default commandline arguments
 	 */
@@ -135,6 +133,7 @@ int main(int argc, char **argv) {
 	double cloud_p_replacement = 0.2;
 	
 	bool SFDPrior = false;
+	bool SFDsubpixel = false;
 	double evCut = 30.;
 	
 	unsigned int N_threads = 4;
@@ -176,6 +175,7 @@ int main(int argc, char **argv) {
 		("cloud-p-replacement", po::value<double>(&cloud_p_replacement), "Probability of taking replacement step (cloud fit)")
 		
 		("SFD-prior", "Use SFD E(B-V) as a prior on the total extinction in each pixel.")
+		("SFD-subpixel", "Use SFD E(B-V) as a subpixel template for the angular variation in reddening.")
 		("evidence-cut", po::value<double>(&evCut), "Delta lnZ to use as threshold for including star\n"
 		                                            "in l.o.s. fit (default: 30).")
 		
@@ -196,6 +196,7 @@ int main(int argc, char **argv) {
 	if(vm.count("synthetic")) { synthetic = true; }
 	if(vm.count("save-surfs")) { saveSurfs = true; }
 	if(vm.count("SFD-prior")) { SFDPrior = true; }
+	if(vm.count("SFD-subpixel")) { SFDsubpixel = true; }
 	
 	// Convert error floor to mags
 	err_floor /= 1000.;
@@ -217,6 +218,7 @@ int main(int argc, char **argv) {
 			return -1;
 		}
 	}
+	
 	
 	/*
 	 *  MCMC Options
@@ -274,12 +276,14 @@ int main(int argc, char **argv) {
 		vector<bool> conv;
 		vector<double> lnZ;
 		
+		bool gatherSurfs = (N_regions || N_clouds || saveSurfs);
+		
 		if(synthetic) {
 			sample_indiv_synth(output_fname, star_options, los_model, *synthlib, ext_model,
-			                   stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs);
+			                   stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs, gatherSurfs);
 		} else {
 			sample_indiv_emp(output_fname, star_options, los_model, *emplib, ext_model,
-			                 stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs);
+			                 stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs, gatherSurfs);
 		}
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);
@@ -296,24 +300,38 @@ int main(int argc, char **argv) {
 		//double lnZmax = *max_element(lnZ.begin(), lnZ.end());
 		bool tmpFilter;
 		size_t nFiltered = 0;
+		std::vector<double> subpixel;
 		for(size_t n=0; n<conv.size(); n++) {
 			tmpFilter = conv[n] && (lnZmax - lnZ[n] < evCut);
 			keep.push_back(tmpFilter);
-			if(!tmpFilter) { nFiltered++; }
+			if(tmpFilter) {
+				subpixel.push_back(stellar_data.star[n].EBV);
+			} else {
+				nFiltered++;
+			}
 		}
-		img_stack.cull(keep);
+		if(gatherSurfs) { img_stack.cull(keep); }
 		cerr << "# of stars filtered: " << nFiltered << " of " << conv.size();
 		cerr << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
 		
 		// Fit line-of-sight extinction profile
-		if(nFiltered < conv.size()) {
+		if((nFiltered < conv.size()) && ((N_clouds != 0) || (N_regions != 0))) {
+			double p0 = 1.e-15;
 			double EBV_max = -1.;
-			if(SFDPrior) { EBV_max = stellar_data.EBV; }
+			if(SFDPrior) {
+				if(SFDsubpixel) {
+					EBV_max = 1.;
+				} else {
+					EBV_max = stellar_data.EBV;
+				}
+			}
+			TLOSMCMCParams params(&img_stack, p0, EBV_max);
+			if(SFDsubpixel) { params.set_subpixel_mask(subpixel); }
 			if(N_clouds != 0) {
-				sample_los_extinction_clouds(output_fname, cloud_options, img_stack, N_clouds, 1.e-15, EBV_max, *it);
+				sample_los_extinction_clouds(output_fname, cloud_options, params, N_clouds, *it);
 			}
 			if(N_regions != 0) {
-				sample_los_extinction(output_fname, los_options, img_stack, N_regions, 1.e-15, EBV_max, *it);
+				sample_los_extinction(output_fname, los_options, params, N_regions, *it);
 			}
 		}
 		
@@ -335,6 +353,10 @@ int main(int argc, char **argv) {
 		cerr << "===================================================" << endl << endl;
 	}
 	
+	/*
+	 *  Add additional metadata to output file
+	 */
+	
 	string watermark = GIT_BUILD_VERSION;
 	H5Utils::add_watermark<string>(output_fname, "/", "bayestar git commit", watermark);
 	
@@ -344,6 +366,7 @@ int main(int argc, char **argv) {
 	}
 	string commandline_args_str(commandline_args.str());
 	H5Utils::add_watermark<string>(output_fname, "/", "commandline invocation", commandline_args_str);
+	
 	
 	/*
 	 *  Cleanup
