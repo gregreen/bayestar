@@ -182,22 +182,8 @@ def main():
 	templates = TStellarModel(args.templates)
 	color_names = ['gr', 'ri', 'iz', 'zy']
 	
-	# Set matplotlib style attributes
-	mplib.rc('text', usetex=True)
-	mplib.rc('xtick.major', size=6)
-	mplib.rc('xtick.minor', size=4)
-	mplib.rc('ytick.major', size=6)
-	mplib.rc('ytick.minor', size=4)
-	mplib.rc('xtick', direction='in')
-	mplib.rc('ytick', direction='in')
-	mplib.rc('axes', grid=False)
-	
-	fig = plt.figure(figsize=(6., 2.*n_targets), dpi=150)
-	axgrid = Grid(fig, 111,
-	              nrows_ncols=(n_targets, 3),
-	              axes_pad=0.05,
-	              add_all=False,
-	              label_mode='L')
+	lnZ_max = 0.
+	Delta_lnZ = 25.
 	
 	# Load photometry
 	ret = read_photometry(args.photometry, args.name)
@@ -206,6 +192,7 @@ def main():
 		return 0
 	mags, errs, EBV, t_name, pix_idx = ret
 	mags = dereddened_mags(mags, EBV)
+	colors = -np.diff(mags, axis=1)
 	
 	# Load evidences
 	lnZ = np.zeros(len(mags), dtype='f8')
@@ -220,97 +207,79 @@ def main():
 	print '  # of stars: %d' % (len(mags))
 	txt = ''
 	
-	colors = -np.diff(mags, axis=1)
-	
+	# Compute mask for each passband
 	idx = []
-	lim = np.empty((3,2), dtype='f8')
-	for i in xrange(4):
+	for i in xrange(5):
 		idx_tmp = ( (mags[:,i] > 10.) & (mags[:,i] < 25.)
 		          & (mags[:,i+1] > 10.) & (mags[:,i+1] < 25.) )
 		idx.append(idx_tmp)
-		lim[i,0] = np.percentile(colors[idx_tmp], 2.)
-		lim[i,1] = np.percentile(colors[idx_tmp], 98.)
 	
+	# Compute display limits for each color
+	lim = np.empty((3,2), dtype='f8')
+	for i in xrange(4):
+		lim[i,0], lim[i,1] = np.percentile(colors[idx_tmp], [2., 98.])
+	
+	# Set matplotlib style attributes
+	mplib.rc('text', usetex=True)
+	mplib.rc('xtick.major', size=6)
+	mplib.rc('xtick.minor', size=4)
+	mplib.rc('ytick.major', size=6)
+	mplib.rc('ytick.minor', size=4)
+	mplib.rc('xtick', direction='in')
+	mplib.rc('ytick', direction='in')
+	mplib.rc('axes', grid=False)
+	
+	# Set up figure
+	fig = plt.figure(figsize=(6,6), dpi=150)
+	axgrid = Grid(fig, 111,
+	              nrows_ncols=(3,3),
+	              axes_pad=0.05,
+	              add_all=False,
+	              label_mode='L')
+	
+	# Grid of axes
 	for row in xrange(3):
-		for col in xrange(row+1):
-			pass
+		color_y = colors[:,row+1]
+		idx_y = idx[row+1] & idx[row+2]
 		
-		# Plot color-Magnitude diagrams
-		for i,c in enumerate(color_names[1:]):
-			ax = axgrid[3*target_num + i]
+		for col in xrange(row+1):
+			color_x = colors[:,col]
+			idx_xy = idx_y & idx[col] & idx[col+1]
 			
-			idx = ( (colors[:,i+1] > np.percentile(colors[:,i+1], 0.5))
-			      & (colors[:,i+1] < np.percentile(colors[:,i+1], 99.5))
-			      & (mags[:,i+1] > 10.) & (mags[:,i+1] < 25.)
-			      & (mags[:,i+2] > 10.) & (mags[:,i+2] < 25.) )
+			ax = axgrid[3*row + col]
 			
 			# Empirical
-			lnZ_max = 0. #np.percentile(lnZ_tmp[idx], 97.)
-			Delta_lnZ = 25.
-			
-			colors_tmp = colors[idx, i+1]
-			
-			ax.scatter(colors_tmp, colors[idx,0],
-			           c=lnZ[idx], cmap='Spectral',
+			ax.scatter(color_x[idx_xy], color_y[idx_xy],
+			           c=lnZ[idx_xy], cmap='Spectral',
 			           vmin=lnZ_max-Delta_lnZ, vmax=lnZ_max,
 			           s=1.5, alpha=0.1, edgecolor='none')
 			
-			xlim = ax.get_xlim()
-			ylim = ax.get_ylim()
-			
 			# Model
+			cx, cy = color_names[col], color_names[row+1]
 			for FeH, style in zip([0., -1., -2.], ['c-', 'y-', 'r-']):
 				isochrone = templates.get_isochrone(FeH)
-				ax.plot(isochrone[c], isochrone['gr'], style, lw=1, alpha=0.25)
-				print isochrone[c]
-				print isochrone['gr']
-				print ''
+				ax.plot(isochrone[cx], isochrone[cy], style, lw=1, alpha=0.25)
 			
-			color_min_tmp, color_max_tmp = np.percentile(colors_tmp, [1., 99.])
-			if color_min_tmp < color_min[i+1]:
-				color_min[i+1] = color_min_tmp
-			if color_max_tmp > color_max[i+1]:
-				color_max[i+1] = color_max_tmp
-			
-			txt += '  %s: %d stars\n' % (c, np.sum(idx))
-			txt += '      ln(Z_max) = %.2f\n' % lnZ_max
-		
-		print txt
-		print ''
-		
-		# Reddening vectors
-		'''R = get_reddening_vector()
-		EBV_0 = np.median(EBV)
-		for i in range(len(colors)):
-			A_gr = EBV_0 * (R[0] - R[1])
-			A_xy = EBV_0 * (R[i] - R[i+1])
-			r_0 = Mr_min
-			w = color_max[i] - color_min[i]
-			h = Mr_max - Mr_min
-			xy_0 = color_min[i] + 0.1 * w
-			axgrid[4*cluster_num + i].arrow(xy_0, r_0, A_xy, A_r,
-			                                head_width=0.03*w, head_length=0.01*h,
-			                                color='r', alpha=0.5)
-			
-		'''
-		
-		# Format y-axes
-		axgrid[3*target_num].set_ylim(color_min[0], color_max[1])
-		
-		axgrid[3*target_num].set_ylabel(r'$g - r$', fontsize=16)
-		
-		axgrid[3*target_num].yaxis.set_major_locator(MaxNLocator(nbins=5))
-		axgrid[3*target_num].yaxis.set_minor_locator(AutoMinorLocator())
+			ax.set_xlim(lim[col])
+			ax.set_ylim(lim[row+1])
 	
 	# Format x-axes
-	for i,c in enumerate(color_names[1:]):
-		axgrid[i].set_xlim(color_min[i+1], color_max[i+1])
-		
+	for i,c in enumerate(color_names[:-1]):
 		color_label = r'$%s - %s$' % (c[0], c[1])
-		axgrid[3*(n_targets-1) + i].set_xlabel(color_label, fontsize=16)
-		axgrid[3*(n_targets-1) + i].xaxis.set_major_locator(MaxNLocator(nbins=4))
-		axgrid[3*(n_targets-1) + i].xaxis.set_minor_locator(AutoMinorLocator())
+		ax = axgrid[6+i]
+		ax.set_xlabel(color_label, fontsize=16)
+		ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
+		ax.xaxis.set_minor_locator(AutoMinorLocator())
 	
+	# Format y-axes
+	for i,c in enumerate(color_names[1:]):
+		color_label = r'$%s - %s$' % (c[0], c[1])
+		ax = axgrid[3*i]
+		ax.set_ylabel(color_label, fontsize=16)
+		ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+		ax.yaxis.set_minor_locator(AutoMinorLocator())
+	
+	# Colorbar
 	fig.subplots_adjust(left=0.12, right=0.85, top=0.98, bottom=0.10)
 	
 	cax = fig.add_axes([0.87, 0.10, 0.03, 0.88])
@@ -321,8 +290,6 @@ def main():
 	
 	cax.yaxis.set_label_position('right')
 	cax.yaxis.tick_right()
-	#cax.yaxis.set_major_formatter(FormatStrFormatter('%d'))
-	#cax.set_yticks([0., -5., -10., -15., -20., -25.])
 	cax.set_ylabel(r'$\mathrm{ln} \left( Z \right)$', rotation='vertical', fontsize=16)
 	
 	if args.output != None:
