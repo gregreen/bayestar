@@ -200,10 +200,15 @@ def main():
 		ret = read_evidences(args.evidences, pix_idx)
 		if ret != None:
 			lnZ = ret[:]
+	idx = np.isfinite(lnZ)
+	print np.max(lnZ[idx])
+	n_rejected = np.sum(lnZ < np.max(lnZ[idx]) - 20.)
+	pct_rejected = 100. * float(n_rejected) / np.float(lnZ.size)
 	
 	print '  name: %s' % (args.name)
 	print '  E(B-V): %.4f' % (np.percentile(EBV, 95.))
 	print '  # of stars: %d' % (len(mags))
+	print '  # rejected: %d (%.2f %%)' % (n_rejected, pct_rejected)
 	
 	# Compute mask for each color
 	idx = []

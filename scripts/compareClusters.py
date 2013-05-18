@@ -280,6 +280,7 @@ def main():
 			# Model
 			ax.plot(isochrone[c], isochrone['Mr'], 'g-', lw=2, alpha=0.5)
 			
+			#print Mr[idx]
 			Mr_min_tmp, Mr_max_tmp = np.percentile(Mr[idx], [1., 99.])
 			if Mr_min_tmp < Mr_min:
 				Mr_min = Mr_min_tmp
