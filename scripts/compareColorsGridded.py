@@ -200,24 +200,32 @@ def main():
 		ret = read_evidences(args.evidences, pix_idx)
 		if ret != None:
 			lnZ = ret[:]
-			break
 	
-	print '  name: %s' % (target_name)
-	print '  E(B-V): %.2f' % (np.percentile(EBV, 95.))
+	print '  name: %s' % (args.name)
+	print '  E(B-V): %.4f' % (np.percentile(EBV, 95.))
 	print '  # of stars: %d' % (len(mags))
-	txt = ''
 	
-	# Compute mask for each passband
+	# Compute mask for each color
 	idx = []
-	for i in xrange(5):
-		idx_tmp = ( (mags[:,i] > 10.) & (mags[:,i] < 25.)
-		          & (mags[:,i+1] > 10.) & (mags[:,i+1] < 25.) )
-		idx.append(idx_tmp)
+	for i in xrange(4):
+		idx.append( (mags[:,i] > 10.) & (mags[:,i] < 28.)
+		          & (mags[:,i+1] > 10.) & (mags[:,i+1] < 28.) )
 	
 	# Compute display limits for each color
-	lim = np.empty((3,2), dtype='f8')
+	lim = np.empty((4,2), dtype='f8')
 	for i in xrange(4):
-		lim[i,0], lim[i,1] = np.percentile(colors[idx_tmp], [2., 98.])
+		lim[i,0], lim[i,1] = np.percentile(colors[idx[i],i], [2., 98.])
+	w = np.reshape(np.diff(lim, axis=1), (4,))
+	lim[:,0] -= 0.15 * w
+	lim[:,1] += 0.15 * w
+	
+	lim_bounds = np.array([[-0.2, 1.6],
+	                       [-0.3, 2.0],
+	                       [-0.2, 1.1],
+	                       [-0.15, 0.45]])
+	for i in xrange(4):
+		lim[i,0] = max(lim[i,0], lim_bounds[i,0])
+		lim[i,1] = min(lim[i,1], lim_bounds[i,1])
 	
 	# Set matplotlib style attributes
 	mplib.rc('text', usetex=True)
@@ -234,17 +242,16 @@ def main():
 	axgrid = Grid(fig, 111,
 	              nrows_ncols=(3,3),
 	              axes_pad=0.05,
-	              add_all=False,
+	              add_all=True,
 	              label_mode='L')
 	
 	# Grid of axes
 	for row in xrange(3):
 		color_y = colors[:,row+1]
-		idx_y = idx[row+1] & idx[row+2]
 		
 		for col in xrange(row+1):
 			color_x = colors[:,col]
-			idx_xy = idx_y & idx[col] & idx[col+1]
+			idx_xy = idx[col] & idx[row+1]
 			
 			ax = axgrid[3*row + col]
 			
