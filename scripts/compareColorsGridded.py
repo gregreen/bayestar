@@ -130,16 +130,18 @@ def read_photometry(fname, target_name):
 def read_evidences(fname, pix_idx):
 	f = h5py.File(fname, 'r')
 	
-	lnZ = None
+	ret = None
 	
 	dset = '/pixel %d/stellar chains' % pix_idx
 	
 	try:
 		lnZ = f[dset].attrs['ln(Z)'][:]
+		conv = f[dset].attrs['converged'][:]
+		ret = lnZ, conv.astype(np.bool)
 	except:
 		print 'Dataset "%s" does not exist.' % dset
 	
-	return lnZ
+	return ret
 
 def get_reddening_vector():
 	return np.array([3.172, 2.271, 1.682, 1.322, 1.087])
@@ -183,7 +185,7 @@ def main():
 	color_names = ['gr', 'ri', 'iz', 'zy']
 	
 	lnZ_max = 0.
-	Delta_lnZ = 25.
+	Delta_lnZ = 10.
 	
 	# Load photometry
 	ret = read_photometry(args.photometry, args.name)
@@ -196,19 +198,23 @@ def main():
 	
 	# Load evidences
 	lnZ = np.zeros(len(mags), dtype='f8')
+	conv = np.ones(len(mags), dtype=np.bool)
 	if args.evidences != None:
 		ret = read_evidences(args.evidences, pix_idx)
 		if ret != None:
-			lnZ = ret[:]
+			lnZ, conv = ret
 	idx = np.isfinite(lnZ)
-	print np.max(lnZ[idx])
-	n_rejected = np.sum(lnZ < np.max(lnZ[idx]) - 20.)
+	n_rejected = np.sum(lnZ < np.max(lnZ[idx]) - Delta_lnZ)
 	pct_rejected = 100. * float(n_rejected) / np.float(lnZ.size)
+	n_nonconv = np.sum(~conv)
+	pct_nonconv = 100. * float(n_nonconv) / np.float(conv.size)
 	
 	print '  name: %s' % (args.name)
 	print '  E(B-V): %.4f' % (np.percentile(EBV, 95.))
 	print '  # of stars: %d' % (len(mags))
 	print '  # rejected: %d (%.2f %%)' % (n_rejected, pct_rejected)
+	print '  # nonconverged: %d (%.2f %%)' % (n_nonconv, pct_nonconv)
+	print '  ln(Z_max): %.2f' % (np.max(lnZ[idx]))
 	
 	# Compute mask for each color
 	idx = []
@@ -243,11 +249,11 @@ def main():
 	mplib.rc('axes', grid=False)
 	
 	# Set up figure
-	fig = plt.figure(figsize=(6,6), dpi=150)
+	fig = plt.figure(figsize=(7,6), dpi=150)
 	axgrid = Grid(fig, 111,
 	              nrows_ncols=(3,3),
-	              axes_pad=0.05,
-	              add_all=True,
+	              axes_pad=0.0,
+	              add_all=False,
 	              label_mode='L')
 	
 	# Grid of axes
@@ -259,18 +265,19 @@ def main():
 			idx_xy = idx[col] & idx[row+1]
 			
 			ax = axgrid[3*row + col]
+			fig.add_axes(ax)
 			
 			# Empirical
 			ax.scatter(color_x[idx_xy], color_y[idx_xy],
 			           c=lnZ[idx_xy], cmap='Spectral',
 			           vmin=lnZ_max-Delta_lnZ, vmax=lnZ_max,
-			           s=1.5, alpha=0.1, edgecolor='none')
+			           s=1.5, alpha=0.15, edgecolor='none')
 			
 			# Model
 			cx, cy = color_names[col], color_names[row+1]
 			for FeH, style in zip([0., -1., -2.], ['c-', 'y-', 'r-']):
 				isochrone = templates.get_isochrone(FeH)
-				ax.plot(isochrone[cx], isochrone[cy], style, lw=1, alpha=0.25)
+				ax.plot(isochrone[cx], isochrone[cy], style, lw=1, alpha=0.40)
 			
 			ax.set_xlim(lim[col])
 			ax.set_ylim(lim[row+1])
@@ -292,17 +299,17 @@ def main():
 		ax.yaxis.set_minor_locator(AutoMinorLocator())
 	
 	# Colorbar
-	fig.subplots_adjust(left=0.12, right=0.85, top=0.98, bottom=0.10)
+	fig.subplots_adjust(bottom=0.10, top=0.98, left=0.12, right=0.85)
 	
 	cax = fig.add_axes([0.87, 0.10, 0.03, 0.88])
-	norm = mplib.colors.Normalize(vmin=-25., vmax=0.)
+	norm = mplib.colors.Normalize(vmin=lnZ_max-Delta_lnZ, vmax=lnZ_max)
 	mappable = mplib.cm.ScalarMappable(cmap='Spectral', norm=norm)
-	mappable.set_array(np.array([-25., 0.]))
+	mappable.set_array(np.array([lnZ_max-Delta_lnZ, lnZ_max]))
 	fig.colorbar(mappable, cax=cax, ticks=[0., -5., -10., -15., -20., -25.])
 	
 	cax.yaxis.set_label_position('right')
 	cax.yaxis.tick_right()
-	cax.set_ylabel(r'$\mathrm{ln} \left( Z \right)$', rotation='vertical', fontsize=16)
+	cax.set_ylabel(r'$\mathrm{ln} \left( Z \right)$', rotation='vertical', fontsize=14)
 	
 	if args.output != None:
 		fig.savefig(args.output, dpi=300)
