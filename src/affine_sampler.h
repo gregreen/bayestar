@@ -301,9 +301,26 @@ TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_
 		Y[i].initialize(N);
 	}
 	unsigned int index_of_best = 0;
+	unsigned int max_tries = 100;
+	unsigned int tries;
 	for(unsigned int i=0; i<L; i++) {
 		rand_state(X[i].element, N, r, params);
 		X[i].pi = pdf(X[i].element, N, params);
+		
+		// Re-seed points that land at zero probability
+		tries = 0;
+		while((   (_use_log && isinf(X[i].pi))
+		       || (!_use_log && X[i].pi <=  2. * std::numeric_limits<double>::min()) )
+		       && (tries < max_tries)) {
+			rand_state(X[i].element, N, r, params);
+			X[i].pi = pdf(X[i].element, N, params);
+			tries++;
+			//#pragma omp critical
+			//{
+			//std::cerr << "! Re-seeding: " << tries << std::endl;
+			//}
+		}
+		
 		X[i].weight = 1;
 		if(X[i] > X[index_of_best]) { index_of_best = i; }
 	}
