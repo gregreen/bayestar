@@ -571,6 +571,7 @@ void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model,
 			// Generate magnitudes
 			observed = true;
 			unsigned int N_nonobs = 0;
+			double p_det;
 			for(size_t k=0; k<NBANDS; k++) {
 				mag[k] = sed.absmag[k] + DM + EBV * ext_model.get_A(RV, k);
 				err[k] = 0.02 + 0.3*exp(mag[k]-mag_limit[k]);
@@ -578,7 +579,11 @@ void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model,
 				mag[k] += gsl_ran_gaussian_ziggurat(r, err[k]);
 				
 				// Require detection in g band and 3 other bands
-				if(mag[k] > mag_limit[k]) {
+				p_det = 0.5 - 0.5 * erf((mag[k] - mag_limit[k] + 0.5) / 0.25);
+				if(gsl_rng_uniform(r) > p_det) {
+					mag[k] = 0.;
+					err[k] = 1.e10;
+					
 					N_nonobs++;
 					if((k == 0) || N_nonobs > 1) {
 						observed = false;
