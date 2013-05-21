@@ -157,13 +157,13 @@ class TChain:
 		else:
 			return self.coords[chainIdx]
 	
-	def get_lnp(self, chainIdx):
+	def get_lnp(self, chainIdx=None):
 		if chainIdx == None:
 			return self.lnp
 		else:
 			return self.lnp[chainIdx]
 	
-	def get_lnZ(self, chainIdx):
+	def get_lnZ(self, chainIdx=None):
 		if chainIdx == None:
 			return self.lnZ
 		else:
@@ -222,6 +222,9 @@ class TProbSurf:
 			return self.p
 		else:
 			return self.p[imgIdx]
+	
+	def get_n_stars(self):
+		return self.nImages
 
 
 
