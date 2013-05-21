@@ -167,7 +167,7 @@ def main():
 		
 		# Determine maximum E(B-V)
 		w_y = np.mean(pdf_stack, axis=0)
-		y_max = np.max(np.where(w_y > 1.e-5)[0])
+		y_max = np.max(np.where(w_y > 1.e-2)[0])
 		EBV_max = y_max * (5. / pdf_stack.shape[1])
 		
 		# Save individual stellar pdfs to show
@@ -197,7 +197,7 @@ def main():
 	ax.xaxis.set_minor_locator(AutoMinorLocator())
 	ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
 	ax.yaxis.set_minor_locator(AutoMinorLocator())
-	fig.subplots_adjust(bottom=0.12, left=0.10, right=0.98)
+	fig.subplots_adjust(bottom=0.12, left=0.12, right=0.98)
 	
 	bounds = [x_min[0], x_max[0], x_min[1], x_max[1]]
 	if args.show_pdfs:
@@ -210,10 +210,10 @@ def main():
 		fig.subplots_adjust(top=0.75)
 		
 		x_sep = 0.02
-		w = (0.98 - 0.12 - 2. * x_sep) / 4.
+		w = (0.98 - 0.12 - 3. * x_sep) / 4.
 		
 		for i in xrange(4):
-			x_0 = 0.10 + i * (w + x_sep)
+			x_0 = 0.12 + i * (w + x_sep)
 			rect = [x_0, 0.78, w, 0.20]
 			ax_tmp = fig.add_axes(rect)
 			
