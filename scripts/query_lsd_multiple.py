@@ -96,7 +96,7 @@ def to_file(f, target_idx, target_name, gal_lb, EBV, data):
 	
 	N_stars = data.shape[0]
 	gal_lb = np.array(gal_lb, dtype='f8')
-	pix_idx = 0
+	pix_idx = target_idx
 	nside = 512
 	nest = True
 	
