@@ -810,10 +810,16 @@ void TImgWriteBuffer::write(const std::string& fname, const std::string& group, 
 	// Dataset properties: optimized for reading/writing entire buffer at once
 	int rank = 3;
 	hsize_t dim[3] = {length_, rect_.N_bins[0], rect_.N_bins[1]};
+	hsize_t chunk_dim[3] = {length_, rect_.N_bins[0], rect_.N_bins[1]};
+	if(length_ > 1000) {
+		float div = ceil((float)length_ / 1000.);
+		chunk_dim[0] = (int)ceil(length_ / div);
+		std::cerr << "! Changing chunk length to " << chunk_dim[0] << " stars." << std::endl;
+	}
 	H5::DataSpace dspace(rank, &(dim[0]));
 	H5::DSetCreatPropList plist;
 	plist.setDeflate(9);	// gzip compression level
-	plist.setChunk(rank, &(dim[0]));
+	plist.setChunk(rank, &(chunk_dim[0]));
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
 	
