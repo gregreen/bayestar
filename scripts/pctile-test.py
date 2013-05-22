@@ -53,7 +53,7 @@ def stack_shifted(bounds, p, shift, norm):
 def P_star(bounds, p, truth):
 	idx_DM = ( (truth['DM'] - bounds[0]) / (bounds[1] - bounds[0])
 	                                         * p.shape[1] ).astype('i8')
-	idx_Ar = ( (truth['EBV'] - bounds[2]) / (bounds[3] - bounds[2])
+	idx_EBV = ( (truth['EBV'] - bounds[2]) / (bounds[3] - bounds[2])
 	                                         * p.shape[2] ).astype('i8')
 	
 	idx = (idx_DM > p.shape[1])
@@ -66,7 +66,7 @@ def P_star(bounds, p, truth):
 	idx = (idx_EBV < 0)
 	idx_EBV[idx] = 0
 	
-	idx = [np.arange(p.shape[0]), idx_DM, idx_Ar]
+	idx = [np.arange(p.shape[0]), idx_DM, idx_EBV]
 	
 	threshold = p[idx]
 	
