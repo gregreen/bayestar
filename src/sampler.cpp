@@ -754,7 +754,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	
 	double min[2] = {DM_min, minEBV};
 	double max[2] = {DM_max, 5.};
-	unsigned int N_bins[2] = {120, 500};
+	unsigned int N_bins[2] = {500, 500};
 	TRect rect(min, max, N_bins);
 	
 	if(gatherSurfs) {
