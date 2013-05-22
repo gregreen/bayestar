@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#  mock-comparison.py
+#  pctile-test.py
 #  
 #  Copyright 2012 Greg Green <greg@greg-UX31A>
 #  
@@ -53,10 +53,20 @@ def stack_shifted(bounds, p, shift, norm):
 def P_star(bounds, p, truth):
 	idx_DM = ( (truth['DM'] - bounds[0]) / (bounds[1] - bounds[0])
 	                                         * p.shape[1] ).astype('i8')
-	idx_Ar = ( (truth['EBV'] - bounds[2]) / (bounds[3] - bounds[2])
+	idx_EBV = ( (truth['EBV'] - bounds[2]) / (bounds[3] - bounds[2])
 	                                         * p.shape[2] ).astype('i8')
 	
-	idx = [np.arange(p.shape[0]), idx_DM, idx_Ar]
+	idx = (idx_DM > p.shape[1])
+	idx_DM[idx] = p.shape[1] - 1
+	idx = (idx_DM < 0)
+	idx_DM[idx] = 0
+	
+	idx = (idx_EBV > p.shape[2])
+	idx_EBV[idx] = p.shape[2] - 1
+	idx = (idx_EBV < 0)
+	idx_EBV[idx] = 0
+	
+	idx = [np.arange(p.shape[0]), idx_DM, idx_EBV]
 	
 	threshold = p[idx]
 	
