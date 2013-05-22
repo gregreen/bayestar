@@ -163,6 +163,12 @@ class TChain:
 		else:
 			return self.lnp[chainIdx]
 	
+	def get_convergence(self, chainIdx=None):
+		if chainIdx == None:
+			return self.converged
+		else:
+			return self.converged[chainIdx]
+	
 	def get_lnZ(self, chainIdx=None):
 		if chainIdx == None:
 			return self.lnZ
