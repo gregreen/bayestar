@@ -35,7 +35,7 @@ from matplotlib.patches import Rectangle
 import numpy as np
 
 import scipy
-from scipy.integrate import quad, Inf
+from scipy.integrate import quad
 from scipy.interpolate import interp1d, InterpolatedUnivariateSpline, RectBivariateSpline
 
 
