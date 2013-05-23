@@ -208,18 +208,17 @@ def getSegueEBV(props, bands=5):
 		
 		mags_SSPP = prop['ssppmag'][:,:bands]
 		
-		errs_SDSS = prop['ubermagerr'][:,:bands]
+		errs_SDSS = prop['ubermagerr'][:,:bands] + 0.02
 		mags_SDSS = prop['ubermag'][:,:bands]
 		
-		colors_SSPP, cov_tot = calc_color_stats(mags_SSPP, cov_SSPP)
-		colors_SDSS = -np.diff(mags_SDSS, axis=1)
+		colors_SSPP, cov_colors_SSPP = calc_color_stats(mags_SSPP, cov_SSPP)
 		
-		n_bands = mags_SDSS.shape[1]
-		for k in xrange(n_bands-1):
-			cov_tot[:,k,k] += (errs_SDSS[:,k] * errs_SDSS[:,k]
-			                   + errs_SDSS[:,k+1] * errs_SDSS[:,k+1]
-			                   + 0.02 * 0.02)
+		cov_SDSS = np.zeros((n_stars, n_bands, n_bands), dtype='f8')
+		for k in xrange(n_bands):
+			cov_SDSS[:,k,k] = errs_SDSS[:,k] * errs_SDSS[:,k]
+		colors_SDSS, cov_colors_SDSS = calc_color_stats(mags_SDSS, cov_SDSS)
 		
+		cov_tot = cov_colors_SSPP + cov_colors_SDSS
 		E = colors_SDSS - colors_SSPP
 		
 		EBV, sigma_EBV = calc_mu_sigma(cov_tot, E, A_diff)
