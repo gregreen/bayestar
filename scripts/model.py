@@ -64,13 +64,13 @@ class TGalacticModel:
 		self.fh_outer = self.fh * (self.Rbr/self.R0)**(self.nh-self.nh_outer)
 		#print self.fh_outer/self.fh
 		
-		LF = np.loadtxt(abspath(LF_fname),
-		                     usecols=(0,1),
-		                     dtype=[('Mr','f4'), ('LF','f4')],
-		                     unpack=False)
-		self.Mr_min = np.min(LF['Mr'])
-		self.Mr_max = np.max(LF['Mr'])
-		self.LF = interp1d(LF['Mr'], LF['LF'], kind='linear')
+		self.data = np.loadtxt(abspath(LF_fname),
+		                       usecols=(0,1),
+		                       dtype=[('Mr','f4'), ('LF','f4')],
+		                       unpack=False)
+		self.Mr_min = np.min(self.data['Mr'])
+		self.Mr_max = np.max(self.data['Mr'])
+		self.LF = interp1d(self.data['Mr'], self.data['LF'], kind='linear')
 		#self.LF = InterpolatedUnivariateSpline(LF['Mr'], LF['LF'])
 	
 	def Cartesian_coords(self, DM, cos_l, sin_l, cos_b, sin_b):
