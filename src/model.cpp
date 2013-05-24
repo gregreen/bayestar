@@ -60,6 +60,7 @@ TGalacticModel::TGalacticModel() {
 	R_br = 27800;
 	nh_outer = -3.8;
 	fh_outer = fh * pow(R_br/R0, nh - nh_outer);
+	R_epsilon2 = 500. * 500.;
 	
 	// Metallicity
 	mu_FeH_inf = -0.82;
@@ -73,14 +74,15 @@ TGalacticModel::TGalacticModel() {
 
 TGalacticModel::TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
                                double _f_thick, double _H2, double _L2,
-                               double _fh, double _qh, double _nh, double _R_br, double _nh_outer,
+                               double _fh, double _qh, double _nh,
+                               double _R_br, double _nh_outer, double _R_epsilon,
                                double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
 	: R0(_R0), Z0(_Z0), H1(_H1), L1(_L1), f_thick(_f_thick), H2(_H2), L2(_L2),
-	  fh(_fh), qh(_qh), nh(_nh), R_br(_R_br), nh_outer(_nh_outer),
+	  fh(_fh), qh(_qh), nh(_nh), R_br(_R_br), nh_outer(_nh_outer), R_epsilon2(_R_epsilon*_R_epsilon),
 	  mu_FeH_inf(_mu_FeH_inf), delta_mu_FeH(_delta_mu_FeH), H_mu_FeH(_H_mu_FeH)//,
 	  //lf(NULL)
 {
-	fh_outer = fh * pow(R_br/R0, nh-nh_outer);
+	fh_outer = fh * pow(R_br/R0, nh - nh_outer);
 	
 	disk_abundance = new TStellarAbundance(0);
 	halo_abundance = new TStellarAbundance(1);
@@ -93,7 +95,7 @@ TGalacticModel::~TGalacticModel() {
 }
 
 double TGalacticModel::rho_halo(double R, double Z) const {
-	double r_eff2 = R*R + (Z/qh)*(Z/qh);
+	double r_eff2 = R*R + (Z/qh)*(Z/qh) + R_epsilon2;
 	if(r_eff2 <= R_br*R_br) {
 		return fh*pow(r_eff2/(R0*R0), nh/2.);
 	} else {
@@ -195,8 +197,9 @@ TGalacticLOSModel::TGalacticLOSModel(double _l, double _b)
 TGalacticLOSModel::TGalacticLOSModel(double _l, double _b, double _R0, double _Z0, double _H1, double _L1,
                                      double _f_thick, double _H2, double _L2,
                                      double _fh, double _qh, double _nh, double _R_br,
-                                     double _nh_outer, double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
-	: TGalacticModel(_R0, _Z0, _H1, _L1, _f_thick, _H2, _L2, _fh, _qh, _nh, _R_br, _nh_outer,
+                                     double _nh_outer, double _R_epsilon,
+                                     double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
+	: TGalacticModel(_R0, _Z0, _H1, _L1, _f_thick, _H2, _L2, _fh, _qh, _nh, _R_br, _nh_outer, _R_epsilon,
 	                 _mu_FeH_inf, _delta_mu_FeH, _H_mu_FeH)
 {
 	fh_outer = fh * pow(R_br/R0, nh-nh_outer);
