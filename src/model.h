@@ -227,7 +227,7 @@ public:
 	// Set custom model parameters
 	TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
 	               double _f_thick, double _H2, double _L2,
-	               double _fh, double _qh, double _nh, double _R_br, double _nh_outer,
+	               double _fh, double _qh, double _nh, double _R_br, double _nh_outer, double _R_epsilon,
 	               double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH);
 	
 	~TGalacticModel();
@@ -253,10 +253,10 @@ public:
 	
 protected:
 	// Density parameters
-	double R0, Z0;				// Solar position
-	double H1, L1;				// Thin disk
-	double f_thick, H2, L2;			// Galactic structure (thin and thick disk)
-	double fh, qh, nh, R_br, nh_outer;	// Galactic structure (power-law halo)
+	double R0, Z0;					// Solar position
+	double H1, L1;					// Thin disk (exponential)
+	double f_thick, H2, L2;				// Thick disk (exponential)
+	double fh, qh, nh, R_br, nh_outer, R_epsilon2;	// Halo (broken power law)
 	double fh_outer;
 	
 	// Metallicity parameters
@@ -282,7 +282,7 @@ public:
 	// Set custom model parameters
 	TGalacticLOSModel(double _l, double _b, double _R0, double _Z0, double _H1, double _L1,
 	                  double _f_thick, double _H2, double _L2, double _fh, double _qh,
-	                  double _nh, double _R_br, double _nh_outer,
+	                  double _nh, double _R_br, double _nh_outer, double _R_epsilon,
 	                  double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH);
 	
 	~TGalacticLOSModel();
