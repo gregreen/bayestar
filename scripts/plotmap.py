@@ -22,6 +22,8 @@
 #  
 #  
 
+# TO DO: Get nside from pixel directory
+
 import numpy as np
 
 import matplotlib as mplib
@@ -60,9 +62,12 @@ def getLOS(fname):
 	CloudDeltaLnEBV = np.zeros(shape, dtype='f8')
 	
 	# Get number of regions and samples for piecewise model
-	nPiecewiseSamples, nSlices = 1, 1
+	nPiecewiseSamples, nSlices, DM_min, DM_max = 1, 1, 1, 1
 	try:
-		tmp, nPiecewiseSamples, nSlices = f['pixel %d/los' % pixels[0]].shape
+		dset = f['pixel %d/los' % pixels[0]]
+		tmp, nPiecewiseSamples, nSlices = dset.shape
+		DM_min = dset.attrs['DM_min']
+		DM_max = dset.attrs['DM_max']
 		nSlices -= 1
 	except:
 		pass
@@ -99,7 +104,8 @@ def getLOS(fname):
 	CloudDeltaEBV = np.exp(CloudDeltaLnEBV)
 	PiecewiseDeltaEBV = np.exp(PiecewiseDeltaLnEBV)
 	
-	return pixels, CloudMuAnchor, CloudDeltaEBV, PiecewiseDeltaEBV
+	return pixels, CloudMuAnchor, CloudDeltaEBV,
+	               DM_min, DM_max, PiecewiseDeltaEBV
 
 def getLOSFromMultiple(fnames):
 	partial = []
@@ -117,7 +123,8 @@ def getLOSFromMultiple(fnames):
 	CloudMuAnchor = np.empty(shape, dtype='f8')
 	CloudDeltaEBV = np.empty(shape, dtype='f8')
 	
-	tmp, nPiecewiseSamples, nSlices = partial[0][3].shape
+	DM_min, DM_max = partial[0][3:5]
+	tmp, nPiecewiseSamples, nSlices = partial[0][5].shape
 	shape = (nPixels, nPiecewiseSamples, nSlices)
 	PiecewiseDeltaEBV = np.empty(shape, dtype='f8')
 	
@@ -127,10 +134,11 @@ def getLOSFromMultiple(fnames):
 		pixels[startIdx:endIdx] = part[0][:]
 		CloudMuAnchor[startIdx:endIdx] = part[1][:]
 		CloudDeltaEBV[startIdx:endIdx] = part[2][:]
-		PiecewiseDeltaEBV[startIdx:endIdx] = part[3][:]
+		PiecewiseDeltaEBV[startIdx:endIdx] = part[5][:]
 		startIdx += len(part[1])
 	
-	return pixels, CloudMuAnchor, CloudDeltaEBV, PiecewiseDeltaEBV
+	return pixels, CloudMuAnchor, CloudDeltaEBV,
+	               DM_min, DM_max, PiecewiseDeltaEBV
 
 def calcCloudEBV(muAnchor, DeltaEBV, mu):
 	foreground = (muAnchor < mu)
@@ -319,7 +327,7 @@ def main():
 	parser.add_argument('--output', '-o', type=str, help='Output filename for plot.')
 	parser.add_argument('--show', '-sh', action='store_true', help='Show plot.')
 	parser.add_argument('--dists', '-d', type=float, nargs=3,
-	                                     default=(5., 20., 21),
+	                                     default=(4., 19., 21),
 	                                     help='DM min, DM max, # of distance slices.')
 	parser.add_argument('--nside', '-n', type=int, default=512,
 	                                     help='HealPIX nside parameter.')
@@ -337,10 +345,10 @@ def main():
 	args = parser.parse_args(sys.argv[offset:])
 	
 	fnames = args.input
-	pixels, CloudMuAnchor, CloudDeltaEBV, PiecewiseDeltaEBV = getLOSFromMultiple(fnames)
+	pixels, CloudMuAnchor, CloudDeltaEBV, DM_min, DM_max, PiecewiseDeltaEBV = getLOSFromMultiple(fnames)
 	
 	tmp1, tmp2, nSlices = PiecewiseDeltaEBV.shape
-	PiecewiseMuAnchor = np.linspace(5., 20., nSlices)
+	PiecewiseMuAnchor = np.linspace(DM_min, DM_max, nSlices)
 	
 	mplib.rc('text', usetex=True)
 	mplib.rc('xtick.major', size=6)

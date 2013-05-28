@@ -163,6 +163,33 @@ def dereddened_mags(mags, EBV):
 def plot_cluster(ax, template, mags):
 	pass
 
+
+class KnotLogger:
+	def __init__(self, ax, marker='+', c='r', s=4):
+		self.ax = ax
+		self.cid = ax.figure.canvas.mpl_connect('button_press_event', self)
+		
+		self.x = []
+		self.y = []
+		
+		self.marker = marker
+		self.c = c
+		self.s = s
+	
+	def __call__(self, event):
+		if event.inaxes != self.ax:
+			return
+		self.x.append(event.xdata)
+		self.y.append(event.ydata)
+		if self.marker != None:
+			event.inaxes.scatter([event.xdata], [event.ydata],
+			                     marker=self.marker, s=self.s, c=self.c)
+			self.ax.figure.canvas.draw()
+	
+	def get_knots(self):
+		return self.x, self.y
+
+
 def main():
 	parser = argparse.ArgumentParser(prog='compareColorsGridded.py',
 	                                 description='Compare photometric colors to model colors.',
@@ -272,6 +299,8 @@ def main():
 	br_cmap = LinearSegmentedColormap('br1', cdict)
 	#plt.register_cmap(br_cmap)
 	
+	logger = []
+	
 	# Grid of axes
 	for row in xrange(3):
 		color_y = colors[:,row+1]
@@ -282,6 +311,8 @@ def main():
 			
 			ax = axgrid[3*row + col]
 			fig.add_axes(ax)
+			
+			logger.append(KnotLogger(ax, s=25))
 			
 			# Empirical
 			ax.scatter(color_x[idx_xy], color_y[idx_xy],
@@ -359,6 +390,14 @@ def main():
 	
 	if args.show:
 		plt.show()
+	
+	for i,log in enumerate(logger):
+		x, y = log.get_knots()
+		if len(x) != 0:
+			print ''
+			print 'Axis %d:' % (i + 1)
+			print x
+			print y
 	
 	return 0
 
