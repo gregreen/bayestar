@@ -123,18 +123,18 @@ int main(int argc, char **argv) {
 	double minEBV = 0.;
 	
 	unsigned int N_regions = 20;
-	unsigned int los_steps = 100;
+	unsigned int los_steps = 120;
 	unsigned int los_samplers = 20;
 	double los_p_replacement = 0.2;
 	
-	unsigned int N_clouds = 3;
+	unsigned int N_clouds = 1;
 	unsigned int cloud_steps = 100;
 	unsigned int cloud_samplers = 80;
 	double cloud_p_replacement = 0.2;
 	
 	bool SFDPrior = false;
 	bool SFDsubpixel = false;
-	double evCut = 30.;
+	double evCut = 15.;
 	
 	unsigned int N_threads = 4;
 	bool verbose = false;

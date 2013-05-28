@@ -222,7 +222,7 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 		EBV_tot += tmp;
 		
 		// Prior to prevent EBV from straying high
-		lnp -= 0.5 * tmp * tmp / (1. * 1.);
+		lnp -= 0.5 * tmp * tmp / (10. * 10.);
 	}
 	
 	// Extinction must not exceed maximum value
@@ -235,15 +235,15 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	
 	// Wide Gaussian prior on Delta_EBV to prevent fit from straying drastically
 	const double bias = -5.;
-	const double sigma = 4.;
+	const double sigma = 25.;
 	for(size_t i=0; i<N_clouds; i++) {
 		lnp -= (logDelta_EBV[i] - bias) * (logDelta_EBV[i] - bias) / (2. * sigma * sigma);
 	}
 	
 	// Repulsive force to keep clouds from collapsing into one
-	for(size_t i=1; i<N_clouds; i++) {
-		lnp -= 1. / Delta_mu[i];
-	}
+	//for(size_t i=1; i<N_clouds; i++) {
+	//	lnp -= 1. / Delta_mu[i];
+	//}
 	
 	// Compute line integrals through probability surfaces
 	double *line_int = new double[params.img_stack->N_images];
@@ -280,7 +280,7 @@ void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r,
 	double *logDelta_EBV = x + N_clouds;
 	
 	for(size_t i=0; i<N_clouds; i++) {
-		logDelta_EBV[i] = logEBV_mean + gsl_ran_gaussian_ziggurat(r, 0.5);
+		logDelta_EBV[i] = logEBV_mean + gsl_ran_gaussian_ziggurat(r, 1.5);
 		EBV_sum += exp(logDelta_EBV[i]);
 		
 		Delta_mu[i] = mu_mean * gsl_rng_uniform(r);
@@ -461,7 +461,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		EBV_tot += EBV_tmp;
 		
 		// Prior to prevent EBV from straying high
-		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (1. * 1.);
+		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (10. * 10.);
 	}
 	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neginf; }
 	
@@ -472,7 +472,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	
 	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
 	const double bias = -5.;
-	const double sigma = 4.;
+	const double sigma = 25.;
 	for(size_t i=0; i<N; i++) {
 		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
 	}
@@ -502,7 +502,7 @@ void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, T
 	double mu = log(1.5 * params.EBV_guess_max / params.subpixel_max / (double)N);
 	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
-		logEBV[i] = mu + gsl_ran_gaussian_ziggurat(r, 0.5);
+		logEBV[i] = mu + gsl_ran_gaussian_ziggurat(r, 2.5);
 		EBV_sum += exp(logEBV[i]);
 	}
 	
