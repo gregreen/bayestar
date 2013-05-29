@@ -316,7 +316,7 @@ int main(int argc, char **argv) {
 		
 		// Fit line-of-sight extinction profile
 		if((nFiltered < conv.size()) && ((N_clouds != 0) || (N_regions != 0))) {
-			double p0 = 1.e-15;
+			double p0 = 1.e-5;
 			double EBV_max = -1.;
 			if(SFDPrior) {
 				if(SFDsubpixel) {

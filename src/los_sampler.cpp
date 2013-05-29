@@ -77,16 +77,10 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	// Burn-in
 	std::cerr << "# Burn-in ..." << std::endl;
 	sampler.step(int(N_steps*25./100.), false, 0., 0., 0.);
-	//sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
-	//sampler.step(int(N_steps*5./100), false, 0., 1., 0.);
-	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
-	sampler.step(int(N_steps*5./100.), false, 0., 1., 0.);
-	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
-	sampler.step(int(N_steps*5./100.), false, 0., 1., 0.);
-	sampler.step(int(N_steps*20./100.), false, 0., 0.5, 0.);
-	sampler.step(int(N_steps*5./100), false, 0., 1., 0.);
-	//sampler.step(N_steps, false, 0., options.p_replacement, 0.);
-	//sampler.step(N_steps/2., false, 0., 1., 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., options.p_replacement, 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., 0.85, 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., options.p_replacement, 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., 0.85, 0.);
 	sampler.print_stats();
 	sampler.clear();
 	
@@ -238,12 +232,14 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	const double sigma = 25.;
 	for(size_t i=0; i<N_clouds; i++) {
 		lnp -= (logDelta_EBV[i] - bias) * (logDelta_EBV[i] - bias) / (2. * sigma * sigma);
+		
+		//lnp -= Delta_mu[i] * Delta_mu[i] / (0.5 * 5. * 5.);
 	}
 	
 	// Repulsive force to keep clouds from collapsing into one
-	//for(size_t i=1; i<N_clouds; i++) {
-	//	lnp -= 1. / Delta_mu[i];
-	//}
+	for(size_t i=1; i<N_clouds; i++) {
+		lnp -= 1. / Delta_mu[i];
+	}
 	
 	// Compute line integrals through probability surfaces
 	double *line_int = new double[params.img_stack->N_images];
@@ -279,11 +275,12 @@ void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r,
 	double *Delta_mu = x;
 	double *logDelta_EBV = x + N_clouds;
 	
+	double log_mu_mean = log(0.5 * mu_mean);
 	for(size_t i=0; i<N_clouds; i++) {
 		logDelta_EBV[i] = logEBV_mean + gsl_ran_gaussian_ziggurat(r, 1.5);
 		EBV_sum += exp(logDelta_EBV[i]);
 		
-		Delta_mu[i] = mu_mean * gsl_rng_uniform(r);
+		Delta_mu[i] = exp(log_mu_mean + gsl_ran_gaussian_ziggurat(r, 1.5));
 		mu_sum += Delta_mu[i];
 	}
 	Delta_mu[0] += mu_floor;
@@ -342,7 +339,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 	sampler.set_scale(1.2);
-	sampler.set_replacement_bandwidth(0.50);
+	sampler.set_replacement_bandwidth(0.50);	// TODO: Scale with number of regions
 	
 	// Burn-in
 	std::cerr << "# Burn-in ..." << std::endl;
@@ -461,7 +458,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		EBV_tot += EBV_tmp;
 		
 		// Prior to prevent EBV from straying high
-		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (10. * 10.);
+		//lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (10. * 10.);
 	}
 	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neginf; }
 	
@@ -744,8 +741,21 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	double EBV_ceil = params.img_stack->rect->max[1];
 	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
-		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);
+		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 2.5);
 		EBV_sum += logEBV[i];
+	}
+	
+	// Switch adjacent reddenings
+	int n_switches = gsl_rng_uniform_int(r, 3);
+	size_t k;
+	double tmp_log_EBV;
+	int max_dist = std::min((int)(N-1)/2, 5);
+	for(int i=0; i<n_switches; i++) {
+		int dist = gsl_rng_uniform_int(r, max_dist+1);
+		k = gsl_rng_uniform_int(r, N-dist);
+		tmp_log_EBV = logEBV[k];
+		logEBV[k] = logEBV[k+dist];
+		logEBV[k+dist] = tmp_log_EBV;
 	}
 	
 	// Ensure that reddening is not more than allowed
