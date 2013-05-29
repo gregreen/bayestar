@@ -117,7 +117,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	draw_Mr = TSample1D(gal_model.LF, gal_model.Mr_min, Mr_max, 10000, 1)
 	
 	idx = np.arange(N)
-	#idx = np.ones(N, dtype=np.bool)
+	
 	while idx.size > 0:
 		size = idx.size
 		print 'Drawing %d...' % size
@@ -254,7 +254,7 @@ def main():
 			Delta_EBV += EBV/np.sqrt(2.*np.pi)/s*np.exp(-(mu-m)*(mu-m)/2./s/s)
 		EBV = np.cumsum(Delta_EBV) * dmu
 		EBV_of_mu = InterpolatedUnivariateSpline(mu, EBV)
-		mu = np.linspace(5., 20., 1000) 
+		mu = np.linspace(4., 19., 1000) 
 		EBV = EBV_of_mu(mu)
 		fig = plt.figure()
 		ax = fig.add_subplot(1,1,1)
