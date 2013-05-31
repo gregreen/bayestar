@@ -291,9 +291,9 @@ int main(int argc, char **argv) {
 		// Filter based on convergence and lnZ
 		assert(conv.size() == lnZ.size());
 		vector<bool> keep;
-		double lnZmax = -numeric_limits<double>::infinity();
+		double lnZmax = neg_inf_replacement;
 		for(vector<double>::iterator it_lnZ = lnZ.begin(); it_lnZ != lnZ.end(); ++it_lnZ) {
-			if(!isnan(*it_lnZ) && !isinf(*it_lnZ)) {
+			if(!isnan(*it_lnZ) && !is_inf_replacement(*it_lnZ)) {
 				if(*it_lnZ > lnZmax) { lnZmax = *it_lnZ; }
 			}
 		}

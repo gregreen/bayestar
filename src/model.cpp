@@ -515,14 +515,14 @@ bool TStellarModel::load_lf(std::string lf_fname) {
 
 bool TStellarModel::load_seds(std::string seds_fname) {
 	double Mr, FeH, dMr_tmp, dFeH_tmp;
-	double Mr_last = std::numeric_limits<double>::infinity();
-	double FeH_last = std::numeric_limits<double>::infinity();
-	double Mr_min = std::numeric_limits<double>::infinity();
-	double Mr_max = -std::numeric_limits<double>::infinity();
-	double FeH_min = std::numeric_limits<double>::infinity();
-	double FeH_max = -std::numeric_limits<double>::infinity();
-	double dMr = std::numeric_limits<double>::infinity();
-	double dFeH = std::numeric_limits<double>::infinity();
+	double Mr_last = inf_replacement;
+	double FeH_last = inf_replacement;
+	double Mr_min = inf_replacement;
+	double Mr_max = neg_inf_replacement;
+	double FeH_min = inf_replacement;
+	double FeH_max = neg_inf_replacement;
+	double dMr = inf_replacement;
+	double dFeH = inf_replacement;
 	
 	// Do a first pass through the file to get the grid spacing and size
 	std::ifstream in(seds_fname.c_str());
@@ -849,8 +849,8 @@ TExtinctionModel::TExtinctionModel(std::string A_RV_fname) {
 	std::ifstream in(A_RV_fname.c_str());
 	if(!in) { std::cerr << "Could not read extinction coefficients from '" << A_RV_fname << std::endl; abort(); }
 	std::string line;
-	RV_min = std::numeric_limits<double>::infinity();
-	RV_max = -std::numeric_limits<double>::infinity();
+	RV_min = inf_replacement;
+	RV_max = neg_inf_replacement;
 	while(std::getline(in, line)) {
 		if(!line.size()) { continue; }		// empty line
 		if(line[0] == '#') { continue; }	// comment

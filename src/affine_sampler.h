@@ -23,6 +23,7 @@
  * MA 02110-1301, USA.
  * 
  */
+
 #ifndef _AFFINE_SAMPLER_H__
 #define _AFFINE_SAMPLER_H__
 
@@ -50,12 +51,14 @@
 
 //#include <opencv2/flann/flann.hpp>
 
+#include "definitions.h"
 #include "chain.h"
 #include "stats.h"
 
 #ifndef GSL_RANGE_CHECK_OFF
 #define GSL_RANGE_CHECK_OFF
 #endif // GSL_RANGE_CHECK_OFF
+
 
 /*************************************************************************
  *   Function Prototypes
@@ -309,8 +312,8 @@ TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_
 		
 		// Re-seed points that land at zero probability
 		tries = 0;
-		while((   (_use_log && isinf(X[i].pi))
-		       || (!_use_log && X[i].pi <=  2. * std::numeric_limits<double>::min()) )
+		while((   (_use_log && is_neg_inf_replacement(X[i].pi))
+		       || (!_use_log && X[i].pi <=  min_replacement) )
 		       && (tries < max_tries)) {
 			rand_state(X[i].element, N, r, params);
 			X[i].pi = pdf(X[i].element, N, params);
@@ -319,6 +322,13 @@ TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_
 			//{
 			//std::cerr << "! Re-seeding: " << tries << std::endl;
 			//}
+		}
+		if(tries >= max_tries) {
+			#pragma omp critical
+			{
+			std::cerr << "! Re-seeding failed !" << std::endl;
+			}
+			abort();
 		}
 		
 		X[i].weight = 1;
@@ -479,52 +489,38 @@ void TAffineSampler<TParams, TLogger>::replacement_proposal(unsigned int j) {
 	draw_from_cov(W, sqrt_ensemble_cov, N, r);
 	
 	// Determine the coordinates of the proposal
-	//#pragma omp critical
-	//{
-	//std::cout << "W = ";
 	for(unsigned int i=0; i<N; i++) {
 		Y[j].element[i] = X[k].element[i] + h * W[i];
-	//	std::cout << W[i] << " ";
 	}
-	//std::cout << std::endl;
-	//}
 	
-//#pragma omp critical
-//{
 	// Determine pi_S(X_j | Y_j , X_{-j})
 	double tmp;
-	double max = -std::numeric_limits<double>::infinity();
+	double max = neg_inf_replacement;
 	double cutoff = 4.;
 	double pi_XY = 0.;
 	for(unsigned int i=0; i<L; i++) {
 		if(i != j) {
 			tmp = log_gaussian_density(&(X[i]), &(X[j]));
-//			std::cout << "log(p) = " << tmp << std::endl;
 			if(tmp > max) { max = tmp; }
 			if(tmp >= max - cutoff) { pi_XY += exp(tmp); }
 		}
 	}
 	tmp = log_gaussian_density(&(Y[j]), &(X[j]));
 	if(tmp >= max - cutoff) { pi_XY += exp(tmp); }
-//	std::cout << "pi(X|Y) = " << pi_XY << "\t" << "(max = " << max << ")" << std::endl;
 	
 	// Determine pi_S(Y_j | X)
-	max = -std::numeric_limits<double>::infinity();
+	max = neg_inf_replacement;
 	double pi_YX = 0.;
 	for(unsigned int i=0; i<L; i++) {
 		tmp = log_gaussian_density(&(X[i]), &(Y[j]));
 		if(tmp > max) { max = tmp; }
 		if(tmp >= max - cutoff) { pi_YX += exp(tmp); }
 	}
-//	std::cout << "pi(Y|X) = " << pi_YX << "\t" << "(max = " << max << ")" << std::endl << std::endl;
-
+	
 	// Get pdf(Y) and initialize weight of proposal point to unity
 	Y[j].pi = pdf(Y[j].element, N, params);
 	Y[j].weight = 1.;
 	Y[j].replacement_factor = pi_XY / pi_YX;
-//}
-	
-//	std::cout << Y[j].pi << "\t" << X[j].pi << "\t" << Y[j].replacement_factor << std::endl << std::endl;
 }
 
 template<class TParams, class TLogger>
@@ -584,7 +580,7 @@ void TAffineSampler<TParams, TLogger>::step(bool record_step, double p_replaceme
 		accept[j] = false;
 		if(use_log) {	// If <pdf> returns log probability
 			// Determine the acceptance probability
-			if(isinff(X[j].pi) && !(isinff(Y[j].pi))) {
+			if(is_neg_inf_replacement(X[j].pi) && !(is_neg_inf_replacement(Y[j].pi))) {
 				alpha = 1;	// Accept the proposal if the current state has zero probability and the proposed state doesn't
 			} else {
 				if(step_type == 0) {
@@ -593,7 +589,6 @@ void TAffineSampler<TParams, TLogger>::step(bool record_step, double p_replaceme
 					alpha = Y[j].pi - X[j].pi;	// Ignore detailed balance. Use carefully - does not sample from target!
 				} else {
 					alpha = Y[j].pi - X[j].pi + log(Y[j].replacement_factor);
-					//std::cout << "alpha = " << alpha << std::endl;
 				}
 			}
 			// Decide whether to accept or reject
@@ -601,7 +596,7 @@ void TAffineSampler<TParams, TLogger>::step(bool record_step, double p_replaceme
 				accept[j] = true;
 			} else {
 				p = gsl_rng_uniform(r);
-				if((p == 0.) && (Y[j] > -std::numeric_limits<double>::infinity())) {	// Accept if zero is rolled but proposal has nonzero probability
+				if((p == 0.) && (Y[j] > neg_inf_replacement)) {	// Accept if zero is rolled but proposal has nonzero probability
 					accept[j] = true;
 				} else if(log(p) < alpha) {
 					accept[j] = true;

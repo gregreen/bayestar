@@ -87,7 +87,6 @@ double TMCMCParams::get_EBV(double DM) {
 double logP_single_star_synth(const double *x, double EBV, double RV,
                               const TGalacticLOSModel &gal_model, const TSyntheticStellarModel &stellar_model,
                               TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed) {
-	#define neginf -std::numeric_limits<double>::infinity()
 	double logP = 0.;
 	
 	/*
@@ -100,7 +99,7 @@ double logP_single_star_synth(const double *x, double EBV, double RV,
 	}
 	if(!stellar_model.get_sed(x+1, *tmp_sed)) {
 		if(del_sed) { delete tmp_sed; }
-		return neginf;
+		return neg_inf_replacement;
 	}
 	
 	double logL = 0.;
@@ -122,11 +121,6 @@ double logP_single_star_synth(const double *x, double EBV, double RV,
 	 */
 	logP += gal_model.log_prior_synth(x);
 	
-	//double lnp0 = -100.;
-	//tmp = exp(logP - lnp0);
-	//logP = lnp0 + log(tmp + exp(-tmp));	// p --> p + p0 exp(-p/p0)  (Smooth floor on outliers)
-	
-	#undef neginf
 	return logP;
 }
 
@@ -136,7 +130,6 @@ double logP_single_star_synth(const double *x, double EBV, double RV,
 double logP_single_star_emp(const double *x, double EBV, double RV,
                             const TGalacticLOSModel &gal_model, const TStellarModel &stellar_model,
                             TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed) {
-	#define neginf -std::numeric_limits<double>::infinity()
 	double logP = 0.;
 	
 	/*
@@ -149,7 +142,7 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 	}
 	if(!stellar_model.get_sed(x+1, *tmp_sed)) {
 		if(del_sed) { delete tmp_sed; }
-		return neginf;
+		return neg_inf_replacement;
 	}
 	
 	double logL = 0.;
@@ -172,11 +165,6 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 	 */
 	logP += gal_model.log_prior_emp(x) + stellar_model.get_log_lf(x[1]);
 	
-	//double lnp0 = -100.;
-	//tmp = exp(logP - lnp0);
-	//logP = lnp0 + log(tmp + exp(-tmp));	// p --> p + p0 exp(-p/p0)  (Smooth floor on outliers)
-	
-	#undef neginf
 	return logP;
 }
 
@@ -205,7 +193,7 @@ double logP_los_synth(const double *x, unsigned int N, TMCMCParams &p, double *l
 	if(p.ext_model->in_model(RV)) {
 		logP -= (RV - 3.1)*(RV - 3.1) / (2. * 0.1 * 0.1);
 	} else {
-		return -std::numeric_limits<double>::infinity();
+		return neg_inf_replacement;
 	}
 	
 	// Prior on extinction
@@ -339,15 +327,10 @@ void sample_model_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 		// Step reddening profile
 		if(!burn_in) { N_los++; }
 		for(size_t k=0; k<length; k++) { x_tmp[k] = x[k]; }
-		//if(!burn_in) { x_tmp[0] += gsl_ran_gaussian_ziggurat(r, sigma_RV); }
 		for(unsigned int m=0; m<params.N_DM; m++) { x_tmp[1+m] += gsl_ran_gaussian_ziggurat(r, sigma_lnEBV); }
 		
 		params_tmp.update_EBV_interp(x_tmp);
 		lnp_tmp = logP_los_synth(x_tmp, length, params_tmp, lnp_star_tmp);
-		//if(isinf(lnp_tmp)) {
-		//	lnp_tmp = logP_los(x, length, params_tmp, lnp_star_tmp);
-		//}
-		//std::cerr << "#     ln p(y) = " << lnp_tmp << std::endl;
 		
 		accept = false;
 		if(lnp_tmp > lnp_los) {
@@ -558,13 +541,13 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 }
 
 double logP_indiv_simple_synth(const double *x, unsigned int N, TMCMCParams &params) {
-	if(x[0] < params.EBV_floor) { return -std::numeric_limits<double>::infinity(); }
+	if(x[0] < params.EBV_floor) { return neg_inf_replacement; }
 	double RV;
 	double logp = 0;
 	if(params.vary_RV) {
 		RV = x[5];
 		if((RV <= 2.1) || (RV >= 5.)) {
-			return -std::numeric_limits<double>::infinity();
+			return neg_inf_replacement;
 		}
 		logp = -0.5*(RV-params.RV_mean)*(RV-params.RV_mean)/params.RV_variance;
 	} else {
@@ -575,13 +558,13 @@ double logP_indiv_simple_synth(const double *x, unsigned int N, TMCMCParams &par
 }
 
 double logP_indiv_simple_emp(const double *x, unsigned int N, TMCMCParams &params) {
-	if(x[0] < params.EBV_floor) { return -std::numeric_limits<double>::infinity(); }
+	if(x[0] < params.EBV_floor) { return neg_inf_replacement; }
 	double RV;
 	double logp = 0;
 	if(params.vary_RV) {
 		RV = x[4];
 		if((RV <= 2.1) || (RV >= 5.)) {
-			return -std::numeric_limits<double>::infinity();
+			return neg_inf_replacement;
 		}
 		logp = -0.5*(RV-params.RV_mean)*(RV-params.RV_mean)/params.RV_variance;
 	} else {
@@ -689,7 +672,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		// Compute evidence
 		TChain chain = sampler.get_chain();
 		double lnZ_tmp = chain.get_ln_Z_harmonic(true, 10., 0.25, 0.05);
-		if(isinf(lnZ_tmp)) { lnZ_tmp = -std::numeric_limits<double>::infinity(); }
+		//if(isinf(lnZ_tmp)) { lnZ_tmp = neg_inf_replacement; }
 		
 		// Save thinned chain
 		chainBuffer.add(chain, converged, lnZ_tmp);
@@ -847,7 +830,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		// Compute evidence
 		TChain chain = sampler.get_chain();
 		double lnZ_tmp = chain.get_ln_Z_harmonic(true, 10., 0.25, 0.05);
-		if(isinf(lnZ_tmp)) { lnZ_tmp = -std::numeric_limits<double>::infinity(); }
+		//if(isinf(lnZ_tmp)) { lnZ_tmp = neg_inf_replacement; }
 		
 		// Save thinned chain
 		chainBuffer.add(chain, converged, lnZ_tmp);
@@ -918,7 +901,7 @@ void rand_vector(double*const x, double* min, double* max, size_t N, gsl_rng* r)
 }
 
 void rand_vector(double*const x, size_t N, gsl_rng* r, double A) {
-	for(size_t i=0; i<N; i++) { x[i] = A*gsl_rng_uniform(r); }
+	for(size_t i=0; i<N; i++) { x[i] = A * gsl_rng_uniform(r); }
 }
 
 void rand_gaussian_vector(double*const x, double mu, double sigma, size_t N, gsl_rng* r) {
@@ -929,70 +912,3 @@ void rand_gaussian_vector(double*const x, double* mu, double* sigma, size_t N, g
 	for(size_t i=0; i<N; i++) { x[i] = mu[i] + gsl_ran_gaussian_ziggurat(r, sigma[i]); }
 }
 
-
-
-
-
-
-
-
-
-/*
-double calc_logP(const double *const x, unsigned int N, MCMCParams &p) {
-	#define neginf -std::numeric_limits<double>::infinity()
-	double logP = 0.;
-	
-	//double x_tmp[4] = {x[0],x[1],x[2],x[3]};
-	
-	// P(Ar|G): Flat prior for Ar > 0. Don't allow DM < 0
-	if((x[_Ar] < 0.) || (x[_DM] < 0.)) { return neginf; }
-	
-	// Make sure star is in range of template spectra
-	if((x[_Mr] < p.model.Mr_min) || (x[_Mr] > p.model.Mr_max) || (x[_FeH] < p.model.FeH_min) || (x[_FeH] > p.model.FeH_max)) { return neginf; }
-	
-	// If the giant or dwarf flag is set, make sure star is appropriate type
-	if(p.giant_flag == 1) {		// Dwarfs only
-		if(x[_Mr] < 4.) { return neginf; }
-	} else if(p.giant_flag == 2) {	// Giants only
-		if(x[_Mr] > 4.) { return neginf; }
-	}
-	
-	// P(Mr|G) from luminosity function
-	double loglf_tmp = p.model.lf(x[_Mr]);
-	logP += loglf_tmp;
-	
-	// P(DM|G) from model of galaxy
-	double logdn_tmp = p.log_dn_interp(x[_DM]);
-	logP += logdn_tmp;
-	
-	// P(FeH|DM,G) from Ivezich et al (2008)
-	double logpFeH_tmp = p.log_p_FeH_fast(x[_DM], x[_FeH]);
-	logP += logpFeH_tmp;
-	
-	// P(g,r,i,z,y|Ar,Mr,DM) from model spectra
-	double M[NBANDS];
-	FOR(0, NBANDS) { M[i] = p.m[i] - x[_DM] - x[_Ar]*p.model.Acoef[i]; }	// Calculate absolute magnitudes from observed magnitudes, distance and extinction
-	
-	TSED sed_bilin_interp = (*p.model.sed_interp)(x[_Mr], x[_FeH]);
-	double logL = logL_SED(M, p.err, sed_bilin_interp);
-	logP += logL;
-	
-	#undef neginf
-	return logP;
-}
-
-// Generates a random state, with a flat distribution in each parameter
-void ran_state(double *const x_0, unsigned int N, gsl_rng *r, MCMCParams &p) {
-	x_0[_DM] = gsl_ran_flat(r, 5.1, 19.9);
-	x_0[_Ar] = gsl_ran_flat(r, 0.1, 3.0);
-	if(p.giant_flag == 0) {
-		x_0[_Mr] = gsl_ran_flat(r, -0.5, 27.5);	// Both giants and dwarfs
-	} else if(p.giant_flag == 1) {
-		x_0[_Mr] = gsl_ran_flat(r, 4.5, 27.5);	// Dwarfs only
-	} else {
-		x_0[_Mr] = gsl_ran_flat(r, -0.5, 3.5);	// Giants only
-	}
-	x_0[_FeH] = gsl_ran_flat(r, -2.4, -0.1);
-}
-
-*/
