@@ -242,7 +242,7 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	}
 	
 	// Compute line integrals through probability surfaces
-	double *line_int = new double[params.img_stack->N_images];
+	double *line_int = params.get_line_int(omp_get_thread_num());
 	los_integral_clouds(*(params.img_stack), params.subpixel.data(), line_int, Delta_mu, logDelta_EBV, N_clouds);
 	
 	// Soften and multiply line integrals
@@ -253,8 +253,6 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 		lnp += log(line_int[i]);
 		//std::cerr << line_int[i] << std::endl;
 	}
-	
-	delete[] line_int;
 	
 	return lnp;
 	
@@ -475,7 +473,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	}
 	
 	// Compute line integrals through probability surfaces
-	double *line_int = new double[params.img_stack->N_images];
+	double *line_int = params.get_line_int(omp_get_thread_num());
 	los_integral(*(params.img_stack), params.subpixel.data(), line_int, logEBV, N-1);
 	
 	// Soften and multiply line integrals
@@ -486,8 +484,6 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		lnp += log(line_int[i]);
 		//std::cerr << line_int[i] << std::endl;
 	}
-	
-	delete[] line_int;
 	
 	return lnp;
 	
@@ -774,9 +770,12 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
  * 
  ****************************************************************************************************************************/
 
-TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0, double _EBV_max)
-	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.)
+TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
+                               unsigned int _N_threads, double _EBV_max)
+	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.), N_threads(_N_threads), line_int(NULL)
 {
+	line_int = new double[_img_stack->N_images * N_threads];
+	std::cout << "Allocated line_int[" << _img_stack->N_images * N_threads << "] (" << _img_stack->N_images << " images, " << N_threads << " threads)" << std::endl;
 	p0 = _p0;
 	lnp0 = log(p0);
 	EBV_max = _EBV_max;
@@ -785,7 +784,9 @@ TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0, double _EBV_ma
 	subpixel_min = 1.;
 }
 
-TLOSMCMCParams::~TLOSMCMCParams() { }
+TLOSMCMCParams::~TLOSMCMCParams() {
+	if(line_int != NULL) { delete[] line_int; }
+}
 
 void TLOSMCMCParams::set_p0(double _p0) {
 	p0 = _p0;
@@ -818,6 +819,10 @@ void TLOSMCMCParams::set_subpixel_mask(std::vector<double>& new_mask) {
 	}
 }
 
+double* TLOSMCMCParams::get_line_int(unsigned int thread_num) {
+	assert(thread_num < N_threads);
+	return line_int + img_stack->N_images * thread_num;
+}
 
 
 

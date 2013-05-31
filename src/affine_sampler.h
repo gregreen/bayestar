@@ -23,6 +23,7 @@
  * MA 02110-1301, USA.
  * 
  */
+
 #ifndef _AFFINE_SAMPLER_H__
 #define _AFFINE_SAMPLER_H__
 

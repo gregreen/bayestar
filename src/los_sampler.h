@@ -82,18 +82,26 @@ struct TImgStack {
 struct TLOSMCMCParams {
 	TImgStack *img_stack;
 	double p0, lnp0;
+	
+	double *line_int;
+	unsigned int N_threads;
+	
 	double EBV_max;
 	double EBV_guess_max;
 	std::vector<double> EBV_prof_guess;
+	
 	std::vector<double> subpixel;
 	double subpixel_min, subpixel_max;
 	
-	TLOSMCMCParams(TImgStack* _img_stack, double _p0, double _EBV_max=-1.);
+	TLOSMCMCParams(TImgStack* _img_stack, double _p0,
+	               unsigned int _N_threads, double _EBV_max=-1.);
 	~TLOSMCMCParams();
 	
 	void set_p0(double _p0);
 	void set_subpixel_mask(TStellarData& data);
 	void set_subpixel_mask(std::vector<double>& new_mask);
+	
+	double* get_line_int(unsigned int thread_num);
 };
 
 // Transform from log(DeltaEBV) to cumulative EBV for piecewise-linear l.o.s. fit
