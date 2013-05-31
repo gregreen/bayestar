@@ -142,7 +142,7 @@ def main():
 	group = 'pixel %d' % (args.index)
 	
 	# Load in pdfs
-	x_min, x_max = None, None
+	x_min, x_max = [4., 0.], [19., 5.]
 	pdf_stack = None
 	pdf_indiv = None
 	EBV_max = None
