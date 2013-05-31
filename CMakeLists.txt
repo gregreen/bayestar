@@ -42,13 +42,27 @@ configure_file(
 include_directories("${PROJECT_BINARY_DIR}/src")
 
 #
-# Intel Compiler Flags
+# Optimizations
 #
 IF(NOT CMAKE_COMPILER_IS_GNUCXX)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ipo -axHOST -no-prec-div ")
 ELSE(NOT CMAKE_COMPILER_IS_GNUCXX)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ffast-math ") #-fno-math-errno -funsafe-math-optimizations ")
 ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
+
+#
+# Profiling
+#
+IF(CMAKE_COMPILER_IS_GNUCXX)
+	IF(PROFILING_GEN)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-generate ")
+		MESSAGE( STATUS "Setting flags to generate profiling information." )
+	ENDIF(PROFILING_GEN)
+	IF(PROFILING_USE)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-use ")
+		MESSAGE( STATUS "Setting flags to use profiling information." )
+	ENDIF(PROFILING_USE)
+ENDIF(CMAKE_COMPILER_IS_GNUCXX)
 
 ### OpenCV
 pkg_check_modules(OPENCV opencv)
