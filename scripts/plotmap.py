@@ -104,8 +104,8 @@ def getLOS(fname):
 	CloudDeltaEBV = np.exp(CloudDeltaLnEBV)
 	PiecewiseDeltaEBV = np.exp(PiecewiseDeltaLnEBV)
 	
-	return pixels, CloudMuAnchor, CloudDeltaEBV,
-	               DM_min, DM_max, PiecewiseDeltaEBV
+	return (pixels, CloudMuAnchor, CloudDeltaEBV,
+	                DM_min, DM_max, PiecewiseDeltaEBV)
 
 def getLOSFromMultiple(fnames):
 	partial = []
@@ -137,8 +137,8 @@ def getLOSFromMultiple(fnames):
 		PiecewiseDeltaEBV[startIdx:endIdx] = part[5][:]
 		startIdx += len(part[1])
 	
-	return pixels, CloudMuAnchor, CloudDeltaEBV,
-	               DM_min, DM_max, PiecewiseDeltaEBV
+	return (pixels, CloudMuAnchor, CloudDeltaEBV,
+	                DM_min, DM_max, PiecewiseDeltaEBV)
 
 def calcCloudEBV(muAnchor, DeltaEBV, mu):
 	foreground = (muAnchor < mu)
