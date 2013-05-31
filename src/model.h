@@ -35,27 +35,8 @@
 
 #include <gsl/gsl_spline.h>
 
+#include "definitions.h"
 #include "interpolation.h"
-
-#ifndef PI
-#define PI 3.14159265358979323
-#endif // PI
-
-#ifndef SQRTPI
-#define SQRTPI 1.7724538509055159
-#endif // SQRTPI
-
-#ifndef SQRT2
-#define SQRT2 1.4142135623730951
-#endif // SQRT2
-
-#ifndef SQRT2PI
-#define SQRT2PI 2.5066282746310002
-#endif // SQRT2PI
-
-#ifndef LN10
-#define LN10 2.3025850929940459
-#endif // LN10
 
 #define _DM 0
 #define _LOGMASS 1

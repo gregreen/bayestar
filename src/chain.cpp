@@ -19,8 +19,8 @@ TChain::TChain(unsigned int _N, unsigned int _capacity)
 	x_min.reserve(N);
 	x_max.reserve(N);
 	for(unsigned int i=0; i<N; i++) {
-		x_min.push_back(std::numeric_limits<double>::infinity());
-		x_max.push_back(-std::numeric_limits<double>::infinity());
+		x_min.push_back(inf_replacement);
+		x_max.push_back(neg_inf_replacement);
 	}
 }
 
@@ -75,8 +75,8 @@ void TChain::clear() {
 	
 	// Reset min/max coordinates
 	for(unsigned int i=0; i<N; i++) {
-		x_min[i] = std::numeric_limits<double>::infinity();
-		x_max[i] = -std::numeric_limits<double>::infinity();
+		x_min[i] = inf_replacement;
+		x_max[i] = neg_inf_replacement;
 	}
 }
 
@@ -284,7 +284,7 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 	sorted_indices.reserve(length);
 	unsigned int filt_length = 0;
 	for(unsigned int i=0; i<length; i++) {
-		if(!(isnan(L[i]) || isinf(L[i]))) {
+		if(!(isnan(L[i]) || is_inf_replacement(L[i]))) {
 			TChainSort tmp_el;
 			tmp_el.index = i;
 			tmp_el.dist2 = metric_dist2(invSigma, get_element(i), mu, N);
@@ -333,7 +333,7 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 		std::cout << "\tV = " << V << std::endl;
 		std::cout << "\ttotal_weight = " << total_weight << std::endl;
 		std::cout << std::endl;
-	} else if(isinf(lnZ)) {
+	} else if(is_inf_replacement(lnZ)) {
 		std::cout << std::endl;
 		std::cout << "inf Error! lnZ = " << lnZ << std::endl;
 		std::cout << "\tsum_invL = e^(" << -L_0 << ") * " << sum_invL << " = " << exp(-L_0) * sum_invL << std::endl;
@@ -387,7 +387,7 @@ void TChain::density_peak(double* const peak, double nsigma) const {
 	
 	// Find the index of the max bin
 	std::map<uint64_t, double>::iterator it_end = bins.end();
-	double w_max = -std::numeric_limits<double>::infinity();
+	double w_max = neg_inf_replacement;
 	for(it = bins.begin(); it != it_end; ++it) {
 		if(it->second > w_max) {
 			w_max = it->second;
@@ -1242,7 +1242,7 @@ void TGaussianMixture::expectation_maximization(const double *x, const double *w
 	unsigned int nearest_cluster;
 	for(unsigned int n=0; n<N; n++) {
 		// Find nearest cluster center
-		min_dist = std::numeric_limits<double>::infinity();
+		min_dist = inf_replacement;
 		for(unsigned int k=0; k<nclusters; k++) {
 			sum = 0.;
 			for(unsigned int i=0; i<ndim; i++) {

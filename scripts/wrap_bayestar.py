@@ -159,7 +159,7 @@ def probsurf_bayestar(mag, err, maglimit,
 	binary = '/home/greg/projects/bayestar/build/bayestar'
 	args = [binary, infile.name, outfile.name,
 	        '--save-surfs', '--star-steps', '350',
-	        '--star-samplers', '20',
+	        '--star-samplers', '50',
 	        '--star-p-replacement', '0.2',
 	        '--clouds', '0', '--regions', '0']
 	res = subprocess.call(args, stdout=logfile, stderr=logfile)
@@ -187,7 +187,8 @@ def main():
 	l, b = 185.82982972,  185.82311076
 	maglimit = np.array([24.5, 24.5, 24.5, 24.5, 24.5])
 	mag = np.array([[21.04790688,  19.53613853,  18.25717545,  17.62468529, 17.33963013]])
-	err = np.array([[0.05899024,  0.02810547,  0.0265723, 0.02198926, 0.02619359]])
+	#err = np.array([[0.05899024,  0.02810547,  0.0265723, 0.02198926, 0.02619359]])
+	err = np.array([[0.05899024, 0.02810547, np.inf, 0.02198926, 0.02619359]])
 	
 	(bounds, surfs), (converged, lnZ), chains, ln_p, log = probsurf_bayestar(mag, err, maglimit,
 	                                                                         l=l, b=b, EBV_guess=2.)
