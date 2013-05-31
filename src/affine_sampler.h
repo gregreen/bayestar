@@ -480,8 +480,6 @@ double TAffineSampler<TParams, TLogger>::log_gaussian_density(const TState *cons
 
 template<class TParams, class TLogger>
 void TAffineSampler<TParams, TLogger>::replacement_proposal(unsigned int j) {
-//#pragma omp critical (replacement)
-//{
 	// Choose a sampler to step from
 	unsigned int k = gsl_rng_uniform_int(r, (long unsigned int)L);
 	
@@ -493,29 +491,59 @@ void TAffineSampler<TParams, TLogger>::replacement_proposal(unsigned int j) {
 		Y[j].element[i] = X[k].element[i] + h * W[i];
 	}
 	
-	// Determine pi_S(X_j | Y_j , X_{-j})
+	// Determine pi_S(X_j | Y_j , X_{-j}) and pi_S(Y_j | X)
 	double tmp;
-	double max = neg_inf_replacement;
-	double cutoff = 4.;
+	double XY_max = neg_inf_replacement;
+	double YX_max = neg_inf_replacement;
+	double YX_cutoff = neg_inf_replacement;
+	double XY_cutoff = neg_inf_replacement;
+	const double cutoff = 10.;
 	double pi_XY = 0.;
-	for(unsigned int i=0; i<L; i++) {
-		if(i != j) {
-			tmp = log_gaussian_density(&(X[i]), &(X[j]));
-			if(tmp > max) { max = tmp; }
-			if(tmp >= max - cutoff) { pi_XY += exp(tmp); }
+	double pi_YX = 0.;
+	for(unsigned int i=0; i<j; i++) {
+		tmp = log_gaussian_density(&(X[i]), &(X[j]));
+		if(tmp > XY_cutoff) {
+			pi_XY += exp(tmp);
+			if(tmp > XY_max) {
+				XY_max = tmp;
+				XY_cutoff = XY_max - cutoff;
+			}
 		}
+		
+		tmp = log_gaussian_density(&(X[i]), &(Y[j]));
+		if(tmp > YX_cutoff) {
+			pi_YX += exp(tmp);
+			if(tmp > YX_max) {
+				YX_max = tmp;
+				YX_cutoff = YX_max - cutoff;
+			}
+		}
+		pi_YX += exp(tmp);
+		
+	}
+	for(unsigned int i=j+1; i<L; i++) {
+		tmp = log_gaussian_density(&(X[i]), &(X[j]));
+		if(tmp > XY_cutoff) {
+			pi_XY += exp(tmp);
+			if(tmp > XY_max) {
+				XY_max = tmp;
+				XY_cutoff = XY_max - cutoff;
+			}
+		}
+		
+		tmp = log_gaussian_density(&(X[i]), &(Y[j]));
+		if(tmp > YX_cutoff) {
+			pi_YX += exp(tmp);
+			if(tmp > YX_max) {
+				YX_max = tmp;
+				YX_cutoff = YX_max - cutoff;
+			}
+		}
+		pi_YX += exp(tmp);
 	}
 	tmp = log_gaussian_density(&(Y[j]), &(X[j]));
-	if(tmp >= max - cutoff) { pi_XY += exp(tmp); }
-	
-	// Determine pi_S(Y_j | X)
-	max = neg_inf_replacement;
-	double pi_YX = 0.;
-	for(unsigned int i=0; i<L; i++) {
-		tmp = log_gaussian_density(&(X[i]), &(Y[j]));
-		if(tmp > max) { max = tmp; }
-		if(tmp >= max - cutoff) { pi_YX += exp(tmp); }
-	}
+	if(tmp > XY_cutoff) { pi_XY += exp(tmp); }
+	if(tmp > YX_cutoff) { pi_YX += exp(tmp); }
 	
 	// Get pdf(Y) and initialize weight of proposal point to unity
 	Y[j].pi = pdf(Y[j].element, N, params);
