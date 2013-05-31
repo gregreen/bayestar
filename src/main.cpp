@@ -340,8 +340,8 @@ int main(int argc, char **argv) {
 		H5Utils::add_watermark<uint64_t>(output_fname, group_name.str(), "nside", stellar_data.nside);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
-		t_tot = (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec);
-		t_star = (t_mid.tv_sec - t_start.tv_sec) + 1.e-9*(t_mid.tv_nsec - t_start.tv_nsec);
+		t_tot = (t_end.tv_sec - t_start.tv_sec) + 1.e-9 * (t_end.tv_nsec - t_start.tv_nsec);
+		t_star = (t_mid.tv_sec - t_start.tv_sec) + 1.e-9 * (t_mid.tv_nsec - t_start.tv_nsec);
 		
 		cerr << endl;
 		cerr << "===================================================" << endl;
@@ -352,6 +352,7 @@ int main(int argc, char **argv) {
 		cerr << setprecision(2) << 100. * (t_tot - t_star) / t_tot << " %" << endl;
 		cerr << "===================================================" << endl << endl;
 	}
+	
 	
 	/*
 	 *  Add additional metadata to output file

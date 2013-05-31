@@ -272,7 +272,7 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	att.read(att_dtype, reinterpret_cast<void*>(&EBV));
 	
-	if((EBV <= 0.) || isnan(EBV)) { EBV = default_EBV; }
+	if((EBV <= 0.) || (EBV > 1.5*default_EBV) || isnan(EBV)) { EBV = default_EBV; }
 	
 	delete[] data_buf;
 	delete gp;
