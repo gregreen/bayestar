@@ -297,7 +297,6 @@ int main(int argc, char **argv) {
 				if(*it_lnZ > lnZmax) { lnZmax = *it_lnZ; }
 			}
 		}
-		//double lnZmax = *max_element(lnZ.begin(), lnZ.end());
 		bool tmpFilter;
 		size_t nFiltered = 0;
 		std::vector<double> subpixel;
