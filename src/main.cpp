@@ -325,7 +325,7 @@ int main(int argc, char **argv) {
 					EBV_max = stellar_data.EBV;
 				}
 			}
-			TLOSMCMCParams params(&img_stack, p0, EBV_max);
+			TLOSMCMCParams params(&img_stack, p0, N_threads, EBV_max);
 			if(SFDsubpixel) { params.set_subpixel_mask(subpixel); }
 			if(N_clouds != 0) {
 				sample_los_extinction_clouds(output_fname, cloud_options, params, N_clouds, *it);
