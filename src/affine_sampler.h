@@ -323,13 +323,13 @@ TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_
 			//std::cerr << "! Re-seeding: " << tries << std::endl;
 			//}
 		}
-		if(tries >= max_tries) {
+		/*if(tries >= max_tries) {
 			#pragma omp critical
 			{
 			std::cerr << "! Re-seeding failed !" << std::endl;
 			}
 			abort();
-		}
+		}*/
 		
 		X[i].weight = 1;
 		if(X[i] > X[index_of_best]) { index_of_best = i; }
