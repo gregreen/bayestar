@@ -431,7 +431,7 @@ void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
 	}
 	
 	// Covariance
-	double tmp;
+	/*double tmp;
 	for(unsigned int j=0; j<N; j++) {
 		for(unsigned int k=j; k<N; k++) {
 			tmp = 0.;
@@ -444,6 +444,15 @@ void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
 				gsl_matrix_set(ensemble_cov, k, j, tmp);
 			}
 		}
+	}*/
+	
+	// Only use diagonal elements of covariance
+	gsl_matrix_set_zero(ensemble_cov);
+	double tmp;
+	for(unsigned int j=0; j<N; j++) {
+		tmp = 0.;
+		for(unsigned int n=0; n<L; n++) { tmp += (X[n].element[j] - ensemble_mean[j]) * (X[n].element[j] - ensemble_mean[j]); }
+		gsl_matrix_set(ensemble_cov, j, j, tmp);
 	}
 	
 	// Inverse and Sqrt of Covariance
@@ -462,9 +471,9 @@ double TAffineSampler<TParams, TLogger>::log_gaussian_density(const TState *cons
 		tmp = (x->element[i] - y->element[i]);
 		//sum += tmp * tmp * inv[i + N*i];
 		sum += tmp * gsl_matrix_get(inv_ensemble_cov, i, i) * tmp;
-		for(unsigned int j=i+1; j<N; j++) {
-			sum += 2. * tmp * gsl_matrix_get(inv_ensemble_cov, i, j) * (x->element[j] - y->element[j]);
-		}
+		//for(unsigned int j=i+1; j<N; j++) {
+		//	sum += 2. * tmp * gsl_matrix_get(inv_ensemble_cov, i, j) * (x->element[j] - y->element[j]);
+		//}
 	}
 	//double w;
 	//for(unsigned int i=0; i<N; i++) {

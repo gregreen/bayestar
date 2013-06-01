@@ -332,7 +332,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	std::cout << "====================================" << std::endl;
 	
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
-	sampler.set_scale(1.2);
+	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.50);	// TODO: Scale with number of regions
 	
 	// Burn-in

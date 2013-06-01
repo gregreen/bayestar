@@ -1589,25 +1589,8 @@ double invert_matrix(gsl_matrix* A, gsl_matrix* inv_A, gsl_permutation* p, gsl_m
 	return det_A;
 }
 
-void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A) {
-	size_t N = A->size1;
-	
-	// Allocate workspaces
-	gsl_eigen_symmv_workspace* esv = gsl_eigen_symmv_alloc(N);
-	gsl_vector *eival = gsl_vector_alloc(N);
-	gsl_matrix *eivec = gsl_matrix_alloc(N, N);
-	gsl_matrix* sqrt_eival = gsl_matrix_alloc(N, N);
-	
-	sqrt_matrix(A, sqrt_A, esv, eival, eivec, sqrt_eival);
-	
-	// Free workspaces
-	gsl_matrix_free(sqrt_eival);
-	gsl_eigen_symmv_free(esv);
-	gsl_matrix_free(eivec);
-	gsl_vector_free(eival);
-}
-
 // Find B s.t. B B^T = A. This is useful for generating vectors from a multivariate normal distribution.
+// Operates on A in-place if sqrt_A == NULL.
 void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A, gsl_eigen_symmv_workspace* esv, gsl_vector *eival, gsl_matrix *eivec, gsl_matrix* sqrt_eival) {
 	size_t N = A->size1;
 	assert(A->size2 == N);
@@ -1636,6 +1619,25 @@ void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A, gsl_eigen_symmv_workspace* e
 		}
 	}
 	gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1., eivec, sqrt_eival, 0., sqrt_A);
+}
+
+// Same as above, but allocates and de-allocates worskspaces internally
+void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A) {
+	size_t N = A->size1;
+	
+	// Allocate workspaces
+	gsl_eigen_symmv_workspace* esv = gsl_eigen_symmv_alloc(N);
+	gsl_vector *eival = gsl_vector_alloc(N);
+	gsl_matrix *eivec = gsl_matrix_alloc(N, N);
+	gsl_matrix* sqrt_eival = gsl_matrix_alloc(N, N);
+	
+	sqrt_matrix(A, sqrt_A, esv, eival, eivec, sqrt_eival);
+	
+	// Free workspaces
+	gsl_matrix_free(sqrt_eival);
+	gsl_eigen_symmv_free(esv);
+	gsl_matrix_free(eivec);
+	gsl_vector_free(eival);
 }
 
 // Draw a normal varariate from a covariance matrix. The square-root of the covariance (as defined in sqrt_matrix) must be provided.
