@@ -190,8 +190,6 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 }
 
 double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams& params) {
-	#define neginf -std::numeric_limits<double>::infinity()
-	
 	size_t N_clouds = N / 2;
 	const double *Delta_mu = x;
 	const double *logDelta_EBV = x + N_clouds;
@@ -201,13 +199,13 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	// Delta_mu must be positive
 	double mu_tot = 0.;
 	for(size_t i=0; i<N_clouds; i++) {
-		if(Delta_mu[i] <= 0.) { return neginf; }
+		if(Delta_mu[i] <= 0.) { return neg_inf_replacement; }
 		mu_tot += Delta_mu[i];
 	}
 	
 	// Don't consider clouds outside of the domain under consideration
-	if(Delta_mu[0] < params.img_stack->rect->min[0]) { return neginf; }
-	if(mu_tot > params.img_stack->rect->max[0]) { return neginf; }
+	if(Delta_mu[0] < params.img_stack->rect->min[0]) { return neg_inf_replacement; }
+	if(mu_tot > params.img_stack->rect->max[0]) { return neg_inf_replacement; }
 	
 	double EBV_tot = 0.;
 	double tmp;
@@ -220,7 +218,7 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	}
 	
 	// Extinction must not exceed maximum value
-	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neginf; }
+	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neg_inf_replacement; }
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
@@ -255,8 +253,6 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	}
 	
 	return lnp;
-	
-	#undef neginf
 }
 
 void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
@@ -444,8 +440,6 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 }
 
 double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCParams& params) {
-	#define neginf -std::numeric_limits<double>::infinity()
-	
 	double lnp = 0.;
 	
 	// Extinction must not exceed maximum value
@@ -458,7 +452,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		// Prior to prevent EBV from straying high
 		//lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (10. * 10.);
 	}
-	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neginf; }
+	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neg_inf_replacement; }
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
@@ -482,12 +476,9 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 			line_int[i] += params.p0 * exp(-line_int[i]/params.p0);
 		}
 		lnp += log(line_int[i]);
-		//std::cerr << line_int[i] << std::endl;
 	}
 	
 	return lnp;
-	
-	#undef neginf
 }
 
 void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
@@ -588,14 +579,12 @@ struct TEBVGuessParams {
 };
 
 double lnp_monotonic_guess(const double* Delta_EBV, unsigned int N, TEBVGuessParams& params) {
-	#define neginf -std::numeric_limits<double>::infinity()
-	
 	double lnp = 0;
 	
 	double EBV = 0.;
 	double tmp;
 	for(unsigned int i=0; i<N; i++) {
-		if(Delta_EBV[i] < 0.) { return neginf; }
+		if(Delta_EBV[i] < 0.) { return neg_inf_replacement; }
 		EBV += Delta_EBV[i];
 		if(params.sum_weight[i] > 1.e-10) {
 			tmp = (EBV - params.EBV[i]) / params.sigma_EBV[i];
@@ -604,8 +593,6 @@ double lnp_monotonic_guess(const double* Delta_EBV, unsigned int N, TEBVGuessPar
 	}
 	
 	return lnp;
-	
-	#undef neginf
 }
 
 void gen_rand_monotonic(double *const Delta_EBV, unsigned int N, gsl_rng *r, TEBVGuessParams &params) {
@@ -797,7 +784,7 @@ void TLOSMCMCParams::set_subpixel_mask(TStellarData& data) {
 	assert(data.star.size() == img_stack->N_images);
 	subpixel.clear();
 	subpixel_max = 0.;
-	subpixel_min = std::numeric_limits<double>::infinity();
+	subpixel_min = inf_replacement;
 	double EBV;
 	for(size_t i=0; i<data.star.size(); i++) {
 		EBV = data.star[i].EBV;
@@ -811,7 +798,7 @@ void TLOSMCMCParams::set_subpixel_mask(std::vector<double>& new_mask) {
 	assert(new_mask.size() == img_stack->N_images);
 	subpixel.clear();
 	subpixel_max = 0.;
-	subpixel_min = std::numeric_limits<double>::infinity();
+	subpixel_min = inf_replacement;
 	for(size_t i=0; i<new_mask.size(); i++) {
 		if(new_mask[i] > subpixel_max) { subpixel_max = new_mask[i]; }
 		if(new_mask[i] < subpixel_min) { subpixel_min = new_mask[i]; }
