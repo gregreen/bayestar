@@ -1589,27 +1589,33 @@ double invert_matrix(gsl_matrix* A, gsl_matrix* inv_A, gsl_permutation* p, gsl_m
 	return det_A;
 }
 
+void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A) {
+	size_t N = A->size1;
+	
+	// Allocate workspaces
+	gsl_eigen_symmv_workspace* esv = gsl_eigen_symmv_alloc(N);
+	gsl_vector *eival = gsl_vector_alloc(N);
+	gsl_matrix *eivec = gsl_matrix_alloc(N, N);
+	gsl_matrix* sqrt_eival = gsl_matrix_alloc(N, N);
+	
+	sqrt_matrix(A, sqrt_A, esv, eival, eivec, sqrt_eival);
+	
+	// Free workspaces
+	gsl_matrix_free(sqrt_eival);
+	gsl_eigen_symmv_free(esv);
+	gsl_matrix_free(eivec);
+	gsl_vector_free(eival);
+}
+
 // Find B s.t. B B^T = A. This is useful for generating vectors from a multivariate normal distribution.
 void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A, gsl_eigen_symmv_workspace* esv, gsl_vector *eival, gsl_matrix *eivec, gsl_matrix* sqrt_eival) {
 	size_t N = A->size1;
 	assert(A->size2 == N);
 	
-	// Allocate workspaces if none are provided
-	bool del_esv = false;
-	if(esv == NULL) { esv = gsl_eigen_symmv_alloc(N); del_esv = true; }
-	bool del_eival = false;
-	if(eival == NULL) { eival = gsl_vector_alloc(N); del_eival = true; }
-	bool del_eivec = false;
-	if(eivec == NULL) { eivec = gsl_matrix_alloc(N, N); del_eival = true; }
-	bool del_sqrt_eival = false;
-	if(sqrt_eival == NULL) {
-		sqrt_eival = gsl_matrix_calloc(N, N);
-		del_sqrt_eival = true;
-	} else {
-		assert(sqrt_eival->size1 == N);
-		assert(sqrt_eival->size2 == N);
-		gsl_matrix_set_zero(sqrt_eival);
-	}
+	assert(sqrt_eival->size1 == N);
+	assert(sqrt_eival->size2 == N);
+	
+	gsl_matrix_set_zero(sqrt_eival);
 	
 	if(sqrt_A == NULL) {
 		sqrt_A = A;
@@ -1630,12 +1636,6 @@ void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A, gsl_eigen_symmv_workspace* e
 		}
 	}
 	gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1., eivec, sqrt_eival, 0., sqrt_A);
-	
-	// Free workspaces if none were provided
-	if(del_sqrt_eival) { gsl_matrix_free(sqrt_eival); }
-	if(del_esv) { gsl_eigen_symmv_free(esv); }
-	if(del_eivec) { gsl_matrix_free(eivec); }
-	if(del_eival) { gsl_vector_free(eival); }
 }
 
 // Draw a normal varariate from a covariance matrix. The square-root of the covariance (as defined in sqrt_matrix) must be provided.

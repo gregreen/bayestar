@@ -318,18 +318,13 @@ TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_
 			rand_state(X[i].element, N, r, params);
 			X[i].pi = pdf(X[i].element, N, params);
 			tries++;
-			//#pragma omp critical
-			//{
-			//std::cerr << "! Re-seeding: " << tries << std::endl;
-			//}
 		}
-		/*if(tries >= max_tries) {
+		if(tries >= max_tries) {
 			#pragma omp critical
 			{
 			std::cerr << "! Re-seeding failed !" << std::endl;
 			}
-			abort();
-		}*/
+		}
 		
 		X[i].weight = 1;
 		if(X[i] > X[index_of_best]) { index_of_best = i; }
@@ -462,8 +457,10 @@ template<class TParams, class TLogger>
 double TAffineSampler<TParams, TLogger>::log_gaussian_density(const TState *const x, const TState *const y) {
 	double sum = 0.;
 	double tmp;
+	//double *inv = inv_ensemble_cov->data;
 	for(unsigned int i=0; i<N; i++) {
 		tmp = (x->element[i] - y->element[i]);
+		//sum += tmp * tmp * inv[i + N*i];
 		sum += tmp * gsl_matrix_get(inv_ensemble_cov, i, i) * tmp;
 		for(unsigned int j=i+1; j<N; j++) {
 			sum += 2. * tmp * gsl_matrix_get(inv_ensemble_cov, i, j) * (x->element[j] - y->element[j]);
