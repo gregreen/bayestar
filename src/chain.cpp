@@ -117,20 +117,26 @@ unsigned int TChain::get_ndim() const {
 
 
 void TChain::get_best(std::vector<double> &x) const {
-	double L_max = L[0];
-	size_t i_max = 0;
-	for(size_t i=1; i<length; i++) {
-		if(L[i] > L_max) {
-			L_max = L[i];
-			i_max = i;
-		}
-	}
+	unsigned int i_max = get_index_of_best();
 	const double *best = get_element(i_max);
 	x.clear();
 	for(size_t i=0; i<N; i++) {
 		x.push_back(best[i]);
 	}
 }
+
+unsigned int TChain::get_index_of_best() const {
+	double L_max = L[0];
+	unsigned int i_max = 0;
+	for(unsigned int i=1; i<length; i++) {
+		if(L[i] > L_max) {
+			L_max = L[i];
+			i_max = i;
+		}
+	}
+	return i_max;
+}
+
 
 double TChain::append(const TChain& chain, bool reweight, bool use_peak, double nsigma_max, double nsigma_peak, double chain_frac, double threshold) {
 	assert(chain.N == N);	// Make sure the two chains have the same dimensionality
@@ -874,9 +880,9 @@ TChainWriteBuffer::~TChainWriteBuffer() {
 
 void TChainWriteBuffer::reserve(unsigned int nReserved) {
 	assert(nReserved > nReserved_);
-	float *buf_new = new float[nDim_ * nSamples_ * nReserved];
+	float *buf_new = new float[nDim_ * (nSamples_+1) * nReserved];
 	if(buf != NULL) {
-		memcpy(buf_new, buf, sizeof(float) * nDim_ * nSamples_ * length_);
+		memcpy(buf_new, buf, sizeof(float) * nDim_ * (nSamples_+1) * length_);
 		delete[] buf;
 	}
 	buf = buf_new;
@@ -907,7 +913,7 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 	unsigned int k = 0;
 	double w = chain.get_w(0);
 	unsigned int chainLength = chain.get_length();
-	size_t startIdx = length_ * nDim_ * nSamples_;
+	size_t startIdx = length_ * nDim_ * (nSamples_+1);
 	const double *chainElement;
 	while(k < nSamples_) {
 		if(w < samplePos[k]) {
@@ -916,55 +922,23 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 			i++;
 		} else {
 			chainElement = chain.get_element(i-1);
-			buf[startIdx + nDim_*k] = chain.get_L(i-1);
+			buf[startIdx + nDim_*(k+1)] = chain.get_L(i-1);
 			for(size_t n = 1; n < nDim_; n++) {
-				buf[startIdx + nDim_*k + n] = chainElement[n-1];
+				buf[startIdx + nDim_*(k+1) + n] = chainElement[n-1];
 			}
 			k++;
 		}
 	}
-	/*if(k != nSamples_) {
-		std::cout << std::setprecision(8) << "w = " << w << std::endl;
-		std::cout << std::setprecision(8) << "totalWeight = " << totalWeight << std::endl;
-		std::cout << "i = " << i << std::endl;
-		std::cout << "chainLength = " << i << std::endl;
-		std::cout << "k = " << k << std::endl;
-		std::cout << "nSamples_ = " << nSamples_ << std::endl;
-		std::cout << std::setprecision(8) <<"samplePos[k] = " << samplePos[k] << std::endl;
-		
-		i = 1;
-		k = 0;
-		w = chain.get_w(0);
-		chainLength = chain.get_length();
-		startIdx = length_ * nDim_ * nSamples_;
-		while((k < nSamples_) && (i < chainLength + 1)) {
-			std::cout << "(w, samplePos[k]) = " << w << ", " << samplePos[k] << std::endl;
-			if(w < samplePos[k]) {
-				assert(i < chainLength);
-				std::cout << "w: " << w << " --> ";
-				w += (uint64_t)ceil(chain.get_w(i));
-				std::cout << w << std::endl;
-				std::cout << "i: " << i << " --> ";
-				i++;
-				std::cout << i << std::endl;
-			} else {
-				chainElement = chain.get_element(i-1);
-				buf[startIdx + nDim_*k] = chain.get_L(i-1);
-				for(size_t n = 1; n < nDim_; n++) {
-					buf[startIdx + nDim_*k + n] = chainElement[n-1];
-				}
-				std::cout << "k: " << k << " --> ";
-				k++;
-				std::cout << k << std::endl;
-			}
-			std::cout << "(k, nSamples_) = " << k << ", " << nSamples_ << std::endl;
-			std::cout << "(i, chainLength) = " << i << ", " << chainLength << std::endl;
-			std::cout << std::endl;
-		}
-		
-		abort();
-	}*/
 	assert(k == nSamples_);
+	//if(k != nSamples_) { abort(); }
+	
+	// Copy best point into buffer
+	i = chain.get_index_of_best();
+	chainElement = chain.get_element(i);
+	buf[startIdx] = chain.get_L(i);
+	for(size_t n = 1; n < nDim_; n++) {
+		buf[startIdx + n] = chainElement[n-1];
+	}
 	
 	length_++;
 }
@@ -978,7 +952,7 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 	
 	// Dataset properties: optimized for reading/writing entire buffer at once
 	int rank = 3;
-	hsize_t dim[3] = {length_, nSamples_, nDim_};
+	hsize_t dim[3] = {length_, nSamples_+1, nDim_};
 	H5::DataSpace dspace(rank, &(dim[0]));
 	H5::DSetCreatPropList plist;
 	plist.setDeflate(9);	// gzip compression level

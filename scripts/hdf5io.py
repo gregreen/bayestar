@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#  hdf5-io.py
+#  hdf5io.py
 #  
 #  I/O for files used by Bayestar, including Markov Chains and stellar
 #  template libraries.
@@ -146,6 +146,9 @@ class TChain:
 		
 		self.lnp = dset[:,:,0]
 		self.coords = dset[:,:,1:]
+		
+		self.lnp_best = dset[0,:,0]
+		self.coords_best = dset[0,:,1:]
 		
 		self.lnp_max = np.max(self.lnp)
 		self.x_min = np.min(self.coords, axis=1)

@@ -258,7 +258,8 @@ def rasterizeMap(pixels, EBV, nside=512, nest=True, oversample=4):
 	bounds = (lMin, lMax, bMin, bMax)
 	return img, bounds
 
-def calcEBV(muAnchor, DeltaEBV, mu, model='piecewise', maxSpread=None, calcSpread=False):
+def calcEBV(muAnchor, DeltaEBV, mu, model='piecewise',
+            maxSpread=None, method='median'):
 	EBV = None
 	if model == 'piecewise':
 		EBV = calcPiecewiseEBV(muAnchor, DeltaEBV, mu)
@@ -268,22 +269,30 @@ def calcEBV(muAnchor, DeltaEBV, mu, model='piecewise', maxSpread=None, calcSprea
 		raise ValueError("Unrecognized extinction model: '%s'" % model)
 	
 	EBVcenter = None
-	if calcSpread:
-		EBVcenter = np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1)
-	else:
-		EBVcenter = np.median(EBV, axis=1)
+	if method == 'spread':
+		EBVcenter = np.percentile(EBV[:,1:], 95., axis=1) - np.percentile(EBV[:,1:], 5., axis=1)
+	elif method == 'median':
+		EBVcenter = np.median(EBV[:,1:], axis=1)
 		if maxSpread != None:
-			EBVspread = np.percentile(EBV, 95., axis=1) - np.percentile(EBV, 5., axis=1)
+			EBVspread = np.percentile(EBV[:,1:], 95., axis=1) - np.percentile(EBV[:,1:], 5., axis=1)
 			idx = EBVspread > maxSpread
 			EBVcenter[idx] = np.nan
+	elif method == 'best':
+		EBVcenter = EBV[:,0]
+		if maxSpread != None:
+			EBVspread = np.percentile(EBV[:,1:], 95., axis=1) - np.percentile(EBV[:,1:], 5., axis=1)
+			idx = EBVspread > maxSpread
+			EBVcenter[idx] = np.nan
+	else:
+		raise ValueError("Unknown option: method='%s'" % method)
 	
 	return EBVcenter
 
 def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu,
                 nside=512, nest=True, model='piecewise',
-                maxSpread=None, plotSpread=False, **kwargs):
+                maxSpread=None, method='median', **kwargs):
 	# Generate rasterized image of E(B-V)
-	EBVcenter = calcEBV(muAnchor, DeltaEBV, mu, model, maxSpread, plotSpread)
+	EBVcenter = calcEBV(muAnchor, DeltaEBV, mu, model, maxSpread, method)
 	img, bounds = rasterizeMap(pixels, EBVcenter, nside, nest)
 	
 	# Configure plotting options
@@ -336,6 +345,9 @@ def main():
 	                                     help="Extinction model: 'piecewise' or 'clouds'")
 	parser.add_argument('--mask', '-msk', type=float, default=None,
 	                                      help=r'Hide parts of map where 95%% - 5%% of E(B-V) is greater than given value')
+	parser.add_argument('--method', '-mtd', type=str, default='median',
+	                                        choices=('median', 'best', 'spread'),
+	                                        help='Measure of E(B-V) to plot.')
 	parser.add_argument('--spread', '-sp', action='store_true',
 	                                       help='Plot 95%% - 5%% of E(B-V)')
 	if 'python' in sys.argv[0]:
@@ -367,10 +379,10 @@ def main():
 	EBVs = None
 	if args.model == 'piecewise':
 		EBVs = calcEBV(PiecewiseMuAnchor, PiecewiseDeltaEBV, mu[-1],
-		               args.model, args.mask, args.spread)
+		               args.model, args.mask, args.method)
 	elif args.model == 'clouds':
 		EBVs = calcEBV(CloudMuAnchor, CloudDeltaEBV, mu[-1],
-		               args.model, args.mask, args.spread)
+		               args.model, args.mask, args.method)
 		dist = np.power(10., CloudMuAnchor/5. + 1.)
 		print 'd = %.3f +- %.3f pc' % (np.mean(dist), np.std(dist))
 		print 'distance percentiles:'
@@ -405,12 +417,12 @@ def main():
 		if args.model == 'piecewise':
 			img = plotEBV(ax, pixels, PiecewiseMuAnchor, PiecewiseDeltaEBV, mu[i],
 			              nside=args.nside, nest=True, model=args.model,
-			              maxSpread=args.mask, plotSpread=args.spread,
+			              maxSpread=args.mask, method=args.method,
 			              vmin=0., vmax=EBVmax)
 		elif args.model == 'clouds':
 			img = plotEBV(ax, pixels, CloudMuAnchor, CloudDeltaEBV, mu[i],
 			              nside=args.nside, nest=True, model=args.model,
-			              maxSpread=args.mask, plotSpread=args.spread,
+			              maxSpread=args.mask, method=args.method,
 			              vmin=0., vmax=EBVmax)
 		
 		fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.9)
