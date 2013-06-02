@@ -456,7 +456,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
-		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * 0.05 * 0.05 * params.EBV_max * params.EBV_max);
+		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * 0.25 * 0.25 * params.EBV_max * params.EBV_max);
 	}
 	
 	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
@@ -724,7 +724,7 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	double EBV_ceil = params.img_stack->rect->max[1];
 	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
-		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);
+		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.5);
 		EBV_sum += logEBV[i];
 	}
 	
