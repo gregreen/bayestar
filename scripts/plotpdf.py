@@ -42,8 +42,11 @@ def los2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	
 	# Plot all paths
 	EBV_all = np.cumsum(np.exp(chain.get_samples(0)), axis=1)
-	for EBV in EBV_all:
+	for EBV in EBV_all[1:]:
 		ax.plot(mu, EBV, *args, **kwargs)
+	
+	kwargs['c'] = 'r'
+	ax.plot(mu, EBV_all[0], *args, **kwargs)
 	
 	# Plot mean path
 	#y = np.mean(EBV_all, axis=0)
@@ -84,8 +87,11 @@ def clouds2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	EBV_all[:,2:-1:2] = EBV_tmp
 	EBV_all[:,3::2] = EBV_tmp
 	#EBV_all[:,-1] = EBV_tmp[:,-1]
-	for mu,EBV in zip(mu_all, EBV_all):
+	for mu,EBV in zip(mu_all[1:], EBV_all[1:]):
 		ax.plot(mu, EBV, *args, **kwargs)
+	
+	kwargs['c'] = 'r'
+	ax.plot(mu_all[0], EBV_all[0], *args, **kwargs)
 	
 	# Plot mean path
 	#y = np.mean(EBV_all, axis=0)
