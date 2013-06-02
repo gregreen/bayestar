@@ -337,10 +337,10 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	// Burn-in
 	std::cerr << "# Burn-in ..." << std::endl;
-	sampler.step(int(N_steps*40./100.), false, 0., 0.4, 0.);
-	sampler.step(int(N_steps*10./100), false, 0., 1.0, 0., false);
-	sampler.step(int(N_steps*40./100.), false, 0., 0.4, 0.);
-	sampler.step(int(N_steps*10./100), false, 0., 0.8, 0.);
+	sampler.step(int(N_steps*35./100.), false, 0., 0.4, 0.);
+	sampler.step(int(N_steps*15./100.), false, 0., 0.8, 0., true);
+	sampler.step(int(N_steps*35./100.), false, 0., 0.4, 0.);
+	sampler.step(int(N_steps*15./100.), false, 0., 0.8, 0.);
 	//sampler.step(N_steps, false, 0., options.p_replacement, 0.);
 	//sampler.step(N_steps/2., false, 0., 1., 0.);
 	sampler.print_stats();
