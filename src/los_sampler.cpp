@@ -456,7 +456,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
-		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * 0.25 * 0.25 * params.EBV_max * params.EBV_max);
+		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * 0.15 * 0.15 * params.EBV_max * params.EBV_max);
 	}
 	
 	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
