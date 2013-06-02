@@ -148,7 +148,7 @@ class TChain:
 		self.coords = dset[:,:,1:]
 		
 		self.lnp_best = dset[0,:,0]
-		self.coords = dset[0,:,1:]
+		self.coords_best = dset[0,:,1:]
 		
 		self.lnp_max = np.max(self.lnp)
 		self.x_min = np.min(self.coords, axis=1)

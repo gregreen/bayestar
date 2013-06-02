@@ -36,6 +36,7 @@ import hdf5io
 
 def los2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	chain = hdf5io.TChain(fname, '%s/los' % group)
+	
 	mu = np.linspace(DM_lim[0], DM_lim[1], chain.get_nDim())
 	if 'alpha' not in kwargs:
 		kwargs['alpha'] = 1. / np.power(chain.get_nSamples(), 0.55)
@@ -46,6 +47,8 @@ def los2ax(ax, fname, group, DM_lim, *args, **kwargs):
 		ax.plot(mu, EBV, *args, **kwargs)
 	
 	kwargs['c'] = 'r'
+	kwargs['lw'] = 1.5
+	kwargs['alpha'] = 0.5
 	ax.plot(mu, EBV_all[0], *args, **kwargs)
 	
 	# Plot mean path
@@ -237,7 +240,7 @@ def main():
 	
 	if args.show_los:
 		try:
-			los2ax(ax, fname, group, DM_lim, 'c', alpha=0.015)
+			los2ax(ax, fname, group, DM_lim, 'c', alpha=0.05, lw=1.5)
 			for sub_ax in ax_indiv:
 				los2ax(sub_ax, fname, group, DM_lim, 'c', alpha=0.015)
 		except:
