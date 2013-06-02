@@ -36,14 +36,20 @@ import hdf5io
 
 def los2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	chain = hdf5io.TChain(fname, '%s/los' % group)
+	
 	mu = np.linspace(DM_lim[0], DM_lim[1], chain.get_nDim())
 	if 'alpha' not in kwargs:
 		kwargs['alpha'] = 1. / np.power(chain.get_nSamples(), 0.55)
 	
 	# Plot all paths
 	EBV_all = np.cumsum(np.exp(chain.get_samples(0)), axis=1)
-	for EBV in EBV_all:
+	for EBV in EBV_all[1:]:
 		ax.plot(mu, EBV, *args, **kwargs)
+	
+	kwargs['c'] = 'r'
+	kwargs['lw'] = 1.5
+	kwargs['alpha'] = 0.5
+	ax.plot(mu, EBV_all[0], *args, **kwargs)
 	
 	# Plot mean path
 	#y = np.mean(EBV_all, axis=0)
@@ -84,8 +90,11 @@ def clouds2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	EBV_all[:,2:-1:2] = EBV_tmp
 	EBV_all[:,3::2] = EBV_tmp
 	#EBV_all[:,-1] = EBV_tmp[:,-1]
-	for mu,EBV in zip(mu_all, EBV_all):
+	for mu,EBV in zip(mu_all[1:], EBV_all[1:]):
 		ax.plot(mu, EBV, *args, **kwargs)
+	
+	kwargs['c'] = 'r'
+	ax.plot(mu_all[0], EBV_all[0], *args, **kwargs)
 	
 	# Plot mean path
 	#y = np.mean(EBV_all, axis=0)
@@ -231,7 +240,7 @@ def main():
 	
 	if args.show_los:
 		try:
-			los2ax(ax, fname, group, DM_lim, 'c', alpha=0.025, lw=2.)
+			los2ax(ax, fname, group, DM_lim, 'c', alpha=0.05, lw=1.5)
 			for sub_ax in ax_indiv:
 				los2ax(sub_ax, fname, group, DM_lim, 'c', alpha=0.015)
 		except:

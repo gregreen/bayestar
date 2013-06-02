@@ -168,7 +168,8 @@ public:
 	unsigned int get_length() const;			// Return the number of unique points in the chain
 	double get_total_weight() const;			// Return the sum of the weights in the chain
 	const double* get_element(unsigned int i) const;	// Return the i-th point in the chain
-	void get_best(std::vector<double> &x) const;				// Return best point in chain
+	void get_best(std::vector<double> &x) const;		// Return best point in chain
+	unsigned int get_index_of_best() const;
 	double get_L(unsigned int i) const;			// Return the likelihood of the i-th point
 	double get_w(unsigned int i) const;			// Return the weight of the i-th point
 	unsigned int get_ndim() const;
