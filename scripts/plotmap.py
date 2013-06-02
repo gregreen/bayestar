@@ -270,17 +270,17 @@ def calcEBV(muAnchor, DeltaEBV, mu, model='piecewise',
 	
 	EBVcenter = None
 	if method == 'spread':
-		EBVcenter = np.percentile(EBV[:,1:,:], 95., axis=1) - np.percentile(EBV[:,1:,:], 5., axis=1)
+		EBVcenter = np.percentile(EBV[:,1:], 95., axis=1) - np.percentile(EBV[:,1:], 5., axis=1)
 	elif method == 'median':
-		EBVcenter = np.median(EBV, axis=1)
+		EBVcenter = np.median(EBV[:,1:], axis=1)
 		if maxSpread != None:
-			EBVspread = np.percentile(EBV[:,1:,:], 95., axis=1) - np.percentile(EBV[:,1:,:], 5., axis=1)
+			EBVspread = np.percentile(EBV[:,1:], 95., axis=1) - np.percentile(EBV[:,1:], 5., axis=1)
 			idx = EBVspread > maxSpread
 			EBVcenter[idx] = np.nan
 	elif method == 'best':
-		EBVcenter = EBV[:,0,:]
+		EBVcenter = EBV[:,0]
 		if maxSpread != None:
-			EBVspread = np.percentile(EBV[:,1:,:], 95., axis=1) - np.percentile(EBV[:,1:,:], 5., axis=1)
+			EBVspread = np.percentile(EBV[:,1:], 95., axis=1) - np.percentile(EBV[:,1:], 5., axis=1)
 			idx = EBVspread > maxSpread
 			EBVcenter[idx] = np.nan
 	else:
@@ -417,12 +417,12 @@ def main():
 		if args.model == 'piecewise':
 			img = plotEBV(ax, pixels, PiecewiseMuAnchor, PiecewiseDeltaEBV, mu[i],
 			              nside=args.nside, nest=True, model=args.model,
-			              maxSpread=args.mask, plotSpread=args.method,
+			              maxSpread=args.mask, method=args.method,
 			              vmin=0., vmax=EBVmax)
 		elif args.model == 'clouds':
 			img = plotEBV(ax, pixels, CloudMuAnchor, CloudDeltaEBV, mu[i],
 			              nside=args.nside, nest=True, model=args.model,
-			              maxSpread=args.mask, plotSpread=args.method,
+			              maxSpread=args.mask, method=args.method,
 			              vmin=0., vmax=EBVmax)
 		
 		fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.9)
