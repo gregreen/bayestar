@@ -333,14 +333,14 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 	sampler.set_scale(1.1);
-	sampler.set_replacement_bandwidth(0.50);	// TODO: Scale with number of regions
+	sampler.set_replacement_bandwidth(0.30);	// TODO: Scale with number of regions
 	
 	// Burn-in
 	std::cerr << "# Burn-in ..." << std::endl;
-	sampler.step(int(N_steps*35./100.), false, 0., 0.4, 0.);
-	sampler.step(int(N_steps*15./100.), false, 0., 0.8, 0., true);
-	sampler.step(int(N_steps*35./100.), false, 0., 0.4, 0.);
-	sampler.step(int(N_steps*15./100.), false, 0., 0.8, 0.);
+	sampler.step(int(N_steps*30./100.), false, 0., 0.4, 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., 1.0, 0., true);
+	sampler.step(int(N_steps*30./100.), false, 0., 0.4, 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., 1.0, 0.);
 	//sampler.step(N_steps, false, 0., options.p_replacement, 0.);
 	//sampler.step(N_steps/2., false, 0., 1., 0.);
 	sampler.print_stats();
@@ -450,7 +450,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		EBV_tot += EBV_tmp;
 		
 		// Prior to prevent EBV from straying high
-		//lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (10. * 10.);
+		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (5. * 5.);
 	}
 	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neg_inf_replacement; }
 	
