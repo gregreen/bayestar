@@ -214,7 +214,7 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	// Read in dataset
 	TFileData* data_buf = new TFileData[length];
 	dataset.read(data_buf, dtype);
-	std::cerr << "# Read in dimensions." << std::endl;
+	//std::cerr << "# Read in dimensions." << std::endl;
 	
 	// Fix magnitude limits
 	for(int n=0; n<nbands; n++) {

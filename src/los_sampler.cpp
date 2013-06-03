@@ -32,7 +32,7 @@
  */
 
 void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
-                                  unsigned int N_clouds, uint64_t healpix_index) {
+                                  unsigned int N_clouds, uint64_t healpix_index, int verbosity) {
 	timespec t_start, t_write, t_end;
 	clock_gettime(CLOCK_MONOTONIC, &t_start);
 	
@@ -44,11 +44,13 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	std::cout << lnp_tmp << std::endl;
 	gsl_rng_free(r);*/
 	
-	std::cout << "subpixel: " << std::endl;
-	for(size_t i=0; i<params.subpixel.size(); i++) {
-		std::cout << " " << params.subpixel[i];
+	if(verbosity >= 2) {
+		std::cout << "subpixel: " << std::endl;
+		for(size_t i=0; i<params.subpixel.size(); i++) {
+			std::cout << " " << params.subpixel[i];
+		}
+		std::cout << std::endl;
 	}
-	std::cout << std::endl;
 	
 	TNullLogger logger;
 	
@@ -65,9 +67,11 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction_clouds;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction_clouds;
 	
-	std::cerr << std::endl;
-	std::cout << "Line-of-Sight Extinction Profile" << std::endl;
-	std::cout << "====================================" << std::endl;
+	if(verbosity >= 1) {
+		std::cout << std::endl;
+		std::cout << "Discrete cloud l.o.s. model" << std::endl;
+		std::cout << "====================================" << std::endl;
+	}
 	
 	//std::cerr << "# Setting up sampler" << std::endl;
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
@@ -75,35 +79,49 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	sampler.set_replacement_bandwidth(0.25);
 	
 	// Burn-in
-	std::cerr << "# Burn-in ..." << std::endl;
+	if(verbosity >= 1) {
+		std::cout << "# Burn-in ..." << std::endl;
+	}
 	sampler.step(int(N_steps*25./100.), false, 0., 0., 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., options.p_replacement, 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.85, 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., options.p_replacement, 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.85, 0.);
-	sampler.print_stats();
+	if(verbosity >= 2) { sampler.print_stats(); }
 	sampler.clear();
 	
-	std::cerr << "# Main run ..." << std::endl;
+	// Main sampling phase
+	if(verbosity >= 1) {
+		std::cout << "# Main run ..." << std::endl;
+	}
 	bool converged = false;
 	size_t attempt;
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
 		sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
 		
-		std::cout << std::endl << "Transformed G-R Diagnostic:";
 		sampler.calc_GR_transformed(GR_transf, &transf);
-		for(unsigned int k=0; k<ndim; k++) {
-			std::cout << "  " << std::setprecision(3) << GR_transf[k];
+		
+		if(verbosity >= 2) {
+			std::cout << std::endl << "Transformed G-R Diagnostic:";
+			for(unsigned int k=0; k<ndim; k++) {
+				std::cout << "  " << std::setprecision(3) << GR_transf[k];
+			}
+			std::cout << std::endl << std::endl;
 		}
-		std::cout << std::endl << std::endl;
 		
 		converged = true;
 		for(size_t i=0; i<ndim; i++) {
 			if(GR_transf[i] > GR_threshold) {
 				converged = false;
 				if(attempt != max_attempts-1) {
-					sampler.print_stats();
-					std::cerr << "# Extending run ..." << std::endl;
+					if(verbosity >= 2) {
+						sampler.print_stats();
+					}
+					
+					if(verbosity >= 1) {
+						std::cerr << "# Extending run ..." << std::endl;
+					}
+					
 					sampler.step(int(N_steps*1./5.), false, 0., 1., 0.);
 					sampler.clear();
 					//logger.clear();
@@ -130,18 +148,20 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
 	
-	sampler.print_stats();
-	std::cout << std::endl;
+	if(verbosity >= 2) { sampler.print_stats(); }
 	
+	if(verbosity >= 1) {
+		std::cout << std::endl;
+		
+		if(!converged) {
+			std::cout << "# Failed to converge." << std::endl;
+		}
 	
-	
-	if(!converged) {
-		std::cerr << "# Failed to converge." << std::endl;
+		std::cout << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
+		std::cout << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+		std::cout << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+		std::cout << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
 	}
-	std::cerr << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
-	std::cerr << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
-	std::cerr << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
-	std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
 }
 
 void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, double *const ret, const double *const Delta_mu,
@@ -303,14 +323,31 @@ void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r,
  */
 
 void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
-                           unsigned int N_regions, uint64_t healpix_index) {
+                           unsigned int N_regions, uint64_t healpix_index, int verbosity) {
 	timespec t_start, t_write, t_end;
 	clock_gettime(CLOCK_MONOTONIC, &t_start);
 	
-	std::cout << "guess of EBV max = " << params.EBV_guess_max << std::endl;
+	if(verbosity >= 1) {
+		//std::cout << std::endl;
+		std::cout << "Piecewise-linear l.o.s. model" << std::endl;
+		std::cout << "====================================" << std::endl;
+	}
 	
+	if(verbosity >= 2) {
+		std::cout << "guess of EBV max = " << params.EBV_guess_max << std::endl;
+	}
+	
+	if(verbosity >= 1) {
+		std::cout << "# Generating Guess ..." << std::endl;
+	}
 	guess_EBV_profile(options, params, N_regions);
 	//monotonic_guess(img_stack, N_regions, params.EBV_prof_guess, options);
+	if(verbosity >= 2) {
+		for(size_t i=0; i<params.EBV_prof_guess.size(); i++) {
+			std::cout << "\t" << params.EBV_prof_guess[i] << std::endl;
+		}
+		std::cout << std::endl;
+	}
 	
 	TNullLogger logger;
 	
@@ -327,45 +364,55 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction_from_guess;
 	
-	std::cerr << std::endl;
-	std::cout << "Line-of-Sight Extinction Profile" << std::endl;
-	std::cout << "====================================" << std::endl;
-	
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.30);	// TODO: Scale with number of regions
 	
 	// Burn-in
-	std::cerr << "# Burn-in ..." << std::endl;
+	if(verbosity >= 1) {
+		std::cout << "# Burn-in ..." << std::endl;
+	}
 	sampler.step(int(N_steps*30./100.), false, 0., 0.4, 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., 1.0, 0., true);
 	sampler.step(int(N_steps*30./100.), false, 0., 0.4, 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., 1.0, 0.);
 	//sampler.step(N_steps, false, 0., options.p_replacement, 0.);
 	//sampler.step(N_steps/2., false, 0., 1., 0.);
-	sampler.print_stats();
+	if(verbosity >= 2) { sampler.print_stats(); }
 	sampler.clear();
 	
-	std::cerr << "# Main run ..." << std::endl;
+	// Main sampling phase
+	if(verbosity >= 1) {
+		std::cout << "# Main run ..." << std::endl;
+	}
 	bool converged = false;
 	size_t attempt;
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
 		sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
 		
-		std::cout << std::endl << "Transformed G-R Diagnostic:";
 		sampler.calc_GR_transformed(GR_transf, &transf);
-		for(unsigned int k=0; k<ndim; k++) {
-			std::cout << "  " << std::setprecision(3) << GR_transf[k];
+		
+		if(verbosity >= 2) {
+			std::cout << std::endl << "Transformed G-R Diagnostic:";
+			for(unsigned int k=0; k<ndim; k++) {
+				std::cout << "  " << std::setprecision(3) << GR_transf[k];
+			}
+			std::cout << std::endl << std::endl;
 		}
-		std::cout << std::endl << std::endl;
 		
 		converged = true;
 		for(size_t i=0; i<ndim; i++) {
 			if(GR_transf[i] > GR_threshold) {
 				converged = false;
 				if(attempt != max_attempts-1) {
-					sampler.print_stats();
-					std::cerr << "# Extending run ..." << std::endl;
+					if(verbosity >= 2) {
+						sampler.print_stats();
+					}
+					
+					if(verbosity >= 1) {
+						std::cout << "# Extending run ..." << std::endl;
+					}
+					
 					sampler.step(int(N_steps*1./5.), false, 0., 1., 0.);
 					sampler.clear();
 					//logger.clear();
@@ -392,16 +439,20 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
 	
-	sampler.print_stats();
-	std::cout << std::endl;
+	if(verbosity >= 2) { sampler.print_stats(); }
 	
-	if(!converged) {
-		std::cerr << "# Failed to converge." << std::endl;
+	if(verbosity >= 1) {
+		std::cout << std::endl;
+		
+		if(!converged) {
+			std::cout << "# Failed to converge." << std::endl;
+		}
+		
+		std::cout << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
+		std::cout << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+		std::cout << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+		std::cout << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
 	}
-	std::cerr << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
-	std::cerr << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
-	std::cerr << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
-	std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
 }
 
 
@@ -533,8 +584,6 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned i
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction;
 	
-	std::cout << "Generating Guess ..." << std::endl;
-	
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 	sampler.set_scale(1.05);
 	sampler.set_replacement_bandwidth(0.75);
@@ -544,15 +593,12 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned i
 	sampler.step(int(N_steps*30./100.), true, 0., 0.5, 0.);
 	sampler.step(int(N_steps*20./100), true, 0., 1., 0., true);
 	
-	sampler.print_stats();
-	std::cout << std::endl << std::endl;
+	//if(verbosity >= 2) {
+	//	sampler.print_stats();
+	//	std::cout << std::endl << std::endl;
+	//}
 	
 	sampler.get_chain().get_best(params.EBV_prof_guess);
-	for(size_t i=0; i<ndim; i++) {
-		//params.EBV_prof_guess[i] = log(params.EBV_prof_guess[i]);
-		std::cout << "\t" << params.EBV_prof_guess[i] << std::endl;
-	}
-	std::cout << std::endl;
 }
 
 
@@ -762,7 +808,7 @@ TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
 	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.), N_threads(_N_threads), line_int(NULL)
 {
 	line_int = new double[_img_stack->N_images * N_threads];
-	std::cout << "Allocated line_int[" << _img_stack->N_images * N_threads << "] (" << _img_stack->N_images << " images, " << N_threads << " threads)" << std::endl;
+	//std::cout << "Allocated line_int[" << _img_stack->N_images * N_threads << "] (" << _img_stack->N_images << " images, " << N_threads << " threads)" << std::endl;
 	p0 = _p0;
 	lnp0 = log(p0);
 	EBV_max = _EBV_max;

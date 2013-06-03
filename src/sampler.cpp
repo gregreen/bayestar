@@ -577,7 +577,7 @@ double logP_indiv_simple_emp(const double *x, unsigned int N, TMCMCParams &param
 void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                         TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                         TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                        double RV_sigma, double minEBV, const bool saveSurfs, const bool gatherSurfs) {
+                        double RV_sigma, double minEBV, const bool saveSurfs, const bool gatherSurfs, int verbosity) {
 	// Parameters must be consistent - cannot save surfaces without gathering them
 	assert(!(saveSurfs & (!gatherSurfs)));
 	
@@ -621,7 +621,10 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 	TAffineSampler<TMCMCParams, TNullLogger>::pdf_t f_pdf = &logP_indiv_simple_synth;
 	TAffineSampler<TMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_state_indiv_synth;
 	
-	std::cerr << std::endl;
+	if(verbosity >= 1) {
+		std::cout << std::endl;
+	}
+	
 	unsigned int N_nonconv = 0;
 	
 	TChainWriteBuffer chainBuffer(ndim, 100, params.N_stars);
@@ -635,8 +638,10 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_start);
 		
-		std::cout << "Star #" << n+1 << " of " << params.N_stars << std::endl;
-		std::cout << "====================================" << std::endl;
+		if(verbosity >= 2) {
+			std::cout << "Star #" << n+1 << " of " << params.N_stars << std::endl;
+			std::cout << "====================================" << std::endl;
+		}
 		
 		//std::cerr << "# Setting up sampler" << std::endl;
 		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
@@ -689,27 +694,36 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		
 		//std::cout << "Sampler stats:" << std::endl;
-		sampler.print_stats();
-		std::cout << std::endl;
+		if(verbosity >= 2) {
+			sampler.print_stats();
+			std::cout << std::endl;
+		}
 		
 		if(!converged) {
 			N_nonconv++;
-			std::cerr << "# Failed to converge." << std::endl;
+			if(verbosity >= 2) {
+				std::cout << "# Failed to converge." << std::endl;
+			}
 		}
-		std::cerr << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
-		std::cerr << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
-		std::cerr << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
-		std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
+		
+		if(verbosity >= 2) {
+			std::cout << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
+			std::cout << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+			std::cout << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+			std::cout << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
+		}
 	}
 	
 	chainBuffer.write(out_fname, group_name.str(), "stellar chains");
 	if(saveSurfs) { imgBuffer->write(out_fname, group_name.str(), "stellar pdfs"); }
 	
-	std::cerr << "====================================" << std::endl;
-	std::cerr << std::endl;
-	std::cerr << "# Failed to converge " << N_nonconv << " of " << params.N_stars << " times (" << std::setprecision(2) << 100.*(double)N_nonconv/(double)(params.N_stars) << " %)." << std::endl;
-	std::cerr << std::endl;
-	std::cerr << "====================================" << std::endl;
+	if(verbosity >= 1) {
+		std::cout << "====================================" << std::endl;
+		std::cout << std::endl;
+		std::cout << "# Failed to converge " << N_nonconv << " of " << params.N_stars << " times (" << std::setprecision(2) << 100.*(double)N_nonconv/(double)(params.N_stars) << " %)." << std::endl;
+		std::cout << std::endl;
+		std::cout << "====================================" << std::endl;
+	}
 	
 	if(imgBuffer != NULL) { delete imgBuffer; }
 	delete[] GR;
@@ -718,7 +732,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                       TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                      double RV_sigma, double minEBV, const bool saveSurfs, const bool gatherSurfs) {
+                      double RV_sigma, double minEBV, const bool saveSurfs, const bool gatherSurfs, int verbosity) {
 	// Parameters must be consistent - cannot save surfaces without gathering them
 	assert(!(saveSurfs & (!gatherSurfs)));
 	
@@ -764,7 +778,10 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	
 	timespec t_start, t_write, t_end;
 	
-	std::cerr << std::endl;
+	if(verbosity >= 1) {
+		std::cout << std::endl;
+	}
+	
 	unsigned int N_nonconv = 0;
 	
 	TChainWriteBuffer chainBuffer(ndim, 100, params.N_stars);
@@ -776,25 +793,26 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_start);
 		
-		std::cout << "Star #" << n+1 << " of " << params.N_stars << std::endl;
-		std::cout << "====================================" << std::endl;
-		
-		std::cout << "mags = ";
-		for(unsigned int i=0; i<NBANDS; i++) {
-			std::cout << std::setprecision(4) << params.data->star[n].m[i] << " ";
+		if(verbosity >= 2) {
+			std::cout << "Star #" << n+1 << " of " << params.N_stars << std::endl;
+			std::cout << "====================================" << std::endl;
+			
+			std::cout << "mags = ";
+			for(unsigned int i=0; i<NBANDS; i++) {
+				std::cout << std::setprecision(4) << params.data->star[n].m[i] << " ";
+			}
+			std::cout << std::endl;
+			std::cout << "errs = ";
+			for(unsigned int i=0; i<NBANDS; i++) {
+				std::cout << std::setprecision(3) << params.data->star[n].err[i] << " ";
+			}
+			std::cout << std::endl;
+			std::cout << "maglimit = ";
+			for(unsigned int i=0; i<NBANDS; i++) {
+				std::cout << std::setprecision(3) << params.data->star[n].maglimit[i] << " ";
+			}
+			std::cout << std::endl << std::endl;
 		}
-		std::cout << std::endl;
-		std::cout << "errs = ";
-		for(unsigned int i=0; i<NBANDS; i++) {
-			std::cout << std::setprecision(3) << params.data->star[n].err[i] << " ";
-		}
-		std::cout << std::endl;
-		std::cout << "maglimit = ";
-		for(unsigned int i=0; i<NBANDS; i++) {
-			std::cout << std::setprecision(3) << params.data->star[n].maglimit[i] << " ";
-		}
-		std::cout << std::endl << std::endl;
-		
 		
 		//std::cerr << "# Setting up sampler" << std::endl;
 		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
@@ -846,28 +864,41 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		
-		sampler.print_stats();
-		std::cout << std::endl;
+		if(verbosity >= 2) {
+			sampler.print_stats();
+			std::cout << std::endl;
+		}
 		
 		if(!converged) {
 			N_nonconv++;
-			std::cerr << "# Failed to converge." << std::endl;
+			if(verbosity >= 2) {
+				std::cout << "# Failed to converge." << std::endl;
+			}
 		}
-		std::cerr << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
-		std::cerr << "# ln Z: " << lnZ.back() << std::endl;
-		std::cerr << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
-		std::cerr << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
-		std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
+		
+		if(verbosity >= 2) {
+			std::cout << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
+			std::cout << "# ln Z: " << lnZ.back() << std::endl;
+			std::cout << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+			std::cout << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+			std::cout << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
+		}
 	}
 	
 	chainBuffer.write(out_fname, group_name.str(), "stellar chains");
 	if(saveSurfs) { imgBuffer->write(out_fname, group_name.str(), "stellar pdfs"); }
 	
-	std::cerr << "====================================" << std::endl;
-	std::cerr << std::endl;
-	std::cerr << "# Failed to converge " << N_nonconv << " of " << params.N_stars << " times (" << std::setprecision(2) << 100.*(double)N_nonconv/(double)(params.N_stars) << " %)." << std::endl;
-	std::cerr << std::endl;
-	std::cerr << "====================================" << std::endl;
+	if(verbosity >= 1) {
+		if(verbosity >= 2) {
+			std::cout << "====================================" << std::endl;
+			std::cout << std::endl;
+		}
+		std::cout << "# Failed to converge " << N_nonconv << " of " << params.N_stars << " times (" << std::setprecision(2) << 100.*(double)N_nonconv/(double)(params.N_stars) << " %)." << std::endl;
+		if(verbosity >= 2) {
+			std::cout << std::endl;
+			std::cout << "====================================" << std::endl << std::endl;
+		}
+	}
 	
 	if(imgBuffer != NULL) { delete imgBuffer; }
 	delete[] GR;
