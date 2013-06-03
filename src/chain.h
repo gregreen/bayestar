@@ -324,8 +324,10 @@ double invert_matrix(gsl_matrix* A, gsl_matrix* inv_A=NULL,
                      gsl_permutation* p=NULL, gsl_matrix* LU=NULL);
 
 // Find B s.t. B B^T = A. This is useful for generating vectors from a multivariate normal distribution.
+// Operates on A in-place if sqrt_A == NULL.
 void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A=NULL, gsl_eigen_symmv_workspace* esv=NULL,
                  gsl_vector *eival=NULL, gsl_matrix *eivec=NULL, gsl_matrix* sqrt_eival=NULL);
+void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A=NULL);
 
 // Draw a normal varariate from a covariance matrix. The square-root of the covariance (as defined in sqrt_matrix) must be provided.
 void draw_from_cov(double* x, const gsl_matrix* sqrt_cov, unsigned int N, gsl_rng* r);

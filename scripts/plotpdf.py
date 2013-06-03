@@ -248,7 +248,7 @@ def main():
 	
 	if args.show_clouds:
 		try:
-			clouds2ax(ax, fname, group, DM_lim, 'g')
+			clouds2ax(ax, fname, group, DM_lim, 'g', alpha=0.15, lw=1.5)
 			for sub_ax in ax_indiv:
 				clouds2ax(sub_ax, fname, group, DM_lim, 'g')
 		except:
