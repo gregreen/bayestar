@@ -271,6 +271,7 @@ int main(int argc, char **argv) {
 		TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
 		
 		cout << "# (l, b) = " << stellar_data.l << ", " << stellar_data.b << endl;
+		cout << "# " << stellar_data.star.size() << " stars in pixel" << endl;
 		
 		// Prepare data structures for stellar parameters
 		TImgStack img_stack(stellar_data.star.size());
