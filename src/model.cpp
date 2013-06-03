@@ -508,7 +508,7 @@ bool TStellarModel::load_lf(std::string lf_fname) {
 	log_lf_norm *= Mr1 / (double)(lf.size());
 	log_lf_norm = log(log_lf_norm);
 	
-	std::cerr << "# Loaded Phi(" << Mr0 << " <= Mr <= " <<  Mr1 << ") LF from " << lf_fname << "\n";
+	std::cout << "# Loaded Phi(" << Mr0 << " <= Mr <= " <<  Mr1 << ") LF from " << lf_fname << "\n";
 	
 	return true;
 }
@@ -589,7 +589,7 @@ bool TStellarModel::load_seds(std::string seds_fname) {
 	if(count != N_FeH*N_Mr) {
 		std::cerr << "# Incomplete SED library provided (grid is sparse, i.e. missing some values of (Mr,FeH)). This may cause problems." << std::endl;
 	}
-	std::cerr << "# Loaded " << N_FeH*N_Mr << " SEDs from " << seds_fname << std::endl;
+	std::cout << "# Loaded " << N_FeH*N_Mr << " SEDs from " << seds_fname << std::endl;
 	
 	Mr_min_seds = Mr_min;
 	Mr_max_seds = Mr_max;

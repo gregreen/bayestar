@@ -137,7 +137,7 @@ int main(int argc, char **argv) {
 	double evCut = 15.;
 	
 	unsigned int N_threads = 4;
-	bool verbose = false;
+	int verbosity = 0;
 	
 	
 	/*
@@ -181,7 +181,7 @@ int main(int argc, char **argv) {
 		
 		("threads", po::value<unsigned int>(&N_threads), "# of threads to run on (default: 4)")
 		
-		("verbose", "Enable verbose output.")
+		("verbosity", po::value<int>(&verbosity), "Level of verbosity (0 = minimal, 2 = highest)")
 	;
 	po::positional_options_description pd;
 	pd.add("input", 1).add("output", 1);
@@ -252,7 +252,7 @@ int main(int argc, char **argv) {
 	// Get list of pixels in input file
 	vector<unsigned int> healpix_index;
 	get_input_pixels(input_fname, healpix_index);
-	cerr << "# " << healpix_index.size() << " pixels in input file." << endl;
+	cout << "# " << healpix_index.size() << " pixels in input file." << endl << endl;
 	
 	// Remove the output file
 	remove(output_fname.c_str());
@@ -261,15 +261,16 @@ int main(int argc, char **argv) {
 	// Run each pixel
 	timespec t_start, t_mid, t_end;
 	double t_tot, t_star;
-	for(vector<unsigned int>::iterator it = healpix_index.begin(); it != healpix_index.end(); ++it) {
+	unsigned int pixel_list_no = 0;
+	for(vector<unsigned int>::iterator it = healpix_index.begin(); it != healpix_index.end(); ++it, pixel_list_no++) {
 		clock_gettime(CLOCK_MONOTONIC, &t_start);
 		
-		cerr << "# Healpix pixel " << *it << endl;
+		cout << "# Healpix pixel " << *it << " (" << pixel_list_no + 1 << " of " << healpix_index.size() << ")" << endl;
 		
 		TStellarData stellar_data(input_fname, *it, err_floor);
 		TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
 		
-		cerr << "# (l, b) = " << stellar_data.l << ", " << stellar_data.b << endl;
+		cout << "# (l, b) = " << stellar_data.l << ", " << stellar_data.b << endl;
 		
 		// Prepare data structures for stellar parameters
 		TImgStack img_stack(stellar_data.star.size());
@@ -278,12 +279,13 @@ int main(int argc, char **argv) {
 		
 		bool gatherSurfs = (N_regions || N_clouds || saveSurfs);
 		
+		// Sample individual stars
 		if(synthetic) {
 			sample_indiv_synth(output_fname, star_options, los_model, *synthlib, ext_model,
-			                   stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs, gatherSurfs);
+			                   stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs, gatherSurfs, verbosity);
 		} else {
 			sample_indiv_emp(output_fname, star_options, los_model, *emplib, ext_model,
-			                 stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs, gatherSurfs);
+			                 stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs, gatherSurfs, verbosity);
 		}
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);
@@ -310,11 +312,12 @@ int main(int argc, char **argv) {
 			}
 		}
 		if(gatherSurfs) { img_stack.cull(keep); }
-		cerr << "# of stars filtered: " << nFiltered << " of " << conv.size();
-		cerr << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
 		
 		// Fit line-of-sight extinction profile
 		if((nFiltered < conv.size()) && ((N_clouds != 0) || (N_regions != 0))) {
+			cout << "# of stars filtered: " << nFiltered << " of " << conv.size();
+			cout << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
+		
 			double p0 = 1.e-5;
 			double EBV_max = -1.;
 			if(SFDPrior) {
@@ -327,10 +330,10 @@ int main(int argc, char **argv) {
 			TLOSMCMCParams params(&img_stack, p0, N_threads, EBV_max);
 			if(SFDsubpixel) { params.set_subpixel_mask(subpixel); }
 			if(N_clouds != 0) {
-				sample_los_extinction_clouds(output_fname, cloud_options, params, N_clouds, *it);
+				sample_los_extinction_clouds(output_fname, cloud_options, params, N_clouds, *it, verbosity);
 			}
 			if(N_regions != 0) {
-				sample_los_extinction(output_fname, los_options, params, N_regions, *it);
+				sample_los_extinction(output_fname, los_options, params, N_regions, *it, verbosity);
 			}
 		}
 		
@@ -342,14 +345,19 @@ int main(int argc, char **argv) {
 		t_tot = (t_end.tv_sec - t_start.tv_sec) + 1.e-9 * (t_end.tv_nsec - t_start.tv_nsec);
 		t_star = (t_mid.tv_sec - t_start.tv_sec) + 1.e-9 * (t_mid.tv_nsec - t_start.tv_nsec);
 		
-		cerr << endl;
-		cerr << "===================================================" << endl;
-		cerr << "# Time elapsed for pixel: ";
-		cerr << setprecision(2) << t_tot;
-		cerr << " s (" << setprecision(2) << t_tot / (double)(stellar_data.star.size()) << " s / star)" << endl;
-		cerr << "# Percentage of time spent on l.o.s. fit: ";
-		cerr << setprecision(2) << 100. * (t_tot - t_star) / t_tot << " %" << endl;
-		cerr << "===================================================" << endl << endl;
+		if(verbosity >= 1) {
+			cout << endl;
+			cout << "===================================================" << endl;
+		}
+		cout << "# Time elapsed for pixel: ";
+		cout << setprecision(2) << t_tot;
+		cout << " s (" << setprecision(2) << t_tot / (double)(stellar_data.star.size()) << " s / star)" << endl;
+		cout << "# Percentage of time spent on l.o.s. fit: ";
+		cout << setprecision(2) << 100. * (t_tot - t_star) / t_tot << " %" << endl;
+		if(verbosity >= 1) {
+			cout << "===================================================" << endl;
+		}
+		cout << endl;
 	}
 	
 	
