@@ -115,7 +115,7 @@ def getLOSFromMultiple(fnames):
 			partial.append(getLOS(fname))
 			nPixels += len(partial[-1][0])
 		except:
-			pass
+			print 'Loading Failed.'
 	pixels = np.empty(nPixels, dtype='u4')
 	
 	tmp, nCloudSamples, nClouds = partial[0][1].shape
