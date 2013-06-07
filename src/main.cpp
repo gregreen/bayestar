@@ -123,12 +123,12 @@ int main(int argc, char **argv) {
 	double minEBV = 0.;
 	
 	unsigned int N_regions = 20;
-	unsigned int los_steps = 120;
+	unsigned int los_steps = 500;
 	unsigned int los_samplers = 20;
 	double los_p_replacement = 0.2;
 	
 	unsigned int N_clouds = 1;
-	unsigned int cloud_steps = 100;
+	unsigned int cloud_steps = 200;
 	unsigned int cloud_samplers = 80;
 	double cloud_p_replacement = 0.2;
 	

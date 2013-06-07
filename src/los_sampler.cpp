@@ -366,7 +366,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 	sampler.set_scale(1.1);
-	sampler.set_replacement_bandwidth(0.30);	// TODO: Scale with number of regions
+	sampler.set_replacement_bandwidth(0.75);	// TODO: Scale with number of regions
 	
 	// Burn-in
 	if(verbosity >= 1) {
@@ -512,7 +512,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	
 	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
 	const double bias = -5.;
-	const double sigma = 10.;
+	const double sigma = 5.;
 	for(size_t i=0; i<N; i++) {
 		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
 	}
@@ -743,7 +743,7 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 	
 	std::cout << "Stepping" << std::endl;
 	sampler.step(int(N_steps*40./100.), true, 0., 0.5, 0.);
-	sampler.step(int(N_steps*10./100), true, 0., 1., 0.);
+	sampler.step(int(N_steps*10./100), true, 0., 1., 0., true);
 	sampler.step(int(N_steps*40./100.), true, 0., 0.5, 0.);
 	sampler.step(int(N_steps*10./100), true, 0., 1., 0., true);
 	
@@ -770,7 +770,7 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	double EBV_ceil = params.img_stack->rect->max[1];
 	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
-		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.5);
+		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);
 		EBV_sum += logEBV[i];
 	}
 	
@@ -778,9 +778,9 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	int n_switches = gsl_rng_uniform_int(r, 3);
 	size_t k;
 	double tmp_log_EBV;
-	int max_dist = std::min((int)(N-1)/2, 5);
+	//int max_dist = std::min((int)(N-1)/2, 5);
 	for(int i=0; i<n_switches; i++) {
-		int dist = gsl_rng_uniform_int(r, max_dist+1);
+		int dist = 1; //gsl_rng_uniform_int(r, max_dist+1);
 		k = gsl_rng_uniform_int(r, N-dist);
 		tmp_log_EBV = logEBV[k];
 		logEBV[k] = logEBV[k+dist];
