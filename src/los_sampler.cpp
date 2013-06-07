@@ -365,19 +365,34 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction_from_guess;
 	
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
-	sampler.set_scale(1.1);
-	sampler.set_replacement_bandwidth(0.75);	// TODO: Scale with number of regions
 	
 	// Burn-in
 	if(verbosity >= 1) {
 		std::cout << "# Burn-in ..." << std::endl;
 	}
+	
+	
+	sampler.step_MH(int(N_steps*20./100.), false);
+	
+	sampler.print_stats();
+	
+	sampler.set_scale(1.1);
+	sampler.set_replacement_bandwidth(0.15);
+	sampler.step(int(N_steps*20./100.), false, 0., 0.4, 0.);
+	sampler.step(int(N_steps*10./100.), false, 0., 1.0, 0., true);
+	sampler.set_replacement_bandwidth(0.25);
+	sampler.step(int(N_steps*20./100.), false, 0., 1.0, 0., false);
+	
+	sampler.print_stats();
+	
+	sampler.set_replacement_bandwidth(0.35);	// TODO: Scale with number of regions
+	sampler.set_scale(1.1);
+	
 	sampler.step(int(N_steps*30./100.), false, 0., 0.4, 0.);
-	sampler.step(int(N_steps*20./100.), false, 0., 1.0, 0., true);
-	sampler.step(int(N_steps*30./100.), false, 0., 0.4, 0.);
-	sampler.step(int(N_steps*20./100.), false, 0., 1.0, 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., 0.8, 0.);
 	//sampler.step(N_steps, false, 0., options.p_replacement, 0.);
 	//sampler.step(N_steps/2., false, 0., 1., 0.);
+	
 	if(verbosity >= 2) { sampler.print_stats(); }
 	sampler.clear();
 	
