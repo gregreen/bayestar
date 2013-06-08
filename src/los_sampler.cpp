@@ -367,43 +367,39 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 	
 	// Burn-in
-	if(verbosity >= 1) {
-		std::cout << "# Burn-in ..." << std::endl;
-	}
-	
-	
-	sampler.step_MH(int(N_steps*20./100.), false);
-	
-	sampler.print_stats();
+	if(verbosity >= 1) { std::cout << "# Burn-in ..." << std::endl; }
 	
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.15);
+	sampler.set_MH_bandwidth(0.25);
+	
+	sampler.step_MH(int(N_steps*20./100.), false);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.4, 0.);
 	sampler.step(int(N_steps*10./100.), false, 0., 1.0, 0., true);
+	
 	sampler.set_replacement_bandwidth(0.25);
+	
 	sampler.step(int(N_steps*20./100.), false, 0., 1.0, 0., false);
+	sampler.step_MH(int(N_steps*20./100.), false);
 	
-	sampler.print_stats();
-	
-	sampler.set_replacement_bandwidth(0.35);	// TODO: Scale with number of regions
 	sampler.set_scale(1.1);
+	sampler.set_replacement_bandwidth(0.35);	// TODO: Scale with number of regions
+	sampler.set_MH_bandwidth(0.15);
 	
 	sampler.step(int(N_steps*30./100.), false, 0., 0.4, 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.8, 0.);
-	//sampler.step(N_steps, false, 0., options.p_replacement, 0.);
-	//sampler.step(N_steps/2., false, 0., 1., 0.);
+	sampler.step_MH(int(N_steps*10./100.), false);
 	
 	if(verbosity >= 2) { sampler.print_stats(); }
 	sampler.clear();
 	
 	// Main sampling phase
-	if(verbosity >= 1) {
-		std::cout << "# Main run ..." << std::endl;
-	}
+	if(verbosity >= 1) { std::cout << "# Main run ..." << std::endl; }
 	bool converged = false;
 	size_t attempt;
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
 		sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
+		//sampler.step_MH((1<<attempt)*N_steps, true);
 		
 		sampler.calc_GR_transformed(GR_transf, &transf);
 		
@@ -603,10 +599,13 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned i
 	sampler.set_scale(1.05);
 	sampler.set_replacement_bandwidth(0.75);
 	
+	sampler.step_MH(int(N_steps*10./100.), false);
 	sampler.step(int(N_steps*30./100.), true, 0., 0.5, 0.);
 	sampler.step(int(N_steps*20./100), true, 0., 1., 0., true);
+	sampler.step_MH(int(N_steps*10./100.), true);
 	sampler.step(int(N_steps*30./100.), true, 0., 0.5, 0.);
 	sampler.step(int(N_steps*20./100), true, 0., 1., 0., true);
+	sampler.step_MH(int(N_steps*10./100.), false);
 	
 	//if(verbosity >= 2) {
 	//	sampler.print_stats();
