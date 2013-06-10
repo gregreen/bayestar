@@ -477,34 +477,38 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 	unsigned int N_samples = img_stack.rect->N_bins[1] / N_regions;
 	int y_max = img_stack.rect->N_bins[0];
 	
-	int x = 0;
-	double y = exp(logEBV[0]) / img_stack.rect->dx[0];
+	int x_start = 0;
+	int x;
+	double y_start = exp(logEBV[0]) / img_stack.rect->dx[0];
 	double y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
-	double y_ceil, y_floor, dy, y_scaled;
+	double y_ceil, y_floor, y, dy, y_scaled;
 	int y_floor_int, y_ceil_int;
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
 	
 	for(int i=1; i<N_regions+1; i++) {
 		dy = (double)(exp(logEBV[i])) / (double)(N_samples) / img_stack.rect->dx[0];
-		//std::cout << "(" << x << ", " << y << ", " << tmp << ") ";
-		for(int j=0; j<N_samples; j++, x++, y+=dy) {
-			for(int k=0; k<img_stack.N_images; k++) {
+		
+		for(int k=0; k<img_stack.N_images; k++) {
+			y = y_start;
+			x = x_start;
+			
+			for(int j=0; j<N_samples; j++, x++, y+=dy) {
 				y_scaled = y_0 + y * subpixel[k];
 				y_floor = floor(y_scaled);
 				y_ceil = y_floor + 1.;
 				y_floor_int = (int)y_floor;
 				y_ceil_int = y_floor + 1;
 				
-				if( (y_floor_int >= 0) && (y_ceil_int < y_max) ) {
-					ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(y_floor_int, x)
-					           + (y_scaled - y_floor) * img_stack.img[k]->at<double>(y_ceil_int, x);
-				}
+				if((y_floor_int < 0) || (y_ceil_int >= y_max)) { break; }
+				
+				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(y_floor_int, x)
+				           + (y_scaled - y_floor) * img_stack.img[k]->at<double>(y_ceil_int, x);
 			}
 		}
 		
-		//if((int)y_ceil >= y_max) { break; }
-		//if((int)y_floor < 0) { break; }
+		y_start += (double)N_samples * dy;
+		x_start += N_samples;
 	}
 }
 
