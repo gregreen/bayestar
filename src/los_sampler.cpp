@@ -201,8 +201,8 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 			y_ceil = y_floor + 1.;
 			y_floor_int = (int)y_floor;
 			y_ceil_int = (int)y_ceil;
-			if(y_ceil_int >= y_max) { break; }
-			if(y_floor_int < 0) { break; }
+			//if(y_ceil_int >= y_max) { break; }
+			//if(y_floor_int < 0) { break; }
 			
 			for(x = x_start; x<x_next; x++) {
 				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(y_floor_int, x)
@@ -228,7 +228,10 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	
 	// Don't consider clouds outside of the domain under consideration
 	if(Delta_mu[0] < params.img_stack->rect->min[1]) { return neg_inf_replacement; }
-	if(mu_tot > params.img_stack->rect->max[1]) { return neg_inf_replacement; }
+	//if(mu_tot >= params.img_stack->rect->max[1]) { return neg_inf_replacement; }
+	int mu_tot_idx = ceil((mu_tot * params.subpixel_max - params.img_stack->rect->min[1]) / params.img_stack->rect->dx[1]);
+	if(mu_tot_idx + 1 >= params.img_stack->rect->N_bins[1]) { return neg_inf_replacement; }
+	
 	
 	double EBV_tot = 0.;
 	double tmp;
@@ -241,7 +244,9 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	}
 	
 	// Extinction must not exceed maximum value
-	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neg_inf_replacement; }
+	//if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[0]) { return neg_inf_replacement; }
+	int EBV_tot_idx = ceil((EBV_tot * params.subpixel_max - params.img_stack->rect->min[0]) / params.img_stack->rect->dx[0]);
+	if(EBV_tot_idx + 1 >= params.img_stack->rect->N_bins[0]) { return neg_inf_replacement; }
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
@@ -500,7 +505,7 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 				y_floor_int = (int)y_floor;
 				y_ceil_int = y_floor + 1;
 				
-				if((y_floor_int < 0) || (y_ceil_int >= y_max)) { break; }
+				//if((y_floor_int < 0) || (y_ceil_int >= y_max)) { break; }
 				
 				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(y_floor_int, x)
 				           + (y_scaled - y_floor) * img_stack.img[k]->at<double>(y_ceil_int, x);
@@ -525,7 +530,9 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		// Prior to prevent EBV from straying high
 		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (5. * 5.);
 	}
-	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neg_inf_replacement; }
+	//if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[0]) { return neg_inf_replacement; }
+	int EBV_tot_idx = ceil((EBV_tot * params.subpixel_max - params.img_stack->rect->min[0]) / params.img_stack->rect->dx[0]);
+	if(EBV_tot_idx + 1 >= params.img_stack->rect->N_bins[0]) { return neg_inf_replacement; }
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
