@@ -220,9 +220,9 @@ class TProbSurf:
 		self.nImages = dset.shape[0]
 		self.nPix = dset.shape[1:]
 		
-		self.x_min = dset.attrs['min']
-		self.x_max = dset.attrs['max']
-		self.p = dset[:,:,:]
+		self.x_min = dset.attrs['min'][::-1]
+		self.x_max = dset.attrs['max'][::-1]
+		self.p = np.swapaxes(dset[:,:,:], 1, 2)
 		
 		self.p_max = np.max(np.max(self.p, axis=2), axis=1)
 	
