@@ -173,6 +173,7 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 	double y = 0.;
 	int y_max = img_stack.rect->N_bins[0];
 	double y_ceil, y_floor, dy, y_scaled;
+	int y_ceil_int, y_floor_int;
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
 	
@@ -198,12 +199,14 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 			y_scaled = y_0 + y*subpixel[k];
 			y_floor = floor(y_scaled);
 			y_ceil = y_floor + 1.;
-			if((int)y_ceil >= y_max) { break; }
-			if((int)y_floor < 0) { break; }
+			y_floor_int = (int)y_floor;
+			y_ceil_int = (int)y_ceil;
+			if(y_ceil_int >= y_max) { break; }
+			if(y_floor_int < 0) { break; }
 			
 			for(x = x_start; x<x_next; x++) {
-				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>((int)y_floor, x)
-				          + (y_scaled - y_floor) * img_stack.img[k]->at<double>((int)y_ceil, x);
+				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(y_floor_int, x)
+				          + (y_scaled - y_floor) * img_stack.img[k]->at<double>(y_ceil_int, x);
 			}
 		}
 	}
@@ -478,6 +481,7 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 	double y = exp(logEBV[0]) / img_stack.rect->dx[0];
 	double y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
 	double y_ceil, y_floor, dy, y_scaled;
+	int y_floor_int, y_ceil_int;
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
 	
@@ -489,9 +493,12 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 				y_scaled = y_0 + y * subpixel[k];
 				y_floor = floor(y_scaled);
 				y_ceil = y_floor + 1.;
-				if( ((int)y_floor >= 0) && ((int)y_ceil < y_max) ) {
-					ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>((int)y_floor, x)
-					           + (y_scaled - y_floor) * img_stack.img[k]->at<double>((int)y_ceil, x);
+				y_floor_int = (int)y_floor;
+				y_ceil_int = y_floor + 1;
+				
+				if( (y_floor_int >= 0) && (y_ceil_int < y_max) ) {
+					ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(y_floor_int, x)
+					           + (y_scaled - y_floor) * img_stack.img[k]->at<double>(y_ceil_int, x);
 				}
 			}
 		}
