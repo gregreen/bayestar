@@ -233,6 +233,9 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	if(mu_tot_idx + 1 >= params.img_stack->rect->N_bins[1]) { return neg_inf_replacement; }
 	
 	
+	const double bias = -5.;
+	const double sigma = 10.;
+	
 	double EBV_tot = 0.;
 	double tmp;
 	for(size_t i=0; i<N_clouds; i++) {
@@ -241,6 +244,9 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 		
 		// Prior to prevent EBV from straying high
 		lnp -= 0.5 * tmp * tmp / (2. * 2.);
+		
+		// Wide Gaussian prior on Delta_EBV to prevent fit from straying drastically
+		lnp -= (logDelta_EBV[i] - bias) * (logDelta_EBV[i] - bias) / (2. * sigma * sigma);
 	}
 	
 	// Extinction must not exceed maximum value
@@ -251,13 +257,6 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
 		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * 0.20 * 0.20 * params.EBV_max * params.EBV_max);
-	}
-	
-	// Wide Gaussian prior on Delta_EBV to prevent fit from straying drastically
-	const double bias = -5.;
-	const double sigma = 10.;
-	for(size_t i=0; i<N_clouds; i++) {
-		lnp -= (logDelta_EBV[i] - bias) * (logDelta_EBV[i] - bias) / (2. * sigma * sigma);
 	}
 	
 	// Repulsive force to keep clouds from collapsing into one
@@ -384,14 +383,14 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	sampler.step(int(N_steps*1./15.), false, 0., 1.0, 0., true);
 	
 	sampler.set_replacement_bandwidth(0.25);
-	sampler.set_MH_bandwidth(0.15);
+	sampler.set_MH_bandwidth(0.20);
 	
 	sampler.step(int(N_steps*2./15.), false, 0., 1.0, 0., false);
 	sampler.step_MH(int(N_steps*3./15.), false);
 	
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.35);	// TODO: Scale with number of regions
-	sampler.set_MH_bandwidth(0.15);
+	sampler.set_MH_bandwidth(0.20);
 	
 	sampler.step(int(N_steps*3./15.), false, 0., 0.4, 0.);
 	sampler.step(int(N_steps*2./15.), false, 0., 0.8, 0.);
@@ -519,7 +518,9 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCParams& params) {
 	double lnp = 0.;
 	
-	// Extinction must not exceed maximum value
+	const double bias = -5.;
+	const double sigma = 5.;
+	
 	double EBV_tot = 0.;
 	double EBV_tmp;
 	for(size_t i=0; i<N; i++) {
@@ -527,8 +528,13 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		EBV_tot += EBV_tmp;
 		
 		// Prior to prevent EBV from straying high
-		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (5. * 5.);
+		//lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (5. * 5.);
+		
+		// Wide Gaussian prior on logEBV to prevent fit from straying drastically
+		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
+	
 	}
+	// Extinction must not exceed maximum value
 	//if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[0]) { return neg_inf_replacement; }
 	int EBV_tot_idx = ceil((EBV_tot * params.subpixel_max - params.img_stack->rect->min[0]) / params.img_stack->rect->dx[0]);
 	if(EBV_tot_idx + 1 >= params.img_stack->rect->N_bins[0]) { return neg_inf_replacement; }
@@ -536,13 +542,6 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
 		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * 0.20 * 0.20 * params.EBV_max * params.EBV_max);
-	}
-	
-	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
-	const double bias = -5.;
-	const double sigma = 5.;
-	for(size_t i=0; i<N; i++) {
-		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
 	}
 	
 	// Compute line integrals through probability surfaces
