@@ -240,7 +240,7 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 		EBV_tot += tmp;
 		
 		// Prior to prevent EBV from straying high
-		lnp -= 0.5 * tmp * tmp / (5. * 5.);
+		lnp -= 0.5 * tmp * tmp / (2. * 2.);
 	}
 	
 	// Extinction must not exceed maximum value
@@ -258,8 +258,6 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	const double sigma = 10.;
 	for(size_t i=0; i<N_clouds; i++) {
 		lnp -= (logDelta_EBV[i] - bias) * (logDelta_EBV[i] - bias) / (2. * sigma * sigma);
-		
-		//lnp -= Delta_mu[i] * Delta_mu[i] / (0.5 * 5. * 5.);
 	}
 	
 	// Repulsive force to keep clouds from collapsing into one
