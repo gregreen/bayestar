@@ -250,7 +250,7 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
-		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * 0.25 * 0.25 * params.EBV_max * params.EBV_max);
+		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * 0.20 * 0.20 * params.EBV_max * params.EBV_max);
 	}
 	
 	// Wide Gaussian prior on Delta_EBV to prevent fit from straying drastically
@@ -332,10 +332,6 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
                            unsigned int N_regions, uint64_t healpix_index, int verbosity) {
 	timespec t_start, t_write, t_end;
 	clock_gettime(CLOCK_MONOTONIC, &t_start);
-	
-	std::cout << std::endl;
-	std::cout << "Using prior that maximum E(B-V) = " << params.EBV_max << std::endl;
-	std::cout << std::endl;
 	
 	if(verbosity >= 1) {
 		//std::cout << std::endl;
@@ -538,7 +534,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
-		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * 0.15 * 0.15 * params.EBV_max * params.EBV_max);
+		lnp -= (EBV_tot - params.EBV_max) * (EBV_tot - params.EBV_max) / (2. * 0.20 * 0.20 * params.EBV_max * params.EBV_max);
 	}
 	
 	// Wide Gaussian prior on logEBV to prevent fit from straying drastically
