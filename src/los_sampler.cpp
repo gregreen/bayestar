@@ -167,30 +167,31 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, double *const ret, const double *const Delta_mu,
                          const double *const logDelta_EBV, unsigned int N_clouds) {
 	int x = 0;
-	int x_next = ceil((Delta_mu[0] - img_stack.rect->min[0]) / img_stack.rect->dx[0]);
+	int x_next = ceil((Delta_mu[0] - img_stack.rect->min[1]) / img_stack.rect->dx[1]);
 	
-	double y_0 = -img_stack.rect->min[1] / img_stack.rect->dx[1];
+	double y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
 	double y = 0.;
-	int y_max = img_stack.rect->N_bins[1];
+	int y_max = img_stack.rect->N_bins[0];
 	double y_ceil, y_floor, dy, y_scaled;
+	int y_ceil_int, y_floor_int;
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
 	
 	for(int i=0; i<N_clouds+1; i++) {
 		if(i == N_clouds) {
-			x_next = img_stack.rect->N_bins[0];
+			x_next = img_stack.rect->N_bins[1];
 		} else if(i != 0) {
-			x_next += ceil(Delta_mu[i] / img_stack.rect->dx[0]);
+			x_next += ceil(Delta_mu[i] / img_stack.rect->dx[1]);
 		}
 		
-		if(x_next > img_stack.rect->N_bins[0]) {
-			x_next = img_stack.rect->N_bins[0];
+		if(x_next > img_stack.rect->N_bins[1]) {
+			x_next = img_stack.rect->N_bins[1];
 		} else if(x_next < 0) {
 			x_next = 0;
 		}
 		
 		if(i != 0) {
-			y += exp(logDelta_EBV[i-1]) / img_stack.rect->dx[1];
+			y += exp(logDelta_EBV[i-1]) / img_stack.rect->dx[0];
 		}
 		
 		int x_start = x;
@@ -198,12 +199,14 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 			y_scaled = y_0 + y*subpixel[k];
 			y_floor = floor(y_scaled);
 			y_ceil = y_floor + 1.;
-			if((int)y_ceil >= y_max) { break; }
-			if((int)y_floor < 0) { break; }
+			y_floor_int = (int)y_floor;
+			y_ceil_int = (int)y_ceil;
+			//if(y_ceil_int >= y_max) { break; }
+			//if(y_floor_int < 0) { break; }
 			
 			for(x = x_start; x<x_next; x++) {
-				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(x, (int)y_floor)
-				          + (y_scaled - y_floor) * img_stack.img[k]->at<double>(x, (int)y_ceil);
+				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(y_floor_int, x)
+				          + (y_scaled - y_floor) * img_stack.img[k]->at<double>(y_ceil_int, x);
 			}
 		}
 	}
@@ -224,8 +227,11 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	}
 	
 	// Don't consider clouds outside of the domain under consideration
-	if(Delta_mu[0] < params.img_stack->rect->min[0]) { return neg_inf_replacement; }
-	if(mu_tot > params.img_stack->rect->max[0]) { return neg_inf_replacement; }
+	if(Delta_mu[0] < params.img_stack->rect->min[1]) { return neg_inf_replacement; }
+	//if(mu_tot >= params.img_stack->rect->max[1]) { return neg_inf_replacement; }
+	int mu_tot_idx = ceil((mu_tot * params.subpixel_max - params.img_stack->rect->min[1]) / params.img_stack->rect->dx[1]);
+	if(mu_tot_idx + 1 >= params.img_stack->rect->N_bins[1]) { return neg_inf_replacement; }
+	
 	
 	double EBV_tot = 0.;
 	double tmp;
@@ -234,11 +240,13 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 		EBV_tot += tmp;
 		
 		// Prior to prevent EBV from straying high
-		lnp -= 0.5 * tmp * tmp / (5. * 5.);
+		lnp -= 0.5 * tmp * tmp / (2. * 2.);
 	}
 	
 	// Extinction must not exceed maximum value
-	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neg_inf_replacement; }
+	//if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[0]) { return neg_inf_replacement; }
+	int EBV_tot_idx = ceil((EBV_tot * params.subpixel_max - params.img_stack->rect->min[0]) / params.img_stack->rect->dx[0]);
+	if(EBV_tot_idx + 1 >= params.img_stack->rect->N_bins[0]) { return neg_inf_replacement; }
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
@@ -250,8 +258,6 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	const double sigma = 10.;
 	for(size_t i=0; i<N_clouds; i++) {
 		lnp -= (logDelta_EBV[i] - bias) * (logDelta_EBV[i] - bias) / (2. * sigma * sigma);
-		
-		//lnp -= Delta_mu[i] * Delta_mu[i] / (0.5 * 5. * 5.);
 	}
 	
 	// Repulsive force to keep clouds from collapsing into one
@@ -276,9 +282,9 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 }
 
 void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
-	double mu_floor = params.img_stack->rect->min[0];
-	double mu_ceil = params.img_stack->rect->max[0];
-	double EBV_ceil = params.img_stack->rect->max[1] / params.subpixel_max;
+	double mu_floor = params.img_stack->rect->min[1];
+	double mu_ceil = params.img_stack->rect->max[1];
+	double EBV_ceil = params.img_stack->rect->max[0] / params.subpixel_max;
 	unsigned int N_clouds = N / 2;
 	
 	double logEBV_mean = log(1.5 * params.EBV_guess_max / params.subpixel_max / (double)N_clouds);
@@ -469,35 +475,43 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 
 void los_integral(TImgStack &img_stack, const double *const subpixel, double *const ret,
                                         const double *const logEBV, unsigned int N_regions) {
-	assert(img_stack.rect->N_bins[0] % N_regions == 0);
+	assert(img_stack.rect->N_bins[1] % N_regions == 0);
 	
-	unsigned int N_samples = img_stack.rect->N_bins[0] / N_regions;
-	int y_max = img_stack.rect->N_bins[1];
+	unsigned int N_samples = img_stack.rect->N_bins[1] / N_regions;
+	int y_max = img_stack.rect->N_bins[0];
 	
-	int x = 0;
-	double y = exp(logEBV[0]) / img_stack.rect->dx[1];
-	double y_0 = -img_stack.rect->min[1] / img_stack.rect->dx[1];
-	double y_ceil, y_floor, dy, y_scaled;
+	int x_start = 0;
+	int x;
+	double y_start = exp(logEBV[0]) / img_stack.rect->dx[0];
+	double y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
+	double y_ceil, y_floor, y, dy, y_scaled;
+	int y_floor_int, y_ceil_int;
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
 	
 	for(int i=1; i<N_regions+1; i++) {
-		dy = (double)(exp(logEBV[i])) / (double)(N_samples) / img_stack.rect->dx[1];
-		//std::cout << "(" << x << ", " << y << ", " << tmp << ") ";
-		for(int j=0; j<N_samples; j++, x++, y+=dy) {
-			for(int k=0; k<img_stack.N_images; k++) {
+		dy = (double)(exp(logEBV[i])) / (double)(N_samples) / img_stack.rect->dx[0];
+		
+		for(int k=0; k<img_stack.N_images; k++) {
+			y = y_start;
+			x = x_start;
+			
+			for(int j=0; j<N_samples; j++, x++, y+=dy) {
 				y_scaled = y_0 + y * subpixel[k];
 				y_floor = floor(y_scaled);
 				y_ceil = y_floor + 1.;
-				if( ((int)y_floor >= 0) && ((int)y_ceil < y_max) ) {
-					ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(x, (int)y_floor)
-					           + (y_scaled - y_floor) * img_stack.img[k]->at<double>(x, (int)y_ceil);
-				}
+				y_floor_int = (int)y_floor;
+				y_ceil_int = y_floor + 1;
+				
+				//if((y_floor_int < 0) || (y_ceil_int >= y_max)) { break; }
+				
+				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(y_floor_int, x)
+				           + (y_scaled - y_floor) * img_stack.img[k]->at<double>(y_ceil_int, x);
 			}
 		}
 		
-		//if((int)y_ceil >= y_max) { break; }
-		//if((int)y_floor < 0) { break; }
+		y_start += (double)N_samples * dy;
+		x_start += N_samples;
 	}
 }
 
@@ -514,7 +528,9 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		// Prior to prevent EBV from straying high
 		lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (5. * 5.);
 	}
-	if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[1]) { return neg_inf_replacement; }
+	//if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[0]) { return neg_inf_replacement; }
+	int EBV_tot_idx = ceil((EBV_tot * params.subpixel_max - params.img_stack->rect->min[0]) / params.img_stack->rect->dx[0]);
+	if(EBV_tot_idx + 1 >= params.img_stack->rect->N_bins[0]) { return neg_inf_replacement; }
 	
 	// Prior on total extinction
 	if((params.EBV_max > 0.) && (EBV_tot > params.EBV_max)) {
@@ -544,7 +560,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 }
 
 void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
-	double EBV_ceil = params.img_stack->rect->max[1] / params.subpixel_max;
+	double EBV_ceil = params.img_stack->rect->max[0] / params.subpixel_max;
 	double mu = log(1.5 * params.EBV_guess_max / params.subpixel_max / (double)N);
 	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
@@ -569,18 +585,18 @@ double guess_EBV_max(TImgStack &img_stack) {
 	img_stack.stack(stack);
 	
 	// Sum across each EBV
-	cv::reduce(stack, row_avg, 0, CV_REDUCE_AVG);
-	double max_sum = *std::max_element(row_avg.begin<double>(), row_avg.end<double>());
+	cv::reduce(stack, col_avg, 1, CV_REDUCE_AVG);
+	double max_sum = *std::max_element(col_avg.begin<double>(), col_avg.end<double>());
 	int max = 1;
-	for(int i = row_avg.cols - 1; i > 0; i--) {
-		if(row_avg.at<double>(0, i) > 0.001 * max_sum) {
+	for(int i = col_avg.rows - 1; i > 0; i--) {
+		if(col_avg.at<double>(i, 0) > 0.001 * max_sum) {
 			max = i;
 			break;
 		}
 	}
 	
 	// Convert bin index to E(B-V)
-	return max * img_stack.rect->dx[1] + img_stack.rect->min[1];
+	return max * img_stack.rect->dx[0] + img_stack.rect->min[0];
 }
 
 void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned int N_regions) {
@@ -678,24 +694,24 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 	
 	std::cout << "calculating weighted mean at each distance" << std::endl;
 	// Weighted mean of each distance
-	double * dist_y_sum = new double[stack.rows];
-	double * dist_y2_sum = new double[stack.rows];
-	double * dist_sum = new double[stack.rows];
-	for(int k = 0; k < stack.rows; k++) {
+	double * dist_y_sum = new double[stack.cols];
+	double * dist_y2_sum = new double[stack.cols];
+	double * dist_sum = new double[stack.cols];
+	for(int k = 0; k < stack.cols; k++) {
 		dist_y_sum[k] = 0.;
 		dist_y2_sum[k] = 0.;
 		dist_sum[k] = 0.;
 	}
 	double y = 0.5;
-	for(int j = 0; j < stack.cols; j++, y += 1.) {
-		for(int k = 0; k < stack.rows; k++) {
-			dist_y_sum[k] += y * stack.at<double>(k,j);
-			dist_y2_sum[k] += y*y * stack.at<double>(k,j);
-			dist_sum[k] += stack.at<double>(k,j);
+	for(int j = 0; j < stack.rows; j++, y += 1.) {
+		for(int k = 0; k < stack.cols; k++) {
+			dist_y_sum[k] += y * stack.at<double>(j,k);
+			dist_y2_sum[k] += y*y * stack.at<double>(j,k);
+			dist_sum[k] += stack.at<double>(j,k);
 		}
 	}
 	
-	for(int k = 0; k < stack.rows; k++) {
+	for(int k = 0; k < stack.cols; k++) {
 		std::cout << k << "\t" << dist_y_sum[k]/dist_sum[k] << "\t" << sqrt(dist_y2_sum[k]/dist_sum[k]) << "\t" << dist_sum[k] << std::endl;
 	}
 	
@@ -706,11 +722,11 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 	std::vector<double> w_sum(N_regions+1, 0.);
 	int kStart = 0;
 	int kEnd;
-	double width = (double)(stack.rows) / (double)(N_regions);
+	double width = (double)(stack.cols) / (double)(N_regions);
 	for(int n = 0; n < N_regions+1; n++) {
 		std::cout << "n = " << n << std::endl;
 		if(n == N_regions) {
-			kEnd = stack.rows;
+			kEnd = stack.cols;
 		} else {
 			kEnd = ceil(((double)n + 0.5) * width);
 		}
@@ -732,8 +748,8 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 	std::vector<double> sigma_EBV(N_regions+1, 0.);
 	for(int i=0; i<N_regions+1; i++) { Delta_EBV[i] = 0; }
 	for(int n = 0; n < N_regions+1; n++) {
-		Delta_EBV[n] = img_stack.rect->min[1] + img_stack.rect->dx[1] * y_sum[n] / w_sum[n];
-		sigma_EBV[n] = img_stack.rect->dx[1] * sqrt( (y2_sum[n] - (y_sum[n] * y_sum[n] / w_sum[n])) / w_sum[n] );
+		Delta_EBV[n] = img_stack.rect->min[0] + img_stack.rect->dx[1] * y_sum[n] / w_sum[n];
+		sigma_EBV[n] = img_stack.rect->dx[0] * sqrt( (y2_sum[n] - (y_sum[n] * y_sum[n] / w_sum[n])) / w_sum[n] );
 		std::cout << n << "\t" << Delta_EBV[n] << "\t+-" << sigma_EBV[n] << std::endl;
 	}
 	
@@ -744,7 +760,7 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 	unsigned int ndim = N_regions + 1;
 	
 	std::cout << "Setting up params" << std::endl;
-	TEBVGuessParams params(Delta_EBV, sigma_EBV, w_sum, img_stack.rect->max[1]);
+	TEBVGuessParams params(Delta_EBV, sigma_EBV, w_sum, img_stack.rect->max[0]);
 	TNullLogger logger;
 	
 	TAffineSampler<TEBVGuessParams, TNullLogger>::pdf_t f_pdf = &lnp_monotonic_guess;
@@ -781,7 +797,7 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 
 void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
 	assert(params.EBV_prof_guess.size() == N);
-	double EBV_ceil = params.img_stack->rect->max[1];
+	double EBV_ceil = params.img_stack->rect->max[0];
 	double EBV_sum = 0.;
 	for(size_t i=0; i<N; i++) {
 		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);

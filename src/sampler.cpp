@@ -592,9 +592,9 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		params.RV_variance = RV_sigma*RV_sigma;
 	}
 	
-	double min[2] = {DM_min, 0.};
-	double max[2] = {DM_max, 5.};
-	unsigned int N_bins[2] = {120, 500};
+	double min[2] = {0., DM_min};
+	double max[2] = {5., DM_max};
+	unsigned int N_bins[2] = {500, 120};
 	TRect rect(min, max, N_bins);
 	
 	if(gatherSurfs) {
@@ -684,7 +684,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		
 		// Save binned p(DM, EBV) surface
 		if(gatherSurfs) {
-			chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.1, 0.025, 500.);
+			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 0.02, 0.1, 30.);
 		}
 		if(saveSurfs) { imgBuffer->add(*(img_stack.img[n])); }
 		
@@ -749,9 +749,9 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	
 	std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
 	
-	double min[2] = {DM_min, minEBV};
-	double max[2] = {DM_max, 5.};
-	unsigned int N_bins[2] = {120, 500};
+	double min[2] = {minEBV, DM_min};
+	double max[2] = {5., DM_max};
+	unsigned int N_bins[2] = {500, 120};
 	TRect rect(min, max, N_bins);
 	
 	if(gatherSurfs) {
@@ -855,7 +855,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		
 		// Save binned p(DM, EBV) surface
 		if(gatherSurfs) {
-			chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.1, 0.02, 30.);
+			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 0.02, 0.1, 30.);
 		}
 		if(saveSurfs) { imgBuffer->add(*(img_stack.img[n])); }
 		
