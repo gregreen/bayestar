@@ -128,7 +128,8 @@ class TAffineSampler {
 	TLogger& logger;	// Object which logs states in the chain
 	TState X_ML;		// Maximum likelihood point encountered
 	boost::uint64_t N_accepted, N_rejected;		// # of steps which have been accepted and rejected. Used to tune and track acceptance rate.
-	boost::uint64_t N_replacements_accepted, N_replacements_rejected;		// # of replacement steps which have been accepted and rejected. Used to track effectiveness of long-range steps.
+	boost::uint64_t N_replacements_accepted, N_replacements_rejected;	// # of replacement steps which have been accepted and rejected. Used to track effectiveness of long-range steps.
+	boost::uint64_t N_MH_accepted, N_MH_rejected;	// # of Metroplis-Hastings steps accepted/rejected
 	
 	// Random number generator
 	gsl_rng* r;
@@ -171,6 +172,8 @@ public:
 	double get_acceptance_rate() { return (double)N_accepted/(double)(N_accepted+N_rejected); }
 	boost::uint64_t get_N_replacements_accepted() { return N_replacements_accepted; }
 	boost::uint64_t get_N_replacements_rejected() { return N_replacements_rejected; }
+	boost::uint64_t get_N_MH_accepted() { return N_MH_accepted; }
+	boost::uint64_t get_N_MH_rejected() { return N_MH_rejected; }
 	double get_ln_Z_harmonic(bool use_peak=true, double nsigma_max=1., double nsigma_peak=0.1, double chain_frac=0.1) { return chain.get_ln_Z_harmonic(use_peak, nsigma_max, nsigma_peak, chain_frac); }
 	void print_state();
 	void print_clusters() { gm_target->print(); };
@@ -377,6 +380,8 @@ TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_
 	N_rejected = 0;
 	N_replacements_accepted = 0;
 	N_replacements_rejected = 0;
+	N_MH_accepted = 0;
+	N_MH_rejected = 0;
 }
 
 // Destructor
@@ -825,9 +830,11 @@ void TAffineSampler<TParams, TLogger>::step_MH(bool record_step) {
 			}
 			X[j] = Y[j];
 			N_accepted++;
+			N_MH_accepted++;
 		} else {
 			X[j].weight++;
 			N_rejected++;
+			N_MH_rejected++;
 		}
 	}
 }
@@ -875,6 +882,8 @@ void TAffineSampler<TParams, TLogger>::clear() {
 	N_rejected = 0;
 	N_replacements_accepted = 0;
 	N_replacements_rejected = 0;
+	N_MH_accepted = 0;
+	N_MH_rejected = 0;
 }
 
 
@@ -981,9 +990,48 @@ void TParallelAffineSampler<TParams, TLogger>::print_stats() {
 	std::cout << "Acceptance rate: ";
 	for(unsigned int i=0; i<N_samplers; i++) { std::cout << std::setprecision(3) << 100.*get_sampler(i)->get_acceptance_rate() << "%" << (i != N_samplers - 1 ? " " : ""); }
 	std::cout << std::endl;
-	std::cout << "Replacements accepted/rejected: ";
-	for(unsigned int i=0; i<N_samplers; i++) { std::cout << get_sampler(i)->get_N_replacements_accepted() << "/" << get_sampler(i)->get_N_replacements_rejected() << (i != N_samplers - 1 ? " " : ""); }
-	std::cout << std::endl;
+	
+	uint64_t acc_tmp, rej_tmp;
+	
+	unsigned int N_steps_tmp = 0;
+	for(int i=0; i<N_samplers; i++) {
+		N_steps_tmp += get_sampler(i)->get_N_replacements_accepted();
+		N_steps_tmp += get_sampler(i)->get_N_replacements_rejected();
+		
+	}
+	
+	if(N_steps_tmp != 0) {
+		std::cout << "Replacements accepted:rejected: ";
+		for(unsigned int i=0; i<N_samplers; i++) {
+			acc_tmp = get_sampler(i)->get_N_replacements_accepted();
+			rej_tmp = get_sampler(i)->get_N_replacements_rejected();
+			std::cout << std::fixed << acc_tmp << ":" << rej_tmp
+				<< " (" << std::setprecision(1) << 100. * (double)acc_tmp / (double)(acc_tmp + rej_tmp) << "%)"
+				<< (i != N_samplers - 1 ? " " : "");
+		}
+		std::cout << std::endl;
+	}
+	
+	N_steps_tmp = 0;
+	for(int i=0; i<N_samplers; i++) {
+		N_steps_tmp += get_sampler(i)->get_N_MH_accepted();
+		N_steps_tmp += get_sampler(i)->get_N_MH_rejected();
+		
+	}
+	
+	if(N_steps_tmp != 0) {
+		std::cout << "M-H steps accepted:rejected: ";
+		for(unsigned int i=0; i<N_samplers; i++) {
+			acc_tmp = get_sampler(i)->get_N_MH_accepted();
+			rej_tmp = get_sampler(i)->get_N_MH_rejected();
+			std::cout << std::fixed << acc_tmp << ":" << rej_tmp
+				<< " (" << std::setprecision(1) << 100. * (double)acc_tmp / (double)(acc_tmp + rej_tmp) << "%)"
+				<< (i != N_samplers - 1 ? " " : "");
+		}
+		std::cout << std::endl;
+	}
+	
+	std::cout << std::setprecision(6);
 }
 
 template<class TParams, class TLogger>

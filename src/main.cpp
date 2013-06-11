@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
 	double minEBV = 0.;
 	
 	unsigned int N_regions = 20;
-	unsigned int los_steps = 200;
+	unsigned int los_steps = 300;
 	unsigned int los_samplers = 20;
 	double los_p_replacement = 0.2;
 	
@@ -271,6 +271,7 @@ int main(int argc, char **argv) {
 		TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
 		
 		cout << "# (l, b) = " << stellar_data.l << ", " << stellar_data.b << endl;
+		if(SFDPrior) { cout << "# E(B-V)_SFD = " << stellar_data.EBV << endl; }
 		cout << "# " << stellar_data.star.size() << " stars in pixel" << endl;
 		
 		// Prepare data structures for stellar parameters

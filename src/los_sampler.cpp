@@ -169,10 +169,10 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 	int x = 0;
 	int x_next = ceil((Delta_mu[0] - img_stack.rect->min[1]) / img_stack.rect->dx[1]);
 	
-	double y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
-	double y = 0.;
+	float y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
+	float y = 0.;
 	int y_max = img_stack.rect->N_bins[0];
-	double y_ceil, y_floor, dy, y_scaled;
+	float y_ceil, y_floor, dy, y_scaled;
 	int y_ceil_int, y_floor_int;
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
@@ -205,8 +205,8 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 			//if(y_floor_int < 0) { break; }
 			
 			for(x = x_start; x<x_next; x++) {
-				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(y_floor_int, x)
-				          + (y_scaled - y_floor) * img_stack.img[k]->at<double>(y_ceil_int, x);
+				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<float>(y_floor_int, x)
+				          + (y_scaled - y_floor) * img_stack.img[k]->at<float>(y_ceil_int, x);
 			}
 		}
 	}
@@ -333,6 +333,10 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	timespec t_start, t_write, t_end;
 	clock_gettime(CLOCK_MONOTONIC, &t_start);
 	
+	std::cout << std::endl;
+	std::cout << "Using prior that maximum E(B-V) = " << params.EBV_max << std::endl;
+	std::cout << std::endl;
+	
 	if(verbosity >= 1) {
 		//std::cout << std::endl;
 		std::cout << "Piecewise-linear l.o.s. model" << std::endl;
@@ -379,22 +383,22 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	sampler.set_replacement_bandwidth(0.15);
 	sampler.set_MH_bandwidth(0.25);
 	
-	sampler.step_MH(int(N_steps*20./100.), false);
-	sampler.step(int(N_steps*20./100.), false, 0., 0.4, 0.);
-	sampler.step(int(N_steps*10./100.), false, 0., 1.0, 0., true);
+	sampler.step_MH(int(N_steps*2./15.), false);
+	sampler.step(int(N_steps*2./15.), false, 0., 0.4, 0.);
+	sampler.step(int(N_steps*1./15.), false, 0., 1.0, 0., true);
 	
 	sampler.set_replacement_bandwidth(0.25);
 	
-	sampler.step(int(N_steps*20./100.), false, 0., 1.0, 0., false);
-	sampler.step_MH(int(N_steps*20./100.), false);
+	sampler.step(int(N_steps*2./15.), false, 0., 1.0, 0., false);
+	sampler.step_MH(int(N_steps*3./15.), false);
 	
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.35);	// TODO: Scale with number of regions
 	sampler.set_MH_bandwidth(0.15);
 	
-	sampler.step(int(N_steps*30./100.), false, 0., 0.4, 0.);
-	sampler.step(int(N_steps*20./100.), false, 0., 0.8, 0.);
-	sampler.step_MH(int(N_steps*10./100.), false);
+	sampler.step(int(N_steps*3./15.), false, 0., 0.4, 0.);
+	sampler.step(int(N_steps*2./15.), false, 0., 0.8, 0.);
+	sampler.step_MH(int(N_steps*5./15.), false);
 	
 	if(verbosity >= 2) { sampler.print_stats(); }
 	sampler.clear();
@@ -404,8 +408,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	bool converged = false;
 	size_t attempt;
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-		sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
-		//sampler.step_MH((1<<attempt)*N_steps, true);
+		sampler.step((1<<attempt)*N_steps*2./3., true, 0., options.p_replacement, 0.);
+		sampler.step_MH((1<<attempt)*N_steps/3., true);
 		
 		sampler.calc_GR_transformed(GR_transf, &transf);
 		
@@ -482,15 +486,15 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 	
 	int x_start = 0;
 	int x;
-	double y_start = exp(logEBV[0]) / img_stack.rect->dx[0];
-	double y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
-	double y_ceil, y_floor, y, dy, y_scaled;
+	float y_start = exp(logEBV[0]) / img_stack.rect->dx[0];
+	float y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
+	float y_ceil, y_floor, y, dy, y_scaled;
 	int y_floor_int, y_ceil_int;
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
 	
 	for(int i=1; i<N_regions+1; i++) {
-		dy = (double)(exp(logEBV[i])) / (double)(N_samples) / img_stack.rect->dx[0];
+		dy = (float)(exp(logEBV[i])) / (float)(N_samples) / img_stack.rect->dx[0];
 		
 		for(int k=0; k<img_stack.N_images; k++) {
 			y = y_start;
@@ -505,12 +509,12 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 				
 				//if((y_floor_int < 0) || (y_ceil_int >= y_max)) { break; }
 				
-				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(y_floor_int, x)
-				           + (y_scaled - y_floor) * img_stack.img[k]->at<double>(y_ceil_int, x);
+				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<float>(y_floor_int, x)
+				           + (y_scaled - y_floor) * img_stack.img[k]->at<float>(y_ceil_int, x);
 			}
 		}
 		
-		y_start += (double)N_samples * dy;
+		y_start += (float)N_samples * dy;
 		x_start += N_samples;
 	}
 }
@@ -589,7 +593,7 @@ double guess_EBV_max(TImgStack &img_stack) {
 	double max_sum = *std::max_element(col_avg.begin<double>(), col_avg.end<double>());
 	int max = 1;
 	for(int i = col_avg.rows - 1; i > 0; i--) {
-		if(col_avg.at<double>(i, 0) > 0.001 * max_sum) {
+		if(col_avg.at<float>(i, 0) > 0.001 * max_sum) {
 			max = i;
 			break;
 		}
@@ -705,9 +709,9 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 	double y = 0.5;
 	for(int j = 0; j < stack.rows; j++, y += 1.) {
 		for(int k = 0; k < stack.cols; k++) {
-			dist_y_sum[k] += y * stack.at<double>(j,k);
-			dist_y2_sum[k] += y*y * stack.at<double>(j,k);
-			dist_sum[k] += stack.at<double>(j,k);
+			dist_y_sum[k] += y * stack.at<float>(j,k);
+			dist_y2_sum[k] += y*y * stack.at<float>(j,k);
+			dist_sum[k] += stack.at<float>(j,k);
 		}
 	}
 	
