@@ -169,10 +169,10 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 	int x = 0;
 	int x_next = ceil((Delta_mu[0] - img_stack.rect->min[1]) / img_stack.rect->dx[1]);
 	
-	double y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
-	double y = 0.;
+	float y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
+	float y = 0.;
 	int y_max = img_stack.rect->N_bins[0];
-	double y_ceil, y_floor, dy, y_scaled;
+	float y_ceil, y_floor, dy, y_scaled;
 	int y_ceil_int, y_floor_int;
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
@@ -482,15 +482,15 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 	
 	int x_start = 0;
 	int x;
-	double y_start = exp(logEBV[0]) / img_stack.rect->dx[0];
-	double y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
-	double y_ceil, y_floor, y, dy, y_scaled;
+	float y_start = exp(logEBV[0]) / img_stack.rect->dx[0];
+	float y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
+	float y_ceil, y_floor, y, dy, y_scaled;
 	int y_floor_int, y_ceil_int;
 	
 	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
 	
 	for(int i=1; i<N_regions+1; i++) {
-		dy = (double)(exp(logEBV[i])) / (double)(N_samples) / img_stack.rect->dx[0];
+		dy = (float)(exp(logEBV[i])) / (float)(N_samples) / img_stack.rect->dx[0];
 		
 		for(int k=0; k<img_stack.N_images; k++) {
 			y = y_start;
@@ -510,7 +510,7 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 			}
 		}
 		
-		y_start += (double)N_samples * dy;
+		y_start += (float)N_samples * dy;
 		x_start += N_samples;
 	}
 }
