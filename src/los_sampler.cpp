@@ -205,8 +205,8 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 			//if(y_floor_int < 0) { break; }
 			
 			for(x = x_start; x<x_next; x++) {
-				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(y_floor_int, x)
-				          + (y_scaled - y_floor) * img_stack.img[k]->at<double>(y_ceil_int, x);
+				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<float>(y_floor_int, x)
+				          + (y_scaled - y_floor) * img_stack.img[k]->at<float>(y_ceil_int, x);
 			}
 		}
 	}
@@ -505,8 +505,8 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 				
 				//if((y_floor_int < 0) || (y_ceil_int >= y_max)) { break; }
 				
-				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<double>(y_floor_int, x)
-				           + (y_scaled - y_floor) * img_stack.img[k]->at<double>(y_ceil_int, x);
+				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<float>(y_floor_int, x)
+				           + (y_scaled - y_floor) * img_stack.img[k]->at<float>(y_ceil_int, x);
 			}
 		}
 		
@@ -589,7 +589,7 @@ double guess_EBV_max(TImgStack &img_stack) {
 	double max_sum = *std::max_element(col_avg.begin<double>(), col_avg.end<double>());
 	int max = 1;
 	for(int i = col_avg.rows - 1; i > 0; i--) {
-		if(col_avg.at<double>(i, 0) > 0.001 * max_sum) {
+		if(col_avg.at<float>(i, 0) > 0.001 * max_sum) {
 			max = i;
 			break;
 		}
@@ -705,9 +705,9 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 	double y = 0.5;
 	for(int j = 0; j < stack.rows; j++, y += 1.) {
 		for(int k = 0; k < stack.cols; k++) {
-			dist_y_sum[k] += y * stack.at<double>(j,k);
-			dist_y2_sum[k] += y*y * stack.at<double>(j,k);
-			dist_sum[k] += stack.at<double>(j,k);
+			dist_y_sum[k] += y * stack.at<float>(j,k);
+			dist_y2_sum[k] += y*y * stack.at<float>(j,k);
+			dist_sum[k] += stack.at<float>(j,k);
 		}
 	}
 	

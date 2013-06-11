@@ -755,6 +755,9 @@ void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsig
 		
 		cv::GaussianBlur(mat, mat, cv::Size(w2,w1), s2, s1, cv::BORDER_REPLICATE);
 	}
+	
+	// Convert to float
+	mat.convertTo(mat, CV_32F);
 }
 
 
@@ -806,7 +809,7 @@ void TImgWriteBuffer::add(const cv::Mat& img) {
 	float *const imgBuf = &(buf[rect_.N_bins[0] * rect_.N_bins[1] * length_]);
 	for(size_t j=0; j<rect_.N_bins[0]; j++) {
 		for(size_t k=0; k<rect_.N_bins[1]; k++) {
-			imgBuf[rect_.N_bins[1]*j + k] = img.at<double>(j,k);
+			imgBuf[rect_.N_bins[1]*j + k] = img.at<float>(j,k);
 		}
 	}
 	
