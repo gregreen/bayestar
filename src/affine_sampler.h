@@ -626,7 +626,7 @@ void TAffineSampler<TParams, TLogger>::MH_proposal(unsigned int j) {
 	
 	// Determine the coordinates of the proposal
 	for(unsigned int i=0; i<N; i++) {
-		Y[j].element[i] = X[j].element[i] + h * W[i];
+		Y[j].element[i] = X[j].element[i] + h_MH * W[i];
 	}
 	
 	// Get pdf(Y) and initialize weight of proposal point to unity

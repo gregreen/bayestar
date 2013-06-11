@@ -377,7 +377,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.15);
-	sampler.set_MH_bandwidth(0.25);
+	sampler.set_MH_bandwidth(0.15);
 	
 	sampler.step_MH(int(N_steps*2./15.), false);
 	sampler.step(int(N_steps*2./15.), false, 0., 0.4, 0.);
@@ -391,7 +391,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.35);	// TODO: Scale with number of regions
-	sampler.set_MH_bandwidth(0.05);
+	sampler.set_MH_bandwidth(0.15);
 	
 	sampler.step(int(N_steps*3./15.), false, 0., 0.4, 0.);
 	sampler.step(int(N_steps*2./15.), false, 0., 0.8, 0.);
