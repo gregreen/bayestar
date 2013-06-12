@@ -680,7 +680,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		//if(isinf(lnZ_tmp)) { lnZ_tmp = neg_inf_replacement; }
 		
 		// Save thinned chain
-		chainBuffer.add(chain, converged, lnZ_tmp);
+		chainBuffer.add(chain, converged, lnZ_tmp, GR);
 		
 		// Save binned p(DM, EBV) surface
 		if(gatherSurfs) {
@@ -851,7 +851,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		//if(isinf(lnZ_tmp)) { lnZ_tmp = neg_inf_replacement; }
 		
 		// Save thinned chain
-		chainBuffer.add(chain, converged, lnZ_tmp);
+		chainBuffer.add(chain, converged, lnZ_tmp, GR);
 		
 		// Save binned p(DM, EBV) surface
 		if(gatherSurfs) {

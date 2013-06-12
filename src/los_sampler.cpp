@@ -161,7 +161,7 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	TChain chain = sampler.get_chain();
 	
 	TChainWriteBuffer writeBuffer(ndim, 100, 1);
-	writeBuffer.add(chain, converged);
+	writeBuffer.add(chain, converged, std::numeric_limits<double>::quiet_NaN(), GR_transf.data());
 	writeBuffer.write(out_fname, group_name.str(), "clouds");
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
@@ -503,13 +503,13 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	TChain chain = sampler.get_chain();
 	
 	TChainWriteBuffer writeBuffer(ndim, 500, 1);
-	writeBuffer.add(chain, converged);
+	writeBuffer.add(chain, converged, std::numeric_limits<double>::quiet_NaN(), GR_transf.data());
 	writeBuffer.write(out_fname, group_name.str(), "los");
 	
 	std::stringstream los_group_name;
 	los_group_name << group_name.str() << "/los";
-	H5Utils::add_watermark<double>(out_fname, los_group_name.str(), "DM_min", params.img_stack->rect->min[0]);
-	H5Utils::add_watermark<double>(out_fname, los_group_name.str(), "DM_max", params.img_stack->rect->max[0]);
+	H5Utils::add_watermark<double>(out_fname, los_group_name.str(), "DM_min", params.img_stack->rect->min[1]);
+	H5Utils::add_watermark<double>(out_fname, los_group_name.str(), "DM_max", params.img_stack->rect->max[1]);
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
 	

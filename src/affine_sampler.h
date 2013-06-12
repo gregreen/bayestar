@@ -220,7 +220,6 @@ public:
 	void init_gaussian_mixture_target(unsigned int nclusters, unsigned int iterations=100) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->init_gaussian_mixture_target(nclusters, iterations); } };
 	void clear() { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->clear(); }; stats.clear(); };
 	
-	
 	// Accessors
 	TLogger& get_logger() { return logger; }
 	TParams& get_params() { return params; }

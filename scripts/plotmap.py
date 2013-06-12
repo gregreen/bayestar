@@ -147,6 +147,8 @@ def calcCloudEBV(muAnchor, DeltaEBV, mu):
 def calcPiecewiseEBV(muAnchor, DeltaEBV, mu):
 	nPixels, nSamples, nSlices = DeltaEBV.shape
 	
+	print muAnchor
+	print mu
 	idx = np.where(muAnchor >= mu, np.arange(nSlices), nSlices+1)
 	lowIdx = np.min(idx)
 	
@@ -155,6 +157,7 @@ def calcPiecewiseEBV(muAnchor, DeltaEBV, mu):
 	if lowIdx == nSlices - 1:
 		return EBVslice[:,:,-1]
 	
+	print muAnchor.shape
 	lowMu = muAnchor[lowIdx]
 	highMu = muAnchor[lowIdx+1]
 	
