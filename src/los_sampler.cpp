@@ -86,7 +86,7 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	sampler.step(int(N_steps*20./100.), false, 0., options.p_replacement, 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.85, 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., options.p_replacement, 0.);
-	sampler.tune_stretch(6, 0.40);
+	sampler.tune_stretch(5, 0.40);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.85, 0.);
 	if(verbosity >= 2) { sampler.print_stats(); }
 	sampler.clear();
@@ -98,7 +98,21 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	bool converged = false;
 	size_t attempt;
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-		sampler.tune_stretch(6, 0.40);
+		if(verbosity >= 2) {
+			std::cout << std::endl;
+			std::cout << "scale: (";
+			for(int k=0; k<N_samplers; k++) {
+				std::cout << sampler.get_sampler(k)->get_scale() << (k == N_samplers - 1) ? "" : ", ";
+			}
+		}
+		sampler.tune_stretch(8, 0.40);
+		if(verbosity >= 2) {
+			std::cout << ") -> (";
+			for(int k=0; k<N_samplers; k++) {
+				std::cout << sampler.get_sampler(k)->get_scale() << (k == N_samplers - 1) ? "" : ", ";
+			}
+			std::cout << std::endl;
+		}
 		
 		sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
 		
@@ -396,11 +410,11 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	//sampler.set_MH_bandwidth(0.20);
 	
 	//std::cout << "Tuning M-H ..." << std::endl;
-	sampler.tune_MH(6, 0.30);
+	sampler.tune_MH(5, 0.30);
 	
 	//std::cout << std::endl;
 	//std::cout << "Tuning stretch ..." << std::endl;
-	sampler.tune_stretch(6, 0.40);
+	sampler.tune_stretch(5, 0.40);
 	
 	sampler.step(int(N_steps*3./15.), false, 0., 0.4, 0.);
 	sampler.step(int(N_steps*2./15.), false, 0., 0.8, 0.);
@@ -414,12 +428,36 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	bool converged = false;
 	size_t attempt;
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-		//std::cout << "Tuning M-H ..." << std::endl;
-		sampler.tune_MH(6, 0.30);
+		if(verbosity >= 2) {
+			std::cout << std::endl;
+			std::cout << "M-H bandwidth: (";
+			for(int k=0; k<N_samplers; k++) {
+				std::cout << sampler.get_sampler(k)->get_MH_bandwidth() << (k == N_samplers - 1) ? "" : ", ";
+			}
+		}
+		sampler.tune_MH(8, 0.30);
+		if(verbosity >= 2) {
+			std::cout << ") -> (";
+			for(int k=0; k<N_samplers; k++) {
+				std::cout << sampler.get_sampler(k)->get_MH_bandwidth() << (k == N_samplers - 1) ? "" : ", ";
+			}
+			std::cout << std::endl;
+		}
 		
-		//std::cout << std::endl;
-		//std::cout << "Tuning stretch ..." << std::endl;
-		sampler.tune_stretch(6, 0.40);
+		if(verbosity >= 2) {
+			std::cout << "scale: (";
+			for(int k=0; k<N_samplers; k++) {
+				std::cout << sampler.get_sampler(k)->get_scale() << (k == N_samplers - 1) ? "" : ", ";
+			}
+		}
+		sampler.tune_stretch(8, 0.40);
+		if(verbosity >= 2) {
+			std::cout << ") -> (";
+			for(int k=0; k<N_samplers; k++) {
+				std::cout << sampler.get_sampler(k)->get_scale() << (k == N_samplers - 1) ? "" : ", ";
+			}
+			std::cout << std::endl;
+		}
 		
 			sampler.step((1<<attempt)*N_steps*2./3., true, 0., options.p_replacement, 0.);
 		sampler.step_MH((1<<attempt)*N_steps/3., true);

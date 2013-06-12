@@ -233,6 +233,7 @@ public:
 	double get_scale(unsigned int index) { assert(index < N_samplers); return sampler[index]->get_scale(); }
 	double get_replacement_bandwidth(unsigned int index) { assert(index < N_samplers); return sampler[index]->get_replacement_bandwidth(); }
 	double get_MH_bandwidth(unsigned int index) { assert(index < N_samplers); return sampler[index]->get_MH_bandwidth(); }
+	unsigned int get_N_samplers() { return N_samplers; }
 	void print_stats();
 	void print_state() { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->print_state(); } }
 	void print_clusters() { for(unsigned int i=0; i<N_samplers; i++) { std::cout << std::endl; sampler[i]->print_clusters(); } } 
