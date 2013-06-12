@@ -999,8 +999,8 @@ void TParallelAffineSampler<TParams, TLogger>::tune_MH(unsigned int N_rounds, do
 	#pragma omp parallel num_threads(N_samplers)
 	{
 		unsigned int thread_ID = omp_get_thread_num();
-		unsigned int N_steps = 50. / ((double)(sampler[thread_ID]->get_N_walkers()) * target_acceptance);
-		if(N_steps < 2) { N_steps = 2; }
+		unsigned int N_steps = 100. / ((double)(sampler[thread_ID]->get_N_walkers()) * target_acceptance);
+		if(N_steps < 3) { N_steps = 3; }
 		
 		#pragma omp critical
 		std::cout << "Tuning steps: " << N_steps << std::endl;
@@ -1037,8 +1037,8 @@ void TParallelAffineSampler<TParams, TLogger>::tune_stretch(unsigned int N_round
 	#pragma omp parallel num_threads(N_samplers)
 	{
 		unsigned int thread_ID = omp_get_thread_num();
-		unsigned int N_steps = 50. / ((double)(sampler[thread_ID]->get_N_walkers()) * target_acceptance);
-		if(N_steps < 2) { N_steps = 2; }
+		unsigned int N_steps = 100. / ((double)(sampler[thread_ID]->get_N_walkers()) * target_acceptance);
+		if(N_steps < 3) { N_steps = 3; }
 		
 		#pragma omp critical
 		std::cout << "Tuning steps: " << N_steps << std::endl;

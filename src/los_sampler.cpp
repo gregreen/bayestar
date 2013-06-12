@@ -86,6 +86,7 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	sampler.step(int(N_steps*20./100.), false, 0., options.p_replacement, 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.85, 0.);
 	sampler.step(int(N_steps*20./100.), false, 0., options.p_replacement, 0.);
+	sampler.tune_stretch(6, 0.40);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.85, 0.);
 	if(verbosity >= 2) { sampler.print_stats(); }
 	sampler.clear();
@@ -97,6 +98,8 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	bool converged = false;
 	size_t attempt;
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
+		sampler.tune_stretch(6, 0.40);
+		
 		sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
 		
 		sampler.calc_GR_transformed(GR_transf, &transf);
@@ -393,22 +396,15 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	//sampler.set_MH_bandwidth(0.20);
 	
 	std::cout << "Tuning M-H ..." << std::endl;
-	sampler.tune_MH(6, 0.25);
+	sampler.tune_MH(6, 0.30);
 	
 	std::cout << std::endl;
 	std::cout << "Tuning stretch ..." << std::endl;
-	sampler.tune_stretch(6, 0.25);
+	sampler.tune_stretch(6, 0.35);
 	
 	sampler.step(int(N_steps*3./15.), false, 0., 0.4, 0.);
 	sampler.step(int(N_steps*2./15.), false, 0., 0.8, 0.);
 	sampler.step_MH(int(N_steps*5./15.), false);
-	
-	std::cout << "Tuning M-H ..." << std::endl;
-	sampler.tune_MH(6, 0.25);
-	
-	std::cout << std::endl;
-	std::cout << "Tuning stretch ..." << std::endl;
-	sampler.tune_stretch(6, 0.25);
 	
 	if(verbosity >= 2) { sampler.print_stats(); }
 	sampler.clear();
@@ -418,7 +414,14 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	bool converged = false;
 	size_t attempt;
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-		sampler.step((1<<attempt)*N_steps*2./3., true, 0., options.p_replacement, 0.);
+		std::cout << "Tuning M-H ..." << std::endl;
+		sampler.tune_MH(6, 0.30);
+		
+		std::cout << std::endl;
+		std::cout << "Tuning stretch ..." << std::endl;
+		sampler.tune_stretch(6, 0.35);
+		
+			sampler.step((1<<attempt)*N_steps*2./3., true, 0., options.p_replacement, 0.);
 		sampler.step_MH((1<<attempt)*N_steps/3., true);
 		
 		sampler.calc_GR_transformed(GR_transf, &transf);
