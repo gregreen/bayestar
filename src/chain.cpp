@@ -949,14 +949,14 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ, dou
 			buf[startIdx + n] = std::numeric_limits<float>::quiet_NaN();
 		}
 	} else {
-		std::cout << "Writing G-R ..." << std::endl;
+		//std::cout << "Writing G-R ..." << std::endl;
 		for(size_t n = 1; n < nDim_; n++) {
-			std::cout << n << std::endl;
+			//std::cout << n << std::endl;
 			buf[startIdx + n] = GR[n-1];
 		}
 	}
 	
-	std::cout << "Done." << std::endl;
+	//std::cout << "Done." << std::endl;
 	
 	length_++;
 }
