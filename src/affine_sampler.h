@@ -167,9 +167,14 @@ public:
 	TParams& get_params() { return params; }
 	TStats& get_stats() { return chain.stats; }
 	TChain& get_chain() { return chain; }
+	unsigned int get_N_walkers() { return L; }
 	double get_scale() { return sqrta*sqrta; }
 	double get_replacement_bandwidth() { return h; }
+	double get_MH_bandwidth() { return h_MH; }
 	double get_acceptance_rate() { return (double)N_accepted/(double)(N_accepted+N_rejected); }
+	double get_stretch_acceptance_rate() { return (double)(N_accepted - N_replacements_accepted - N_MH_accepted) / (double)(N_accepted+N_rejected - N_replacements_accepted-N_replacements_rejected - N_MH_accepted-N_MH_rejected); }
+	double get_replacement_acceptance_rate() { return (double)N_replacements_accepted / (double)(N_replacements_accepted + N_replacements_rejected); }
+	double get_MH_acceptance_rate() { return (double)N_MH_accepted / (double)(N_MH_accepted + N_MH_rejected); }
 	boost::uint64_t get_N_replacements_accepted() { return N_replacements_accepted; }
 	boost::uint64_t get_N_replacements_rejected() { return N_replacements_rejected; }
 	boost::uint64_t get_N_MH_accepted() { return N_MH_accepted; }
@@ -207,21 +212,27 @@ public:
 	// Mutators
 	void step(unsigned int N_steps, bool record_steps, double cycle=0, double p_replacement=0.1, double p_mixture=0.1, bool unbalanced=false);		// Take the given number of steps in each affine sampler
 	void step_MH(unsigned int N_steps, bool record_steps);		// Take the given number of steps in each affine sampler
+	void tune_stretch(unsigned int N_rounds, double target_acceptance);	// Adjust stretch scale to achieve desired acceptance rate
+	void tune_MH(unsigned int N_rounds, double target_acceptance);		// Adjust step size to achieve desired acceptance rate
 	void set_scale(double a) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_scale(a); } };				// Set the dimensionless step size a
-	void set_replacement_bandwidth(double h) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_replacement_bandwidth(h); } };	// Set the dimensionless step size a
-	void set_MH_bandwidth(double h) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_MH_bandwidth(h); } };	// Set the dimensionless step size a
+	void set_replacement_bandwidth(double h) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_replacement_bandwidth(h); } };	// Set size of replacement steps (in units of covariance) 
+	void set_MH_bandwidth(double h) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_MH_bandwidth(h); } };	// Set size of M-H steps (in units of covariance) 
 	void init_gaussian_mixture_target(unsigned int nclusters, unsigned int iterations=100) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->init_gaussian_mixture_target(nclusters, iterations); } };
 	void clear() { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->clear(); }; stats.clear(); };
+	
 	
 	// Accessors
 	TLogger& get_logger() { return logger; }
 	TParams& get_params() { return params; }
-	TStats& get_stats() { return stats; }
+	void calc_stats();
+	TStats& get_stats() { calc_stats(); return stats; }
 	TStats& get_stats(unsigned int index) { assert(index < N_samplers); return sampler[index]->get_stats(); }
 	TChain get_chain();
 	void get_GR_diagnostic(double *const GR) { for(unsigned int i=0; i<N; i++) { GR[i] = R[i]; } }
 	double get_GR_diagnostic(unsigned int index) { return R[index]; }
 	double get_scale(unsigned int index) { assert(index < N_samplers); return sampler[index]->get_scale(); }
+	double get_replacement_bandwidth(unsigned int index) { assert(index < N_samplers); return sampler[index]->get_replacement_bandwidth(); }
+	double get_MH_bandwidth(unsigned int index) { assert(index < N_samplers); return sampler[index]->get_MH_bandwidth(); }
 	void print_stats();
 	void print_state() { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->print_state(); } }
 	void print_clusters() { for(unsigned int i=0; i<N_samplers; i++) { std::cout << std::endl; sampler[i]->print_clusters(); } } 
@@ -954,8 +965,9 @@ void TParallelAffineSampler<TParams, TLogger>::step(unsigned int N_steps, bool r
 			sampler[thread_ID]->step(record_steps, p_replacement, p_mixture, unbalanced);
 		}
 		sampler[thread_ID]->flush(record_steps);
-		#pragma omp critical (append_stats)
-		stats += sampler[thread_ID]->get_stats();
+		
+		//#pragma omp critical (append_stats)
+		//stats += sampler[thread_ID]->get_stats();
 		
 		#pragma omp barrier
 	}
@@ -968,13 +980,14 @@ void TParallelAffineSampler<TParams, TLogger>::step_MH(unsigned int N_steps, boo
 	#pragma omp parallel firstprivate(record_steps, N_steps) num_threads(N_samplers)
 	{
 		unsigned int thread_ID = omp_get_thread_num();
-		double base_a = sampler[thread_ID]->get_scale();
+		
 		for(unsigned int i=0; i<N_steps; i++) {
 			sampler[thread_ID]->step_MH(record_steps);
 		}
 		sampler[thread_ID]->flush(record_steps);
-		#pragma omp critical (append_stats)
-		stats += sampler[thread_ID]->get_stats();
+		
+		//#pragma omp critical (append_stats)
+		//stats += sampler[thread_ID]->get_stats();
 		
 		#pragma omp barrier
 	}
@@ -982,7 +995,94 @@ void TParallelAffineSampler<TParams, TLogger>::step_MH(unsigned int N_steps, boo
 }
 
 template<class TParams, class TLogger>
+void TParallelAffineSampler<TParams, TLogger>::tune_MH(unsigned int N_rounds, double target_acceptance) {
+	#pragma omp parallel num_threads(N_samplers)
+	{
+		unsigned int thread_ID = omp_get_thread_num();
+		unsigned int N_steps = 50. / ((double)(sampler[thread_ID]->get_N_walkers()) * target_acceptance);
+		if(N_steps < 2) { N_steps = 2; }
+		
+		#pragma omp critical
+		std::cout << "Tuning steps: " << N_steps << std::endl;
+		
+		double acceptance_tmp, bandwidth_tmp;
+		
+		for(int k=0; k<N_rounds; k++) {
+			sampler[thread_ID]->clear();
+			for(unsigned int i=0; i<N_steps; i++) {
+				sampler[thread_ID]->step_MH(false);
+			}
+			sampler[thread_ID]->flush(false);
+			
+			acceptance_tmp = sampler[thread_ID]->get_MH_acceptance_rate();
+			if(acceptance_tmp < 0.8 * target_acceptance) {
+				bandwidth_tmp = sampler[thread_ID]->get_MH_bandwidth();
+				sampler[thread_ID]->set_MH_bandwidth(0.8 * bandwidth_tmp);
+				
+				#pragma omp critical
+				std::cout << "Thread " << thread_ID << ": " << bandwidth_tmp << " -> " << 0.8 * bandwidth_tmp << " (" << 100. * acceptance_tmp << "%)" << std::endl;
+			} else if(acceptance_tmp > 1.2 * target_acceptance) {
+				bandwidth_tmp = sampler[thread_ID]->get_MH_bandwidth();
+				sampler[thread_ID]->set_MH_bandwidth(1.2 * bandwidth_tmp);
+				
+				#pragma omp critical
+				std::cout << "Thread " << thread_ID << ": " << bandwidth_tmp << " -> " << 1.2 * bandwidth_tmp << " (" << 100. * acceptance_tmp << "%)" << std::endl;
+			}
+		}
+	}
+}
+
+template<class TParams, class TLogger>
+void TParallelAffineSampler<TParams, TLogger>::tune_stretch(unsigned int N_rounds, double target_acceptance) {
+	#pragma omp parallel num_threads(N_samplers)
+	{
+		unsigned int thread_ID = omp_get_thread_num();
+		unsigned int N_steps = 50. / ((double)(sampler[thread_ID]->get_N_walkers()) * target_acceptance);
+		if(N_steps < 2) { N_steps = 2; }
+		
+		#pragma omp critical
+		std::cout << "Tuning steps: " << N_steps << std::endl;
+		
+		double acceptance_tmp, scale_tmp;
+		
+		for(int k=0; k<N_rounds; k++) {
+			sampler[thread_ID]->clear();
+			for(unsigned int i=0; i<N_steps; i++) {
+				sampler[thread_ID]->step(false, 0., 0., false);
+			}
+			sampler[thread_ID]->flush(false);
+			
+			acceptance_tmp = sampler[thread_ID]->get_stretch_acceptance_rate();
+			if(acceptance_tmp < 0.8 * target_acceptance) {
+				scale_tmp = sampler[thread_ID]->get_scale();
+				sampler[thread_ID]->set_scale(0.8 * scale_tmp);
+				
+				#pragma omp critical
+				std::cout << "Thread " << thread_ID << ": " << scale_tmp << " -> " << 0.8 * scale_tmp << " (" << 100. * acceptance_tmp << "%)" << std::endl;
+			} else if(acceptance_tmp > 1.2 * target_acceptance) {
+				scale_tmp = sampler[thread_ID]->get_scale();
+				sampler[thread_ID]->set_scale(1.2 * scale_tmp);
+				
+				#pragma omp critical
+				std::cout << "Thread " << thread_ID << ": " << scale_tmp << " -> " << 1.2 * scale_tmp << " (" << 100. * acceptance_tmp << "%)" << std::endl;
+			}
+		}
+	}
+}
+
+
+template<class TParams, class TLogger>
+void TParallelAffineSampler<TParams, TLogger>::calc_stats() {
+	stats.clear();
+	for(int i=0; i<N_samplers; i++) {
+		stats += sampler[i]->get_stats();
+	}
+}
+
+
+template<class TParams, class TLogger>
 void TParallelAffineSampler<TParams, TLogger>::print_stats() {
+	calc_stats();
 	stats.print();
 	std::cout << std::endl << "Gelman-Rubin diagnostic:" << std::endl;
 	for(unsigned int i=0; i<N; i++) { std::cout << (i==0 ? "" : "\t") << std::setprecision(5) << R[i]; }
