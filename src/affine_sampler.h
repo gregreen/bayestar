@@ -1002,8 +1002,8 @@ void TParallelAffineSampler<TParams, TLogger>::tune_MH(unsigned int N_rounds, do
 		unsigned int N_steps = 100. / ((double)(sampler[thread_ID]->get_N_walkers()) * target_acceptance);
 		if(N_steps < 3) { N_steps = 3; }
 		
-		#pragma omp critical
-		std::cout << "Tuning steps: " << N_steps << std::endl;
+		//#pragma omp critical
+		//std::cout << "Tuning steps: " << N_steps << std::endl;
 		
 		double acceptance_tmp, bandwidth_tmp;
 		
@@ -1019,14 +1019,14 @@ void TParallelAffineSampler<TParams, TLogger>::tune_MH(unsigned int N_rounds, do
 				bandwidth_tmp = sampler[thread_ID]->get_MH_bandwidth();
 				sampler[thread_ID]->set_MH_bandwidth(0.8 * bandwidth_tmp);
 				
-				#pragma omp critical
-				std::cout << "Thread " << thread_ID << ": " << bandwidth_tmp << " -> " << 0.8 * bandwidth_tmp << " (" << 100. * acceptance_tmp << "%)" << std::endl;
+				//#pragma omp critical
+				//std::cout << "Thread " << thread_ID << ": " << bandwidth_tmp << " -> " << 0.8 * bandwidth_tmp << " (" << 100. * acceptance_tmp << "%)" << std::endl;
 			} else if(acceptance_tmp > 1.2 * target_acceptance) {
 				bandwidth_tmp = sampler[thread_ID]->get_MH_bandwidth();
 				sampler[thread_ID]->set_MH_bandwidth(1.2 * bandwidth_tmp);
 				
-				#pragma omp critical
-				std::cout << "Thread " << thread_ID << ": " << bandwidth_tmp << " -> " << 1.2 * bandwidth_tmp << " (" << 100. * acceptance_tmp << "%)" << std::endl;
+				//#pragma omp critical
+				//std::cout << "Thread " << thread_ID << ": " << bandwidth_tmp << " -> " << 1.2 * bandwidth_tmp << " (" << 100. * acceptance_tmp << "%)" << std::endl;
 			}
 		}
 	}
@@ -1040,8 +1040,8 @@ void TParallelAffineSampler<TParams, TLogger>::tune_stretch(unsigned int N_round
 		unsigned int N_steps = 100. / ((double)(sampler[thread_ID]->get_N_walkers()) * target_acceptance);
 		if(N_steps < 3) { N_steps = 3; }
 		
-		#pragma omp critical
-		std::cout << "Tuning steps: " << N_steps << std::endl;
+		//#pragma omp critical
+		//std::cout << "Tuning steps: " << N_steps << std::endl;
 		
 		double acceptance_tmp, scale_Delta;
 		
@@ -1057,14 +1057,14 @@ void TParallelAffineSampler<TParams, TLogger>::tune_stretch(unsigned int N_round
 				scale_Delta = sampler[thread_ID]->get_scale() - 1.;
 				sampler[thread_ID]->set_scale(1. + 0.8 * scale_Delta);
 				
-				#pragma omp critical
-				std::cout << "Thread " << thread_ID << ": " << 1. + scale_Delta << " -> " << 1. + 0.8 * scale_Delta << " (" << 100. * acceptance_tmp << "%)" << std::endl;
+				//#pragma omp critical
+				//std::cout << "Thread " << thread_ID << ": " << 1. + scale_Delta << " -> " << 1. + 0.8 * scale_Delta << " (" << 100. * acceptance_tmp << "%)" << std::endl;
 			} else if(acceptance_tmp > 1.2 * target_acceptance) {
 				scale_Delta = sampler[thread_ID]->get_scale() - 1.;
 				sampler[thread_ID]->set_scale(1. + 1.2 * scale_Delta);
 				
-				#pragma omp critical
-				std::cout << "Thread " << thread_ID << ": " << 1. + scale_Delta << " -> " << 1. + 1.2 * scale_Delta << " (" << 100. * acceptance_tmp << "%)" << std::endl;
+				//#pragma omp critical
+				//std::cout << "Thread " << thread_ID << ": " << 1. + scale_Delta << " -> " << 1. + 1.2 * scale_Delta << " (" << 100. * acceptance_tmp << "%)" << std::endl;
 			}
 		}
 	}

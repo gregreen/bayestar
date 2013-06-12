@@ -395,12 +395,12 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	sampler.set_replacement_bandwidth(0.35);	// TODO: Scale with number of regions
 	//sampler.set_MH_bandwidth(0.20);
 	
-	std::cout << "Tuning M-H ..." << std::endl;
+	//std::cout << "Tuning M-H ..." << std::endl;
 	sampler.tune_MH(6, 0.30);
 	
-	std::cout << std::endl;
-	std::cout << "Tuning stretch ..." << std::endl;
-	sampler.tune_stretch(6, 0.35);
+	//std::cout << std::endl;
+	//std::cout << "Tuning stretch ..." << std::endl;
+	sampler.tune_stretch(6, 0.40);
 	
 	sampler.step(int(N_steps*3./15.), false, 0., 0.4, 0.);
 	sampler.step(int(N_steps*2./15.), false, 0., 0.8, 0.);
@@ -414,12 +414,12 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	bool converged = false;
 	size_t attempt;
 	for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-		std::cout << "Tuning M-H ..." << std::endl;
+		//std::cout << "Tuning M-H ..." << std::endl;
 		sampler.tune_MH(6, 0.30);
 		
-		std::cout << std::endl;
-		std::cout << "Tuning stretch ..." << std::endl;
-		sampler.tune_stretch(6, 0.35);
+		//std::cout << std::endl;
+		//std::cout << "Tuning stretch ..." << std::endl;
+		sampler.tune_stretch(6, 0.40);
 		
 			sampler.step((1<<attempt)*N_steps*2./3., true, 0., options.p_replacement, 0.);
 		sampler.step_MH((1<<attempt)*N_steps/3., true);
