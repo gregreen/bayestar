@@ -478,7 +478,7 @@ def main():
 		ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu[i], d), fontsize=16)
 		
 		if fname != None:
-			full_fname = '%s.%s.%s.%.2d.png' % (fname, args.model, args.method, i)
+			full_fname = '%s.%s.%s.%.5d.png' % (fname, args.model, args.method, i)
 			fig.savefig(full_fname, dpi=150)
 	
 	if args.show:
