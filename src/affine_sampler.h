@@ -220,7 +220,6 @@ public:
 	void init_gaussian_mixture_target(unsigned int nclusters, unsigned int iterations=100) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->init_gaussian_mixture_target(nclusters, iterations); } };
 	void clear() { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->clear(); }; stats.clear(); };
 	
-	
 	// Accessors
 	TLogger& get_logger() { return logger; }
 	TParams& get_params() { return params; }
@@ -926,9 +925,12 @@ TParallelAffineSampler<TParams, TLogger>::TParallelAffineSampler(typename TAffin
 {
 	assert(_N_samplers > 1);
 	N_samplers = _N_samplers;
+	
 	sampler = new TAffineSampler<TParams, TLogger>*[N_samplers];
 	component_stats = new TStats*[N_samplers];
+	
 	for(unsigned int i=0; i<N_samplers; i++) { sampler[i] = NULL; component_stats[i] = NULL; }
+	
 	#pragma omp parallel for
 	for(unsigned int i=0; i<N_samplers; i++) {
 		sampler[i] = new TAffineSampler<TParams, TLogger>(_pdf, _rand_state, N, _L, _params, _logger, _use_log);
@@ -1169,7 +1171,7 @@ void TParallelAffineSampler<TParams, TLogger>::calc_GR_transformed(std::vector<d
 			transf_comp_stat(y, (unsigned int)(chain.get_w(i)));
 		}
 		
-		delete y;
+		delete[] y;
 		
 		#pragma omp barrier
 	}

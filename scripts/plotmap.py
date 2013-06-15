@@ -55,6 +55,7 @@ def getLOS(fname):
 	try:
 		tmp, nCloudSamples, nClouds = f['pixel %d/clouds' % pixels[0]].shape
 		nClouds = (nClouds - 1) / 2
+		nCloudSamples -= 1
 	except:
 		pass
 	shape = (nPixels, nCloudSamples, nClouds)
@@ -69,6 +70,7 @@ def getLOS(fname):
 		DM_min = dset.attrs['DM_min']
 		DM_max = dset.attrs['DM_max']
 		nSlices -= 1
+		nPiecewiseSamples -= 1
 	except:
 		pass
 	shape = (nPixels, nPiecewiseSamples, nSlices)
@@ -83,8 +85,8 @@ def getLOS(fname):
 			pass
 		
 		try:
-			CloudDeltaMu[i] = group[0, :, 1:nClouds+1]
-			CloudDeltaLnEBV[i] = group[0, :, nClouds+1:]
+			CloudDeltaMu[i] = group[0, 1:, 1:nClouds+1]
+			CloudDeltaLnEBV[i] = group[0, 1:, nClouds+1:]
 		except:
 			CloudDeltaMu[i] = 0
 			CloudDeltaLnEBV[i] = np.nan
@@ -96,9 +98,11 @@ def getLOS(fname):
 			pass
 		
 		try:
-			PiecewiseDeltaLnEBV[i] = group[0,:,1:]
+			PiecewiseDeltaLnEBV[i] = group[0,1:,1:]
 		except:
 			PiecewiseDeltaLnEBV[i] = np.nan
+	
+	f.close()
 	
 	CloudMuAnchor = np.cumsum(CloudDeltaMu, axis=2)
 	CloudDeltaEBV = np.exp(CloudDeltaLnEBV)
@@ -147,8 +151,8 @@ def calcCloudEBV(muAnchor, DeltaEBV, mu):
 def calcPiecewiseEBV(muAnchor, DeltaEBV, mu):
 	nPixels, nSamples, nSlices = DeltaEBV.shape
 	
-	idx = np.where(muAnchor >= mu, np.arange(nSlices), nSlices+1)
-	lowIdx = np.min(idx)
+	idx = np.where(muAnchor >= mu, -1, np.arange(nSlices))
+	lowIdx = np.max(idx)
 	
 	EBVslice = np.cumsum(DeltaEBV, axis=2)
 	
@@ -157,6 +161,9 @@ def calcPiecewiseEBV(muAnchor, DeltaEBV, mu):
 	
 	lowMu = muAnchor[lowIdx]
 	highMu = muAnchor[lowIdx+1]
+	
+	#print lowMu, mu, highMu
+	#print EBVslice[:,0,lowIdx], EBVslice[:,0,lowIdx+1]
 	
 	a = (mu - lowMu) / (highMu - lowMu)
 	EBVinterp = (1. - a) * EBVslice[:,:,lowIdx]
@@ -269,10 +276,22 @@ def calcEBV(muAnchor, DeltaEBV, mu, model='piecewise',
 		raise ValueError("Unrecognized extinction model: '%s'" % model)
 	
 	EBVcenter = None
-	if method == 'spread':
+	if type(method) in [float, int]:
+		EBVcenter = np.percentile(EBV[:,1:], float(method), axis=1)
+		if maxSpread != None:
+			EBVspread = np.percentile(EBV[:,1:], 95., axis=1) - np.percentile(EBV[:,1:], 5., axis=1)
+			idx = EBVspread > maxSpread
+			EBVcenter[idx] = np.nan
+	elif method == 'spread':
 		EBVcenter = np.percentile(EBV[:,1:], 95., axis=1) - np.percentile(EBV[:,1:], 5., axis=1)
 	elif method == 'median':
 		EBVcenter = np.median(EBV[:,1:], axis=1)
+		if maxSpread != None:
+			EBVspread = np.percentile(EBV[:,1:], 95., axis=1) - np.percentile(EBV[:,1:], 5., axis=1)
+			idx = EBVspread > maxSpread
+			EBVcenter[idx] = np.nan
+	elif method == 'mean':
+		EBVcenter = np.mean(EBV[:,1:], axis=1)
 		if maxSpread != None:
 			EBVspread = np.percentile(EBV[:,1:], 95., axis=1) - np.percentile(EBV[:,1:], 5., axis=1)
 			idx = EBVspread > maxSpread
@@ -346,7 +365,7 @@ def main():
 	parser.add_argument('--mask', '-msk', type=float, default=None,
 	                                      help=r'Hide parts of map where 95%% - 5%% of E(B-V) is greater than given value')
 	parser.add_argument('--method', '-mtd', type=str, default='median',
-	                                        choices=('median', 'best', 'spread'),
+	                                        choices=('median', 'mean', 'best', '5th', '95th', 'spread'),
 	                                        help='Measure of E(B-V) to plot.')
 	parser.add_argument('--spread', '-sp', action='store_true',
 	                                       help='Plot 95%% - 5%% of E(B-V)')
@@ -361,6 +380,12 @@ def main():
 	
 	tmp1, tmp2, nSlices = PiecewiseDeltaEBV.shape
 	PiecewiseMuAnchor = np.linspace(DM_min, DM_max, nSlices)
+	
+	method = args.method
+	if method == '5th':
+		method = 5.
+	elif method == '95th':
+		method = 95.
 	
 	mplib.rc('text', usetex=True)
 	mplib.rc('xtick.major', size=6)
@@ -377,29 +402,41 @@ def main():
 	
 	# Get upper limit on E(B-V)
 	EBVs = None
-	if args.model == 'piecewise':
-		EBVs = calcEBV(PiecewiseMuAnchor, PiecewiseDeltaEBV, mu[-1],
-		               args.model, args.mask, args.method)
-	elif args.model == 'clouds':
-		EBVs = calcEBV(CloudMuAnchor, CloudDeltaEBV, mu[-1],
-		               args.model, args.mask, args.method)
-		dist = np.power(10., CloudMuAnchor/5. + 1.)
-		print 'd = %.3f +- %.3f pc' % (np.mean(dist), np.std(dist))
-		print 'distance percentiles:'
-		print '  15.84%%: %.3f pc' % (np.percentile(dist, 15.84))
-		print '  50.00%%: %.3f pc' % (np.percentile(dist, 50.))
-		print '  84.16%%: %.3f pc' % (np.percentile(dist, 84.16))
-		print 'E(B-V) = %.3f +- %.3f pc' % (np.mean(CloudDeltaEBV), np.std(CloudDeltaEBV))
-		print 'E(B-V) percentiles:'
-		print '  15.84%%: %.3f pc' % (np.percentile(CloudDeltaEBV, 15.84))
-		print '  50.00%%: %.3f pc' % (np.percentile(CloudDeltaEBV, 50.))
-		print '  84.16%%: %.3f pc' % (np.percentile(CloudDeltaEBV, 84.16))
-		print 'mu = %.3f +- %.3f' % (np.mean(CloudMuAnchor), np.std(CloudMuAnchor))
-	idx = ~np.isnan(EBVs)
-	EBVmax = np.percentile(EBVs[idx], 98.)
-	print 'max EBV = %.3f' % EBVmax
-	print 'EBV(mu=%.2f) = %.3f +- %.3f' % (mu[-1], np.mean(EBVs[idx]), np.std(EBVs[idx]))
-	del EBVs
+	if args.model == 'clouds':
+		if CloudDeltaEBV.shape[2] == 1:
+			dist = np.power(10., CloudMuAnchor/5. + 1.)
+			print 'Cloud distance:'
+			print '  d = %.3f +- %.3f pc' % (np.mean(dist), np.std(dist))
+			print '  mu = %.3f +- %.3f' % (np.mean(CloudMuAnchor), np.std(CloudMuAnchor))
+			print 'distance percentiles:'
+			print '  15.84%%: %.3f pc' % (np.percentile(dist, 15.84))
+			print '  50.00%%: %.3f pc' % (np.percentile(dist, 50.))
+			print '  84.16%%: %.3f pc' % (np.percentile(dist, 84.16))
+			print 'E(B-V) = %.3f +- %.3f pc' % (np.mean(CloudDeltaEBV), np.std(CloudDeltaEBV))
+			print 'E(B-V) percentiles:'
+			print '  15.84%%: %.3f mag' % (np.percentile(CloudDeltaEBV, 15.84))
+			print '  50.00%%: %.3f mag' % (np.percentile(CloudDeltaEBV, 50.))
+			print '  84.16%%: %.3f mag' % (np.percentile(CloudDeltaEBV, 84.16))
+	
+	EBVmax = None
+	for m in mu[::-1]:
+		if args.model == 'piecewise':
+			EBVs = calcEBV(PiecewiseMuAnchor, PiecewiseDeltaEBV, m,
+						   args.model, args.mask, method)
+		elif args.model == 'clouds':
+			EBVs = calcEBV(CloudMuAnchor, CloudDeltaEBV, m,
+						   args.model, args.mask, method)
+		idx = ~np.isnan(EBVs)
+		try:
+			EBVmax = np.percentile(EBVs[idx], 98.)
+		except:
+			pass
+		if EBVmax != None:
+			print 'max EBV = %.3f' % EBVmax
+			print 'EBV(mu=%.2f) = %.3f +- %.3f' % (mu[-1], np.mean(EBVs[idx]), np.std(EBVs[idx]))
+			del EBVs
+			break
+		del EBVs
 	
 	# Determine output filename
 	fname = args.output
@@ -417,12 +454,12 @@ def main():
 		if args.model == 'piecewise':
 			img = plotEBV(ax, pixels, PiecewiseMuAnchor, PiecewiseDeltaEBV, mu[i],
 			              nside=args.nside, nest=True, model=args.model,
-			              maxSpread=args.mask, method=args.method,
+			              maxSpread=args.mask, method=method,
 			              vmin=0., vmax=EBVmax)
 		elif args.model == 'clouds':
 			img = plotEBV(ax, pixels, CloudMuAnchor, CloudDeltaEBV, mu[i],
 			              nside=args.nside, nest=True, model=args.model,
-			              maxSpread=args.mask, method=args.method,
+			              maxSpread=args.mask, method=method,
 			              vmin=0., vmax=EBVmax)
 		
 		fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.9)
@@ -441,7 +478,7 @@ def main():
 		ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu[i], d), fontsize=16)
 		
 		if fname != None:
-			full_fname = '%s.%s.%.2d.png' % (fname, args.model, i)
+			full_fname = '%s.%s.%s.%.5d.png' % (fname, args.model, args.method, i)
 			fig.savefig(full_fname, dpi=150)
 	
 	if args.show:

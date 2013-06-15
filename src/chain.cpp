@@ -883,9 +883,9 @@ TChainWriteBuffer::~TChainWriteBuffer() {
 
 void TChainWriteBuffer::reserve(unsigned int nReserved) {
 	assert(nReserved > nReserved_);
-	float *buf_new = new float[nDim_ * (nSamples_+1) * nReserved];
+	float *buf_new = new float[nDim_ * (nSamples_+2) * nReserved];
 	if(buf != NULL) {
-		memcpy(buf_new, buf, sizeof(float) * nDim_ * (nSamples_+1) * length_);
+		memcpy(buf_new, buf, sizeof(float) * nDim_ * (nSamples_+2) * length_);
 		delete[] buf;
 	}
 	buf = buf_new;
@@ -893,7 +893,7 @@ void TChainWriteBuffer::reserve(unsigned int nReserved) {
 	nReserved_ = nReserved;
 }
 
-void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
+void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ, double * GR) {
 	// Make sure buffer is long enough
 	if(length_ >= nReserved_) {
 		reserve(1.5 * (length_ + 1));
@@ -912,11 +912,11 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 	std::sort(samplePos.begin(), samplePos.end());
 	
 	// Copy chosen points into buffer
-	unsigned int i = 1;
-	unsigned int k = 0;
+	unsigned int i = 1;	// Position in chain
+	unsigned int k = 0;	// Position in buffer
 	double w = chain.get_w(0);
 	unsigned int chainLength = chain.get_length();
-	size_t startIdx = length_ * nDim_ * (nSamples_+1);
+	size_t startIdx = length_ * nDim_ * (nSamples_+2);
 	const double *chainElement;
 	while(k < nSamples_) {
 		if(w < samplePos[k]) {
@@ -925,23 +925,38 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 			i++;
 		} else {
 			chainElement = chain.get_element(i-1);
-			buf[startIdx + nDim_*(k+1)] = chain.get_L(i-1);
+			buf[startIdx + nDim_*(k+2)] = chain.get_L(i-1);
 			for(size_t n = 1; n < nDim_; n++) {
-				buf[startIdx + nDim_*(k+1) + n] = chainElement[n-1];
+				buf[startIdx + nDim_*(k+2) + n] = chainElement[n-1];
 			}
 			k++;
 		}
 	}
 	assert(k == nSamples_);
-	//if(k != nSamples_) { abort(); }
 	
 	// Copy best point into buffer
 	i = chain.get_index_of_best();
 	chainElement = chain.get_element(i);
-	buf[startIdx] = chain.get_L(i);
+	buf[startIdx + nDim_] = chain.get_L(i);
 	for(size_t n = 1; n < nDim_; n++) {
-		buf[startIdx + n] = chainElement[n-1];
+		buf[startIdx + nDim_ + n] = chainElement[n-1];
 	}
+	
+	// Copy the Gelman-Rubin diagnostic into the buffer
+	buf[startIdx] = std::numeric_limits<float>::quiet_NaN();
+	if(GR == NULL) {
+		for(size_t n = 1; n < nDim_; n++) {
+			buf[startIdx + n] = std::numeric_limits<float>::quiet_NaN();
+		}
+	} else {
+		//std::cout << "Writing G-R ..." << std::endl;
+		for(size_t n = 1; n < nDim_; n++) {
+			//std::cout << n << std::endl;
+			buf[startIdx + n] = GR[n-1];
+		}
+	}
+	
+	//std::cout << "Done." << std::endl;
 	
 	length_++;
 }
@@ -955,7 +970,7 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 	
 	// Dataset properties: optimized for reading/writing entire buffer at once
 	int rank = 3;
-	hsize_t dim[3] = {length_, nSamples_+1, nDim_};
+	hsize_t dim[3] = {length_, nSamples_+2, nDim_};
 	H5::DataSpace dspace(rank, &(dim[0]));
 	H5::DSetCreatPropList plist;
 	plist.setDeflate(9);	// gzip compression level
