@@ -319,8 +319,8 @@ int main(int argc, char **argv) {
 		if((nFiltered < conv.size()) && ((N_clouds != 0) || (N_regions != 0))) {
 			cout << "# of stars filtered: " << nFiltered << " of " << conv.size();
 			cout << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
-		
-			double p0 = 1.e-5;
+			
+			double p0 = 1.e-4;
 			double EBV_max = -1.;
 			if(SFDPrior) {
 				if(SFDsubpixel) {

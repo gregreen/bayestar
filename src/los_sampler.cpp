@@ -560,7 +560,12 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 				y_floor_int = (int)y_floor;
 				y_ceil_int = y_floor + 1;
 				
-				//if((y_floor_int < 0) || (y_ceil_int >= y_max)) { break; }
+				if((y_floor_int < 0) || (y_ceil_int >= y_max)) {
+					#pragma omp critical
+					std::cout << "! BOUNDS OVERRUN !" << std::endl;
+					
+					break;
+				}
 				
 				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<float>(y_floor_int, x)
 				           + (y_scaled - y_floor) * img_stack.img[k]->at<float>(y_ceil_int, x);
