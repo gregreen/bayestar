@@ -240,7 +240,7 @@ bool add_watermark_helper(const std::string &filename, const std::string &group_
 	hsize_t dim = 1;
 	H5::DataSpace dspace(rank, &dim);
 	
-	add_watermark_helper(filename, group_name, attribute_name, value, dtype, NULL, dspace);
+	return add_watermark_helper(filename, group_name, attribute_name, value, dtype, NULL, dspace);
 }
 
 template<>

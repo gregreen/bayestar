@@ -440,10 +440,10 @@ void sample_model_affine_synth(TGalacticLOSModel &galactic_model, TSyntheticStel
 	std::cerr << "# Burn-in" << std::endl;
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.5);
-	sampler.step(N_steps, false, 0, 0.01, 0.);
+	sampler.step(N_steps, false, 0, 0.01);
 	sampler.clear();
 	std::cerr << "# Main run" << std::endl;
-	sampler.step(N_steps, true, 0, 0.01, 0.);
+	sampler.step(N_steps, true, 0, 0.01);
 	
 	std::cout << "Sampler stats:" << std::endl;
 	sampler.print_stats();
@@ -649,14 +649,14 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		sampler.set_replacement_bandwidth(0.2);
 		
 		//std::cerr << "# Burn-in" << std::endl;
-		sampler.step(N_steps, false, 0., 0.2, 0.);
+		sampler.step(N_steps, false, 0., 0.2);
 		sampler.clear();
 		
 		//std::cerr << "# Main run" << std::endl;
 		bool converged = false;
 		size_t attempt;
 		for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-			sampler.step((1<<attempt)*N_steps, true, 0., 0.2, 0.);
+			sampler.step((1<<attempt)*N_steps, true, 0., 0.2);
 			
 			converged = true;
 			sampler.get_GR_diagnostic(GR);
@@ -747,7 +747,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		params.RV_variance = RV_sigma*RV_sigma;
 	}
 	
-	std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
+	//std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
 	
 	double min[2] = {minEBV, DM_min};
 	double max[2] = {5., DM_max};
@@ -817,17 +817,17 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		//std::cerr << "# Setting up sampler" << std::endl;
 		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 		sampler.set_scale(1.5);
-		sampler.set_replacement_bandwidth(0.2);
+		sampler.set_replacement_bandwidth(0.15);
 		
 		//std::cerr << "# Burn-in" << std::endl;
-		sampler.step(N_steps, false, 0., options.p_replacement, 0.);
+		sampler.step(N_steps, false, 0., options.p_replacement);
 		sampler.clear();
 		
 		//std::cerr << "# Main run" << std::endl;
 		bool converged = false;
 		size_t attempt;
 		for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-			sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
+			sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement);
 			
 			converged = true;
 			sampler.get_GR_diagnostic(GR);

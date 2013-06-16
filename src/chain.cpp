@@ -730,6 +730,8 @@ void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsig
 	
 	mat = cv::Mat::zeros(grid.N_bins[0], grid.N_bins[1], CV_64F);
 	
+	//std::cout << grid.N_bins[0] << " " << grid.N_bins[1] << std::endl;
+	
 	unsigned int i1, i2;
 	for(size_t i=0; i<length; i++) {
 		if(grid.get_index(x[N*i+dim1], x[N*i+dim2], i1, i2)) {
