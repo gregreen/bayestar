@@ -39,6 +39,8 @@
 template <typename T>
 T percentile(std::vector<T>& x, double pctile) {
 	assert(pctile < 100.);
+	assert(x.size() != 0);
+	if(x.size() == 1) { return x.at(0); }
 	
 	double idx = pctile / 100. * (x.size()-1);
 	size_t low_idx = floor(idx);
