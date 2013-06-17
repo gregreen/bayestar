@@ -82,12 +82,12 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	if(verbosity >= 1) {
 		std::cout << "# Burn-in ..." << std::endl;
 	}
-	sampler.step(int(N_steps*25./100.), false, 0., 0., 0.);
-	sampler.step(int(N_steps*20./100.), false, 0., options.p_replacement, 0.);
+	sampler.step(int(N_steps*25./100.), false, 0., 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., options.p_replacement);
 	sampler.step(int(N_steps*20./100.), false, 0., 0.85, 0.);
-	sampler.step(int(N_steps*20./100.), false, 0., options.p_replacement, 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., options.p_replacement);
 	sampler.tune_stretch(5, 0.40);
-	sampler.step(int(N_steps*20./100.), false, 0., 0.85, 0.);
+	sampler.step(int(N_steps*20./100.), false, 0., 0.85);
 	if(verbosity >= 2) { sampler.print_stats(); }
 	sampler.clear();
 	
@@ -115,7 +115,7 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 			std::cout << ")" << std::endl;
 		}
 		
-		sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
+		sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement);
 		
 		sampler.calc_GR_transformed(GR_transf, &transf);
 		
@@ -140,7 +140,7 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 						std::cerr << "# Extending run ..." << std::endl;
 					}
 					
-					sampler.step(int(N_steps*1./5.), false, 0., 1., 0.);
+					sampler.step(int(N_steps*1./5.), false, 0., 1.);
 					sampler.clear();
 					//logger.clear();
 				}
@@ -219,8 +219,9 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 			y_ceil = y_floor + 1.;
 			y_floor_int = (int)y_floor;
 			y_ceil_int = (int)y_ceil;
-			//if(y_ceil_int >= y_max) { break; }
-			//if(y_floor_int < 0) { break; }
+			
+			//if(y_ceil_int >= y_max) { std::cout << "!! y_ceil_int >= y_max !!" << std::endl; break; }
+			//if(y_floor_int < 0) { std::cout << "!! y_floor_int < 0 !!" << std::endl; break; }
 			
 			for(x = x_start; x<x_next; x++) {
 				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<float>(y_floor_int, x)
@@ -231,7 +232,7 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 }
 
 double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams& params) {
-	size_t N_clouds = N / 2;
+	const size_t N_clouds = N / 2;
 	const double *Delta_mu = x;
 	const double *logDelta_EBV = x + N_clouds;
 	
@@ -269,7 +270,7 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	
 	// Extinction must not exceed maximum value
 	//if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[0]) { return neg_inf_replacement; }
-	int EBV_tot_idx = ceil((EBV_tot * params.subpixel_max - params.img_stack->rect->min[0]) / params.img_stack->rect->dx[0]);
+	double EBV_tot_idx = ceil((EBV_tot * params.subpixel_max - params.img_stack->rect->min[0]) / params.img_stack->rect->dx[0]);
 	if(EBV_tot_idx + 1 >= params.img_stack->rect->N_bins[0]) { return neg_inf_replacement; }
 	
 	// Prior on total extinction
@@ -393,32 +394,28 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	if(verbosity >= 1) { std::cout << "# Burn-in ..." << std::endl; }
 	
 	sampler.set_scale(1.1);
-	sampler.set_replacement_bandwidth(0.15);
+	sampler.set_replacement_bandwidth(0.25);
 	sampler.set_MH_bandwidth(0.15);
 	
 	sampler.step_MH(int(N_steps*2./15.), false);
-	sampler.step(int(N_steps*2./15.), false, 0., 0.4, 0.);
-	sampler.step(int(N_steps*1./15.), false, 0., 1.0, 0., true);
+	sampler.step(int(N_steps*2./15.), false, 0., options.p_replacement);
+	sampler.step(int(N_steps*1./15.), false, 0., 1., true);
+	
+	if(verbosity >= 2) { sampler.print_stats(); }
 	
 	sampler.set_replacement_bandwidth(0.25);
 	sampler.set_MH_bandwidth(0.20);
 	
-	sampler.step(int(N_steps*2./15.), false, 0., 1.0, 0., false);
+	sampler.step(int(N_steps*2./15.), false, 0., 2.*options.p_replacement);
 	sampler.step_MH(int(N_steps*3./15.), false);
 	
-	//sampler.set_scale(1.1);
-	sampler.set_replacement_bandwidth(0.35);	// TODO: Scale with number of regions
-	//sampler.set_MH_bandwidth(0.20);
+	sampler.set_replacement_bandwidth(0.25);	// TODO: Scale with number of regions
 	
-	//std::cout << "Tuning M-H ..." << std::endl;
 	sampler.tune_MH(5, 0.30);
-	
-	//std::cout << std::endl;
-	//std::cout << "Tuning stretch ..." << std::endl;
 	sampler.tune_stretch(5, 0.40);
 	
-	sampler.step(int(N_steps*3./15.), false, 0., 0.4, 0.);
-	sampler.step(int(N_steps*2./15.), false, 0., 0.8, 0.);
+	sampler.step(int(N_steps*3./15.), false, 0., options.p_replacement);
+	sampler.step(int(N_steps*2./15.), false, 0., 2.*options.p_replacement);
 	sampler.step_MH(int(N_steps*5./15.), false);
 	
 	if(verbosity >= 2) { sampler.print_stats(); }
@@ -461,7 +458,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 			std::cout << ")" << std::endl;
 		}
 		
-			sampler.step((1<<attempt)*N_steps*2./3., true, 0., options.p_replacement, 0.);
+			sampler.step((1<<attempt)*N_steps*2./3., true, 0., options.p_replacement);
 		sampler.step_MH((1<<attempt)*N_steps/3., true);
 		
 		sampler.calc_GR_transformed(GR_transf, &transf);
@@ -487,7 +484,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 						std::cout << "# Extending run ..." << std::endl;
 					}
 					
-					sampler.step(int(N_steps*1./5.), false, 0., 1., 0.);
+					sampler.step(int(N_steps*1./5.), false, 0., 1.);
 					sampler.clear();
 					//logger.clear();
 				}
@@ -560,12 +557,12 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 				y_floor_int = (int)y_floor;
 				y_ceil_int = y_floor + 1;
 				
-				if((y_floor_int < 0) || (y_ceil_int >= y_max)) {
-					#pragma omp critical
-					std::cout << "! BOUNDS OVERRUN !" << std::endl;
-					
-					break;
-				}
+				//if((y_floor_int < 0) || (y_ceil_int >= y_max)) {
+				//	#pragma omp critical
+				//	std::cout << "! BOUNDS OVERRUN !" << std::endl;
+				//	
+				//	break;
+				//}
 				
 				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<float>(y_floor_int, x)
 				           + (y_scaled - y_floor) * img_stack.img[k]->at<float>(y_ceil_int, x);
@@ -598,7 +595,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	}
 	// Extinction must not exceed maximum value
 	//if(EBV_tot * params.subpixel_max >= params.img_stack->rect->max[0]) { return neg_inf_replacement; }
-	int EBV_tot_idx = ceil((EBV_tot * params.subpixel_max - params.img_stack->rect->min[0]) / params.img_stack->rect->dx[0]);
+	double EBV_tot_idx = ceil((EBV_tot * params.subpixel_max - params.img_stack->rect->min[0]) / params.img_stack->rect->dx[0]);
 	if(EBV_tot_idx + 1 >= params.img_stack->rect->N_bins[0]) { return neg_inf_replacement; }
 	
 	// Prior on total extinction
@@ -678,11 +675,11 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned i
 	sampler.set_replacement_bandwidth(0.75);
 	
 	sampler.step_MH(int(N_steps*10./100.), false);
-	sampler.step(int(N_steps*30./100.), true, 0., 0.5, 0.);
-	sampler.step(int(N_steps*20./100), true, 0., 1., 0., true);
+	sampler.step(int(N_steps*30./100.), true, 0., 0.5);
+	sampler.step(int(N_steps*20./100), true, 0., 1., true);
 	sampler.step_MH(int(N_steps*10./100.), true);
-	sampler.step(int(N_steps*30./100.), true, 0., 0.5, 0.);
-	sampler.step(int(N_steps*20./100), true, 0., 1., 0., true);
+	sampler.step(int(N_steps*30./100.), true, 0., 0.5);
+	sampler.step(int(N_steps*20./100), true, 0., 1., true);
 	sampler.step_MH(int(N_steps*10./100.), false);
 	
 	//if(verbosity >= 2) {
@@ -834,10 +831,10 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 	sampler.set_replacement_bandwidth(0.75);
 	
 	std::cout << "Stepping" << std::endl;
-	sampler.step(int(N_steps*40./100.), true, 0., 0.5, 0.);
-	sampler.step(int(N_steps*10./100), true, 0., 1., 0., true);
-	sampler.step(int(N_steps*40./100.), true, 0., 0.5, 0.);
-	sampler.step(int(N_steps*10./100), true, 0., 1., 0., true);
+	sampler.step(int(N_steps*40./100.), true, 0., 0.5);
+	sampler.step(int(N_steps*10./100), true, 0., 1., true);
+	sampler.step(int(N_steps*40./100.), true, 0., 0.5);
+	sampler.step(int(N_steps*10./100), true, 0., 1., true);
 	
 	sampler.print_stats();
 	

@@ -27,6 +27,7 @@
 
 #include <boost/program_options.hpp>
 
+#include "cpp_utils.h"
 #include "model.h"
 #include "data.h"
 #include "sampler.h"
@@ -125,7 +126,7 @@ int main(int argc, char **argv) {
 	unsigned int N_regions = 20;
 	unsigned int los_steps = 300;
 	unsigned int los_samplers = 20;
-	double los_p_replacement = 0.2;
+	double los_p_replacement = 0.0;
 	
 	unsigned int N_clouds = 1;
 	unsigned int cloud_steps = 200;
@@ -295,12 +296,15 @@ int main(int argc, char **argv) {
 		// Filter based on convergence and lnZ
 		assert(conv.size() == lnZ.size());
 		vector<bool> keep;
-		double lnZmax = neg_inf_replacement;
+		vector<double> lnZ_filtered;
 		for(vector<double>::iterator it_lnZ = lnZ.begin(); it_lnZ != lnZ.end(); ++it_lnZ) {
 			if(!isnan(*it_lnZ) && !is_inf_replacement(*it_lnZ)) {
-				if(*it_lnZ > lnZmax) { lnZmax = *it_lnZ; }
+				lnZ_filtered.push_back(*it_lnZ);
 			}
 		}
+		double lnZmax = percentile_const(lnZ_filtered, 95.0);
+		if(verbosity >= 2) { cout << "# ln(Z)_95pct = " << lnZmax << endl; }
+		
 		bool tmpFilter;
 		size_t nFiltered = 0;
 		std::vector<double> subpixel;

@@ -276,7 +276,7 @@ double TGalacticLOSModel::f_halo_full(double DM) const {
 }
 
 double TGalacticLOSModel::log_p_FeH_fast(double DM, double FeH, double f_H) const {
-	if(f_H < 0.) { double f_H = f_halo(DM); }
+	if(f_H < 0.) { f_H = f_halo(DM); }
 	
 	// Halo
 	double mu_H = -1.46;
@@ -662,7 +662,7 @@ double TStellarAbundance::SFR(double tau) const {
 	if(tau >= tau_max) {
 		return 0.;
 	} else {
-		double tmp =  -(tau - tau_burst)*(tau - tau_burst) / (2.*sigma_tau_2);
+		//double tmp =  -(tau - tau_burst)*(tau - tau_burst) / (2.*sigma_tau_2);
 		return SFR_norm * ( 1. + A_burst * exp( -(tau - tau_burst)*(tau - tau_burst) / (2.*sigma_tau_2) ) );
 	}
 }
