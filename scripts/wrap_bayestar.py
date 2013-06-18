@@ -99,16 +99,16 @@ def getProbSurfs(fname):
 	pixIdx = 1
 	
 	pdf_dset = f['/pixel %d/stellar pdfs' % pixIdx]
-	x_min = pdf_dset.attrs['min']
-	x_max = pdf_dset.attrs['max']
+	x_min = pdf_dset.attrs['min'][::-1]
+	x_max = pdf_dset.attrs['max'][::-1]
 	bounds = (x_min[0], x_max[0], x_min[1], x_max[1])
-	surfs = pdf_dset[:,:,:]
+	surfs = np.swapaxes(pdf_dset[:,:,:], 1, 2)
 	
 	chain_dset = f['/pixel %d/stellar chains' % pixIdx]
 	converged = chain_dset.attrs['converged'][:]
 	lnZ = chain_dset.attrs['ln(Z)'][:]
-	chains = chain_dset[:,:,1:]
-	ln_p = chain_dset[:,:,0]
+	chains = chain_dset[:,1:,1:]
+	ln_p = chain_dset[:,1:,0]
 	
 	#mean = np.mean(chains, axis=2)
 	#Delta = chains - mean
@@ -158,9 +158,10 @@ def probsurf_bayestar(mag, err, maglimit,
 	# Run bayestar
 	binary = '/home/greg/projects/bayestar/build/bayestar'
 	args = [binary, infile.name, outfile.name,
-	        '--save-surfs', '--star-steps', '350',
-	        '--star-samplers', '50',
-	        '--star-p-replacement', '0.2',
+	        '--save-surfs', #'--star-steps', '300',
+	        #'--star-samplers', '30',
+	        #'--star-p-replacement', '0.2',
+	        '--verbosity', '2',
 	        '--clouds', '0', '--regions', '0']
 	res = subprocess.call(args, stdout=logfile, stderr=logfile)
 	
@@ -186,9 +187,9 @@ def main():
 	
 	l, b = 185.82982972,  185.82311076
 	maglimit = np.array([24.5, 24.5, 24.5, 24.5, 24.5])
-	mag = np.array([[21.04790688,  19.53613853,  18.25717545,  17.62468529, 17.33963013]])
+	mag = np.array([[19.15384674, 17.96580505, 17.17712402, 16.8208065, 16.66966629]])
 	#err = np.array([[0.05899024,  0.02810547,  0.0265723, 0.02198926, 0.02619359]])
-	err = np.array([[0.05899024, 0.02810547, np.inf, 0.02198926, 0.02619359]])
+	err = np.array([[2.25655623e-02, 2.05883402e-02, 2.04321481e-02, 2.09825877e-02, 2.16421112e-02]])
 	
 	(bounds, surfs), (converged, lnZ), chains, ln_p, log = probsurf_bayestar(mag, err, maglimit,
 	                                                                         l=l, b=b, EBV_guess=2.)
@@ -199,10 +200,21 @@ def main():
 	print ln_p
 	
 	import matplotlib.pyplot as plt
+	
 	fig = plt.figure()
 	ax = fig.add_subplot(1,1,1)
 	ax.imshow(surfs[0].T, origin='lower', extent=bounds,
 	          aspect='auto', cmap='hot', interpolation='nearest')
+	
+	fig = plt.figure()
+	ax = fig.add_subplot(1,1,1)
+	img = np.log(surfs[0].T)
+	idx = np.isfinite(img)
+	img_min = np.min(img[idx])
+	img[~idx] = img_min
+	ax.imshow(img, origin='lower', extent=bounds,
+	          aspect='auto', cmap='hot', interpolation='nearest')
+	
 	plt.show()
 	
 	return 0

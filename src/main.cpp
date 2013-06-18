@@ -117,8 +117,8 @@ int main(int argc, char **argv) {
 	double err_floor = 20;
 	
 	bool synthetic = false;
-	unsigned int star_steps = 350;
-	unsigned int star_samplers = 20;
+	unsigned int star_steps = 250;
+	unsigned int star_samplers = 30;
 	double star_p_replacement = 0.2;
 	double sigma_RV = -1.;
 	double minEBV = 0.;

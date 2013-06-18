@@ -76,7 +76,7 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	//std::cerr << "# Setting up sampler" << std::endl;
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 	sampler.set_scale(2.);
-	sampler.set_replacement_bandwidth(0.25);
+	sampler.set_replacement_bandwidth(0.20);
 	
 	// Burn-in
 	if(verbosity >= 1) {
@@ -394,7 +394,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	if(verbosity >= 1) { std::cout << "# Burn-in ..." << std::endl; }
 	
 	sampler.set_scale(1.1);
-	sampler.set_replacement_bandwidth(0.25);
+	sampler.set_replacement_bandwidth(0.35);
 	sampler.set_MH_bandwidth(0.15);
 	
 	sampler.step_MH(int(N_steps*2./15.), false);
@@ -403,13 +403,13 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	if(verbosity >= 2) { sampler.print_stats(); }
 	
-	sampler.set_replacement_bandwidth(0.25);
+	sampler.set_replacement_bandwidth(0.35);
 	sampler.set_MH_bandwidth(0.20);
 	
 	sampler.step(int(N_steps*2./15.), false, 0., 2.*options.p_replacement);
 	sampler.step_MH(int(N_steps*3./15.), false);
 	
-	sampler.set_replacement_bandwidth(0.25);	// TODO: Scale with number of regions
+	sampler.set_replacement_bandwidth(0.35);	// TODO: Scale with number of regions
 	
 	sampler.tune_MH(5, 0.30);
 	sampler.tune_stretch(5, 0.40);
