@@ -56,8 +56,8 @@ def get2DProbSurfs(fname):
 			#tmp = np.einsum('ij,i->ij', tmp, 1./np.sum(tmp, axis=1))
 			surfs.append(stack.p[:,:,:])
 			pixIdx.append(idx)
-			minEBV = f[dset].attrs['min'][1]
-			maxEBV = f[dset].attrs['max'][1]
+			minEBV = f[dset].attrs['min'][0]
+			maxEBV = f[dset].attrs['max'][0]
 			break
 	
 	f.close()
@@ -90,18 +90,18 @@ def get1DProbSurfs(fname):
 			tmp = np.einsum('ij,i->ij', tmp, 1./np.sum(tmp, axis=1))
 			surfs.append(tmp)
 			pixIdx.append(idx)
-			minEBV = f[dset].attrs['min'][1]
-			maxEBV = f[dset].attrs['max'][1]
+			minEBV = f[dset].attrs['min'][0]
+			maxEBV = f[dset].attrs['max'][0]
 			
 			dset = str(name + '/stellar chains')
-			EBVsamples.append(f[dset][:,:,1])
-			lnZ.append( f[dset].attrs['ln(Z)'][:] )
+			EBVsamples.append(f[dset][:,1:,1])
+			lnZ.append(f[dset].attrs['ln(Z)'][:])
 			conv = f[dset].attrs['converged'][:]
 			mask = conv & (lnZ[-1] > np.max(lnZ[-1]) - 20.)
 			good.append(mask.astype(np.bool))
 			
 			dset = str(name + '/stellar chains')
-			Mrsamples.append(f[dset][:,:,3])
+			Mrsamples.append(f[dset][:,1:,3])
 	
 	f.close()
 	
