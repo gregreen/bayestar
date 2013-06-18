@@ -817,17 +817,63 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		//std::cerr << "# Setting up sampler" << std::endl;
 		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 		sampler.set_scale(1.5);
-		sampler.set_replacement_bandwidth(0.15);
+		sampler.set_replacement_bandwidth(0.25);
 		
 		//std::cerr << "# Burn-in" << std::endl;
-		sampler.step(N_steps, false, 0., options.p_replacement);
+		
+		// Burn-in
+		sampler.step_MH(N_steps*(1./6.), false);
+		sampler.step(N_steps*(2./6.), false, 0., options.p_replacement);
+		
+		if(verbosity >= 2) {
+			std::cout << std::endl;
+			std::cout << "scale: (";
+			std::cout << std::setprecision(2);
+			for(int k=0; k<sampler.get_N_samplers(); k++) {
+				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+			}
+		}
+		sampler.tune_stretch(6, 0.30);
+		sampler.tune_MH(6, 0.30);
+		if(verbosity >= 2) {
+			std::cout << ") -> (";
+			for(int k=0; k<sampler.get_N_samplers(); k++) {
+				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+			}
+			std::cout << ")" << std::endl;
+		}
+		
+		sampler.step_MH(N_steps*(1./6.), false);
+		sampler.step(N_steps*(2./6.), false, 0., options.p_replacement);
+		
+		if(verbosity >= 2) {
+			std::cout << "scale: (";
+			std::cout << std::setprecision(2);
+			for(int k=0; k<sampler.get_N_samplers(); k++) {
+				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+			}
+		}
+		sampler.tune_stretch(6, 0.30);
+		sampler.tune_MH(6, 0.30);
+		if(verbosity >= 2) {
+			std::cout << ") -> (";
+			for(int k=0; k<sampler.get_N_samplers(); k++) {
+				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+			}
+			std::cout << ")" << std::endl;
+			std::cout << std::endl;
+		}
+		
 		sampler.clear();
 		
 		//std::cerr << "# Main run" << std::endl;
+		
+		// Main run
 		bool converged = false;
 		size_t attempt;
 		for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
 			sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement);
+			//sampler.step_MH((1<<attempt)*N_steps*(1./3.), true);
 			
 			converged = true;
 			sampler.get_GR_diagnostic(GR);
