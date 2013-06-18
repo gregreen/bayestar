@@ -137,7 +137,8 @@ class TAffineSampler {
 	
 	// Private member functions
 	void affine_proposal(unsigned int j, double& scale);		// Generate a proposal state for sampler j, with the given step scale, using the stretch algorithm (default)
-	void replacement_proposal(unsigned int j, bool unbalanced);	// Generate a proposal state for sampler j, with the given step scale, using the replacement algorithm (long-range steps)
+	void replacement_proposal(unsigned int j, bool unbalanced);	// Generate a proposal state for sampler j using the replacement algorithm (long-range steps)
+	void replacement_proposal_diag(unsigned int j, bool unbalanced);	// Geenrate proposal state using replacement algorithm (with diagonal covariance)
 	void mixture_proposal(unsigned int j);				// Generate a proposal state for sampler j from a Gaussian mixture model designed to resemble the target distribution
 	void MH_proposal(unsigned int j);				// Generate a Metropolis-Hastings proposal for sampler j
 	void update_ensemble_cov();					// Calculate the covariance of the ensemble, as well as its inverse, determinant and square-root (A A^T = Cov)
@@ -153,9 +154,10 @@ public:
 	~TAffineSampler();
 	
 	// Mutators
-	void step(bool record_step=true, double p_replacement=0.1, bool unbalanced=false);	// Advance each sampler in ensemble by one step
-	void step_affine(bool record_step=true);
-	void step_replacement(bool record_step=true, bool unbalanced=false);
+	void step(bool record_step=true, double p_replacement=0.1,
+	          bool unbalanced=false, bool diag_approx=false);	// Advance each sampler in ensemble by one step
+	void step_affine(bool record_step=true);					
+	void step_replacement(bool record_step=true, bool unbalanced=false, bool diag_approx=false);	// Replacement step using full covariance (affine invariant)
 	void step_MH(bool record_step=true);		// Advance each sampler using Metropolis-Hastings step
 	void set_scale(double a);			// Set dimensionless step scale
 	void set_replacement_bandwidth(double _h);	// Set smoothing scale to be used for replacement steps, in units of the covariance
@@ -214,7 +216,8 @@ public:
 	~TParallelAffineSampler();
 	
 	// Mutators
-	void step(unsigned int N_steps, bool record_steps, double cycle=0, double p_replacement=0.1, bool unbalanced=false);		// Take the given number of steps in each affine sampler
+	void step(unsigned int N_steps, bool record_steps, double cycle=0,
+	          double p_replacement=0.1, bool unbalanced=false, bool diag_approx=false);	// Take the given number of steps in each affine sampler
 	void step_MH(unsigned int N_steps, bool record_steps);		// Take the given number of Metropolis-Hastings steps in each affine sampler
 	void tune_stretch(unsigned int N_rounds, double target_acceptance);	// Adjust stretch scale to achieve desired acceptance rate
 	void tune_MH(unsigned int N_rounds, double target_acceptance);		// Adjust step size to achieve desired acceptance rate
@@ -569,6 +572,82 @@ void TAffineSampler<TParams, TLogger>::replacement_proposal(unsigned int j, bool
 	unsigned int k = gsl_rng_uniform_int(r, (long unsigned int)L);
 	
 	// Determine step vector
+	draw_from_cov(W, sqrt_ensemble_cov, N, r);
+	
+	// Determine the coordinates of the proposal
+	for(unsigned int i=0; i<N; i++) {
+		Y[j].element[i] = X[k].element[i] + h * W[i];
+	}
+	
+	if(unbalanced) {
+		Y[j].replacement_factor = 1.;
+	} else {
+		// Determine pi_S(X_j | Y_j , X_{-j}) and pi_S(Y_j | X)
+		double tmp;
+		double XY_max = neg_inf_replacement;
+		double YX_max = neg_inf_replacement;
+		double YX_cutoff = neg_inf_replacement;
+		double XY_cutoff = neg_inf_replacement;
+		const double cutoff = 3. + logL;
+		double pi_XY = 0.;
+		double pi_YX = 0.;
+		for(unsigned int i=0; i<j; i++) {
+			tmp = log_gaussian_density(&(X[i]), &(X[j]));
+			if(tmp > XY_cutoff) {
+				pi_XY += exp(tmp);
+				if(tmp > XY_max) {
+					XY_max = tmp;
+					XY_cutoff = XY_max - cutoff;
+				}
+			}
+			
+			tmp = log_gaussian_density(&(X[i]), &(Y[j]));
+			if(tmp > YX_cutoff) {
+				pi_YX += exp(tmp);
+				if(tmp > YX_max) {
+					YX_max = tmp;
+					YX_cutoff = YX_max - cutoff;
+				}
+			}
+			
+		}
+		for(unsigned int i=j+1; i<L; i++) {
+			tmp = log_gaussian_density(&(X[i]), &(X[j]));
+			if(tmp > XY_cutoff) {
+				pi_XY += exp(tmp);
+				if(tmp > XY_max) {
+					XY_max = tmp;
+					XY_cutoff = XY_max - cutoff;
+				}
+			}
+			
+			tmp = log_gaussian_density(&(X[i]), &(Y[j]));
+			if(tmp > YX_cutoff) {
+				pi_YX += exp(tmp);
+				if(tmp > YX_max) {
+					YX_max = tmp;
+					YX_cutoff = YX_max - cutoff;
+				}
+			}
+		}
+		tmp = log_gaussian_density(&(Y[j]), &(X[j]));
+		if(tmp > XY_cutoff) { pi_XY += exp(tmp); }
+		if(tmp > YX_cutoff) { pi_YX += exp(tmp); }
+		
+		Y[j].replacement_factor = pi_XY / pi_YX;
+	}
+	
+	// Get pdf(Y) and initialize weight of proposal point to unity
+	Y[j].pi = pdf(Y[j].element, N, params);
+	Y[j].weight = 1.;
+}
+
+template<class TParams, class TLogger>
+void TAffineSampler<TParams, TLogger>::replacement_proposal_diag(unsigned int j, bool unbalanced) {
+	// Choose a sampler to step from
+	unsigned int k = gsl_rng_uniform_int(r, (long unsigned int)L);
+	
+	// Determine step vector
 	//draw_from_cov(W, sqrt_ensemble_cov, N, r);
 	
 	// Determine the coordinates of the proposal
@@ -681,11 +760,12 @@ void TAffineSampler<TParams, TLogger>::init_gaussian_mixture_target(unsigned int
  *************************************************************************/
 
 template<class TParams, class TLogger>
-void TAffineSampler<TParams, TLogger>::step(bool record_step, double p_replacement, bool unbalanced) {
+void TAffineSampler<TParams, TLogger>::step(bool record_step, double p_replacement,
+                                            bool unbalanced, bool diag_approx) {
 	// Make either a stretch or a replacement step
 	double p = gsl_rng_uniform(r);
 	if(p < p_replacement) {
-		step_replacement(record_step, unbalanced);
+		step_replacement(record_step, unbalanced, diag_approx);
 	} else {
 		step_affine(record_step);
 	}
@@ -767,12 +847,16 @@ void TAffineSampler<TParams, TLogger>::step_affine(bool record_step) {
 }
 
 template<class TParams, class TLogger>
-void TAffineSampler<TParams, TLogger>::step_replacement(bool record_step, bool unbalanced) {
+void TAffineSampler<TParams, TLogger>::step_replacement(bool record_step, bool unbalanced, bool diag_approx) {
 	update_ensemble_cov();
 	
 	double alpha, p;
 	for(unsigned int j=0; j<L; j++) {
-		replacement_proposal(j, unbalanced);
+		if(diag_approx) {
+			replacement_proposal_diag(j, unbalanced);
+		} else {
+			replacement_proposal(j, unbalanced);
+		}
 		
 		// Determine if the proposal is the maximum-likelihood point
 		if(Y[j].pi > X_ML.pi) { X_ML = Y[j]; }
@@ -1079,9 +1163,10 @@ TParallelAffineSampler<TParams, TLogger>::~TParallelAffineSampler() {
 }
 
 template<class TParams, class TLogger>
-void TParallelAffineSampler<TParams, TLogger>::step(unsigned int N_steps, bool record_steps, double cycle, double p_replacement, bool unbalanced) {
+void TParallelAffineSampler<TParams, TLogger>::step(unsigned int N_steps, bool record_steps, double cycle,
+                                                    double p_replacement, bool unbalanced, bool diag_approx) {
 	//omp_set_num_threads(N_samplers);
-	#pragma omp parallel firstprivate(record_steps, N_steps, cycle, p_replacement, unbalanced) num_threads(N_samplers)
+	#pragma omp parallel firstprivate(record_steps, N_steps, cycle, p_replacement, unbalanced, diag_approx) num_threads(N_samplers)
 	{
 		unsigned int thread_ID = omp_get_thread_num();
 		double base_a = sampler[thread_ID]->get_scale();
@@ -1093,7 +1178,7 @@ void TParallelAffineSampler<TParams, TLogger>::step(unsigned int N_steps, bool r
 					sampler[thread_ID]->set_scale(base_a);
 				}
 			}
-			sampler[thread_ID]->step(record_steps, p_replacement, unbalanced);
+			sampler[thread_ID]->step(record_steps, p_replacement, unbalanced, diag_approx);
 		}
 		sampler[thread_ID]->flush(record_steps);
 		
@@ -1146,15 +1231,15 @@ void TParallelAffineSampler<TParams, TLogger>::tune_MH(unsigned int N_rounds, do
 			sampler[thread_ID]->flush(false);
 			
 			acceptance_tmp = sampler[thread_ID]->get_MH_acceptance_rate();
-			if(acceptance_tmp < 0.8 * target_acceptance) {
+			if(acceptance_tmp < 0.9 * target_acceptance) {
 				bandwidth_tmp = sampler[thread_ID]->get_MH_bandwidth();
-				sampler[thread_ID]->set_MH_bandwidth(0.8 * bandwidth_tmp);
+				sampler[thread_ID]->set_MH_bandwidth(0.9 * bandwidth_tmp);
 				
 				//#pragma omp critical
 				//std::cout << "Thread " << thread_ID << ": " << bandwidth_tmp << " -> " << 0.8 * bandwidth_tmp << " (" << 100. * acceptance_tmp << "%)" << std::endl;
-			} else if(acceptance_tmp > 1.2 * target_acceptance) {
+			} else if(acceptance_tmp > 1.1 * target_acceptance) {
 				bandwidth_tmp = sampler[thread_ID]->get_MH_bandwidth();
-				sampler[thread_ID]->set_MH_bandwidth(1.2 * bandwidth_tmp);
+				sampler[thread_ID]->set_MH_bandwidth(1.1 * bandwidth_tmp);
 				
 				//#pragma omp critical
 				//std::cout << "Thread " << thread_ID << ": " << bandwidth_tmp << " -> " << 1.2 * bandwidth_tmp << " (" << 100. * acceptance_tmp << "%)" << std::endl;
@@ -1184,15 +1269,15 @@ void TParallelAffineSampler<TParams, TLogger>::tune_stretch(unsigned int N_round
 			sampler[thread_ID]->flush(false);
 			
 			acceptance_tmp = sampler[thread_ID]->get_stretch_acceptance_rate();
-			if(acceptance_tmp < 0.8 * target_acceptance) {
+			if(acceptance_tmp < 0.9 * target_acceptance) {
 				scale_Delta = sampler[thread_ID]->get_scale() - 1.;
-				sampler[thread_ID]->set_scale(1. + 0.8 * scale_Delta);
+				sampler[thread_ID]->set_scale(1. + 0.9 * scale_Delta);
 				
 				//#pragma omp critical
 				//std::cout << "Thread " << thread_ID << ": " << 1. + scale_Delta << " -> " << 1. + 0.8 * scale_Delta << " (" << 100. * acceptance_tmp << "%)" << std::endl;
-			} else if(acceptance_tmp > 1.2 * target_acceptance) {
+			} else if(acceptance_tmp > 1.1 * target_acceptance) {
 				scale_Delta = sampler[thread_ID]->get_scale() - 1.;
-				sampler[thread_ID]->set_scale(1. + 1.2 * scale_Delta);
+				sampler[thread_ID]->set_scale(1. + 1.1 * scale_Delta);
 				
 				//#pragma omp critical
 				//std::cout << "Thread " << thread_ID << ": " << 1. + scale_Delta << " -> " << 1. + 1.2 * scale_Delta << " (" << 100. * acceptance_tmp << "%)" << std::endl;

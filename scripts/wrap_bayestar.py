@@ -107,8 +107,8 @@ def getProbSurfs(fname):
 	chain_dset = f['/pixel %d/stellar chains' % pixIdx]
 	converged = chain_dset.attrs['converged'][:]
 	lnZ = chain_dset.attrs['ln(Z)'][:]
-	chains = chain_dset[:,:,1:]
-	ln_p = chain_dset[:,:,0]
+	chains = chain_dset[:,1:,1:]
+	ln_p = chain_dset[:,1:,0]
 	
 	#mean = np.mean(chains, axis=2)
 	#Delta = chains - mean
@@ -158,9 +158,9 @@ def probsurf_bayestar(mag, err, maglimit,
 	# Run bayestar
 	binary = '/home/greg/projects/bayestar/build/bayestar'
 	args = [binary, infile.name, outfile.name,
-	        '--save-surfs', '--star-steps', '350',
-	        '--star-samplers', '100',
-	        '--star-p-replacement', '0.2',
+	        '--save-surfs', #'--star-steps', '300',
+	        #'--star-samplers', '30',
+	        #'--star-p-replacement', '0.2',
 	        '--verbosity', '2',
 	        '--clouds', '0', '--regions', '0']
 	res = subprocess.call(args, stdout=logfile, stderr=logfile)
@@ -200,10 +200,21 @@ def main():
 	print ln_p
 	
 	import matplotlib.pyplot as plt
+	
 	fig = plt.figure()
 	ax = fig.add_subplot(1,1,1)
 	ax.imshow(surfs[0].T, origin='lower', extent=bounds,
 	          aspect='auto', cmap='hot', interpolation='nearest')
+	
+	fig = plt.figure()
+	ax = fig.add_subplot(1,1,1)
+	img = np.log(surfs[0].T)
+	idx = np.isfinite(img)
+	img_min = np.min(img[idx])
+	img[~idx] = img_min
+	ax.imshow(img, origin='lower', extent=bounds,
+	          aspect='auto', cmap='hot', interpolation='nearest')
+	
 	plt.show()
 	
 	return 0
