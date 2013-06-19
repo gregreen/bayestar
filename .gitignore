@@ -29,6 +29,7 @@ build
 *.h5
 *.hdf5
 *.dat
+*.fits
 
 # Text and log files #
 ######################
