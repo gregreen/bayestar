@@ -30,9 +30,10 @@ build
 *.hdf5
 *.dat
 
-# Text files #
-##############
+# Text and log files #
+######################
 *.txt
+*.log
 
 # Graphics #
 ############
