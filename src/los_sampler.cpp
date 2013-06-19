@@ -578,7 +578,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	double lnp = 0.;
 	
 	const double bias = -5.;
-	const double sigma = 10.;
+	const double sigma = 5.;
 	
 	double EBV_tot = 0.;
 	double EBV_tmp;
@@ -597,12 +597,15 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		if(params.Delta_EBV_prior != NULL) {
 			Delta_EBV_prior_tmp = params.Delta_EBV_prior[i];
 			if(EBV_tmp >= Delta_EBV_prior_tmp) {
-				//lnp -= (EBV_tmp - Delta_EBV_prior_tmp) * (EBV_tmp - Delta_EBV_prior_tmp) / (2. * Delta_EBV_prior_tmp * Delta_EBV_prior_tmp);
+				lnp -= (EBV_tmp - Delta_EBV_prior_tmp) * (EBV_tmp - Delta_EBV_prior_tmp) / (2. * Delta_EBV_prior_tmp * Delta_EBV_prior_tmp);
 				//lnp += 0.5 * (1. + logEBV[i] - log(Delta_EBV_prior_tmp) - EBV_tmp / Delta_EBV_prior_tmp);
-				lnp += 0.5 * (1. - EBV_tmp / Delta_EBV_prior_tmp);
+				//lnp += 0.5 * (1. - EBV_tmp / Delta_EBV_prior_tmp);
 				
 			}
 		}
+		
+		// To transform from dP/dx to dP/dlnx
+		lnp += logEBV[i];
 	}
 	
 	// Extinction must not exceed maximum value
