@@ -623,6 +623,15 @@ def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
 	
 	mean = np.mean(EBVdiff[idx])
 	sigma = np.std(EBVdiff[idx])
+	#norm = 1. / np.sqrt(2. * np.pi) / sigma
+	
+	print mean, sigma
+	
+	# Clip at 2 sigma
+	n_clip = 2.5
+	idx = (EBVdiff > mean - n_clip * sigma) & (EBVdiff < mean + n_clip * sigma)
+	mean = np.mean(EBVdiff[idx])
+	sigma = np.std(EBVdiff[idx])
 	norm = 1. / np.sqrt(2. * np.pi) / sigma
 	
 	print ''
@@ -801,7 +810,7 @@ def main():
 	directory = '/n/wise/ggreen/bayestar'
 	inFNames = ['%s/input/SEGUEcovar.%.5d.h5' % (directory, i) for i in xrange(10)]
 	outFNames = ['%s/output/SEGUEcovar_v2.%.5d.h5' % (directory, i) for i in xrange(10)]
-	bands = 5
+	bands = 2
 	max_SEGUE_sigma_EBV = 0.15
 	
 	surfs, EBV_samples, Mr_samples, SegueEBVs, SegueSigmaEBVs, EBV_SFD = [], [], [], [], [], []
@@ -896,7 +905,7 @@ def main():
 	'''
 	
 	print 'Saving plots...'
-	name = 'SEGUEcovar_v2'
+	name = 'SEGUEcovar_v2_gr'
 	fig11.savefig('plots/SEGUE/%s-corr-maxprob.png' % name, dpi=300)
 	fig12.savefig('plots/SEGUE/%s-scatter-maxprob.png' % name, dpi=300)
 	fig13.savefig('plots/SEGUE/%s-SFDcorr-maxprob.png' % name, dpi=300)
