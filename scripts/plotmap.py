@@ -346,6 +346,25 @@ def plotEBV(ax, pixels, muAnchor, DeltaEBV, mu,
 	
 	return imgRes
 
+class PixelIdentifier:
+	def __init__(self, ax, nside, nest=True):
+		self.ax = ax
+		self.cid = ax.figure.canvas.mpl_connect('button_press_event', self)
+		
+		self.nside = nside
+		self.nest = nest
+	
+	def __call__(self, event):
+		if event.inaxes != self.ax:
+			return
+		
+		# Determine healpix index of point
+		l, b = event.xdata, event.ydata
+		theta = np.pi/180. * (90. - b)
+		phi = np.pi/180. * l
+		pix_idx = hp.ang2pix(self.nside, theta, phi, nest=self.nest)
+		
+		print '(%.2f, %.2f) -> %d' % (l, b, pix_idx)
 
 def main():
 	parser = argparse.ArgumentParser(prog='plotmap.py',
@@ -444,6 +463,8 @@ def main():
 		if fname.endswith('.png'):
 			fname = fname[:-4]
 	
+	pix_identifiers = []
+	
 	# Plot at each distance
 	for i in xrange(muN):
 		print 'mu = %.2f (%d of %d)' % (mu[i], i+1, muN)
@@ -476,6 +497,8 @@ def main():
 		
 		d = 10.**(mu[i]/5. - 2.)
 		ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu[i], d), fontsize=16)
+		
+		pix_identifiers.append(PixelIdentifier(ax, args.nside))
 		
 		if fname != None:
 			full_fname = '%s.%s.%s.%.5d.png' % (fname, args.model, args.method, i)
