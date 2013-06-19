@@ -254,6 +254,20 @@ void TGalacticLOSModel::DM_to_RZ(double DM, double& R, double& Z) const {
 	R = sqrt(X*X + Y*Y);
 }
 
+double TGalacticLOSModel::rho_disk_los(double DM) const {
+	double R, Z;
+	DM_to_RZ(DM, R, Z);
+	
+	return rho_disk(R, Z);
+}
+
+double TGalacticLOSModel::rho_halo_los(double DM) const {
+	double R, Z;
+	DM_to_RZ(DM, R, Z);
+	
+	return rho_halo(R, Z);
+}
+
 double TGalacticLOSModel::log_dNdmu_full(double DM) const {
 	double R, Z;
 	DM_to_RZ(DM, R, Z);
@@ -363,6 +377,11 @@ double TGalacticLOSModel::log_prior_emp(const double *x) const {
 }
 
 double TGalacticLOSModel::get_log_dNdmu_norm() const { return log_dNdmu_norm; }
+
+double TGalacticLOSModel::dA_dmu(double DM) const {
+	return rho_disk_los(DM) * pow10(DM / 5.);
+}
+
 
 void TGalacticLOSModel::get_lb(double &_l, double &_b) const {
 	_l = l;

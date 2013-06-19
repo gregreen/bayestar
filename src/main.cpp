@@ -133,6 +133,7 @@ int main(int argc, char **argv) {
 	unsigned int cloud_samplers = 80;
 	double cloud_p_replacement = 0.2;
 	
+	bool disk_prior = false;
 	bool SFDPrior = false;
 	bool SFDsubpixel = false;
 	double evCut = 15.;
@@ -175,6 +176,7 @@ int main(int argc, char **argv) {
 		("cloud-samplers", po::value<unsigned int>(&cloud_samplers), "# of samplers per dimension (cloud fit)")
 		("cloud-p-replacement", po::value<double>(&cloud_p_replacement), "Probability of taking replacement step (cloud fit)")
 		
+		("disk-prior", "Assume that dust density roughly traces stellar disk density.")
 		("SFD-prior", "Use SFD E(B-V) as a prior on the total extinction in each pixel.")
 		("SFD-subpixel", "Use SFD E(B-V) as a subpixel template for the angular variation in reddening.")
 		("evidence-cut", po::value<double>(&evCut), "Delta lnZ to use as threshold for including star\n"
@@ -196,6 +198,7 @@ int main(int argc, char **argv) {
 	
 	if(vm.count("synthetic")) { synthetic = true; }
 	if(vm.count("save-surfs")) { saveSurfs = true; }
+	if(vm.count("disk-prior")) { disk_prior = true; }
 	if(vm.count("SFD-prior")) { SFDPrior = true; }
 	if(vm.count("SFD-subpixel")) { SFDsubpixel = true; }
 	
@@ -339,6 +342,9 @@ int main(int argc, char **argv) {
 				sample_los_extinction_clouds(output_fname, cloud_options, params, N_clouds, *it, verbosity);
 			}
 			if(N_regions != 0) {
+				if(disk_prior) {
+					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, N_regions);
+				}
 				sample_los_extinction(output_fname, los_options, params, N_regions, *it, verbosity);
 			}
 		}

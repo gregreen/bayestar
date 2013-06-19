@@ -33,7 +33,12 @@ TStellarData::TStellarData(const std::string& infile, uint32_t _healpix_index, d
 	std::stringstream dset;
 	dset << "pixel " << healpix_index;
 	load(infile, group, dset.str(), err_floor);
-	if(EBV <= 0.) { EBV = 4.; }
+	if(EBV <= 0.) {
+		EBV = 4.;
+	} else {
+		// Floor on E(B-V)_SFD
+		EBV = sqrt(EBV*EBV + 0.02*0.02);
+	}
 }
 
 
