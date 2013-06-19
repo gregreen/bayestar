@@ -343,7 +343,7 @@ int main(int argc, char **argv) {
 			}
 			if(N_regions != 0) {
 				if(disk_prior) {
-					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, N_regions);
+					params.calc_Delta_EBV_prior(los_model, 10.*stellar_data.EBV, N_regions);
 				}
 				sample_los_extinction(output_fname, los_options, params, N_regions, *it, verbosity);
 			}
