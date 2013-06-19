@@ -578,7 +578,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	double lnp = 0.;
 	
 	const double bias = -5.;
-	const double sigma = 5.;
+	const double sigma = 10.;
 	
 	double EBV_tot = 0.;
 	double EBV_tmp;
@@ -989,7 +989,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	// Normalize Delta E(B-V)
 	std::cout << "Delta_EBV_prior:" << std::endl;
 	//double Delta_EBV_quadrature = 0.1 * EBV_tot / (double)(N_regions + 1);
-	double Delta_EBV_quadrature = 0.001 * Delta_mu * (double)subsampling;
+	double Delta_EBV_quadrature = 0.01 * Delta_mu * (double)subsampling;
 	for(int i=1; i<N_regions+1; i++) {
 		Delta_EBV_prior[i] *= EBV_tot / EBV_sum;
 		
