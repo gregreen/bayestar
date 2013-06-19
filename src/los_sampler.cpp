@@ -578,7 +578,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	double lnp = 0.;
 	
 	const double bias = -5.;
-	const double sigma = 5.;
+	const double sigma = 8.;
 	
 	double EBV_tot = 0.;
 	double EBV_tmp;
