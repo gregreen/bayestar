@@ -93,6 +93,10 @@ struct TLOSMCMCParams {
 	std::vector<double> subpixel;
 	double subpixel_min, subpixel_max;
 	
+	double *Delta_EBV_prior;
+	double mu_0, mu_1;
+	unsigned int N_regions;
+	
 	TLOSMCMCParams(TImgStack* _img_stack, double _p0,
 	               unsigned int _N_threads, double _EBV_max=-1.);
 	~TLOSMCMCParams();
@@ -100,6 +104,8 @@ struct TLOSMCMCParams {
 	void set_p0(double _p0);
 	void set_subpixel_mask(TStellarData& data);
 	void set_subpixel_mask(std::vector<double>& new_mask);
+	
+	void calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, double EBV_tot, unsigned int N_regions);
 	
 	double* get_line_int(unsigned int thread_num);
 };

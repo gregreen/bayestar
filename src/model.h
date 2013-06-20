@@ -287,14 +287,23 @@ public:
 	double log_prior_synth(double DM, double logM, double logtau, double FeH) const;
 	double log_prior_synth(const double* x) const;
 	
+	// Full priors on (DM, Mr, [Fe/H]) for empirical stellar model
 	double log_prior_emp(double DM, double Mr, double FeH) const;
 	double log_prior_emp(const double* x) const;
+	
+	// Expected dust reddening, up to normalizing constant
+	double dA_dmu(double DM) const;
 	
 	// Convert from distance modulus to R and Z
 	void DM_to_RZ(double DM, double &R, double &Z) const;
 	
 	double get_log_dNdmu_norm() const;
 	
+	// Densities
+	double rho_disk_los(double DM) const;
+	double rho_halo_los(double DM) const;
+	
+	// Direction of l.o.s.
 	void get_lb(double &l, double &b) const;
 	
 private:
