@@ -94,6 +94,7 @@ struct TLOSMCMCParams {
 	double subpixel_min, subpixel_max;
 	
 	double *Delta_EBV_prior;
+	double *log_Delta_EBV_prior;
 	double mu_0, mu_1;
 	unsigned int N_regions;
 	

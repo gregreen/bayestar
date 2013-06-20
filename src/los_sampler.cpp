@@ -578,7 +578,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	double lnp = 0.;
 	
 	const double bias = -5.;
-	const double sigma = 8.;
+	const double sigma = (params.log_Delta_EBV_prior == NULL) ? 5. : 3.;
 	
 	double EBV_tot = 0.;
 	double EBV_tmp;
@@ -590,11 +590,16 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		// Prior to prevent EBV from straying high
 		//lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (5. * 5.);
 		
-		// Wide Gaussian prior on logEBV to prevent fit from straying drastically
-		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
+		if(params.log_Delta_EBV_prior != NULL) {
+			// Prior that reddening traces stellar disk
+			lnp -= (logEBV[i] - params.log_Delta_EBV_prior[i]) * (logEBV[i] - params.log_Delta_EBV_prior[i]) / (2. * sigma * sigma);
+		} else {
+			// Wide Gaussian prior on logEBV to prevent fit from straying drastically
+			lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
+		}
 		
 		// Prior that reddening traces stellar disk
-		if(params.Delta_EBV_prior != NULL) {
+		/*if(params.Delta_EBV_prior != NULL) {
 			Delta_EBV_prior_tmp = params.Delta_EBV_prior[i];
 			if(EBV_tmp >= Delta_EBV_prior_tmp) {
 				lnp -= (EBV_tmp - Delta_EBV_prior_tmp) * (EBV_tmp - Delta_EBV_prior_tmp) / (2. * Delta_EBV_prior_tmp * Delta_EBV_prior_tmp);
@@ -602,7 +607,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 				//lnp += 0.5 * (1. - EBV_tmp / Delta_EBV_prior_tmp);
 				
 			}
-		}
+		}*/
 		
 		// To transform from dP/dx to dP/dlnx
 		lnp += logEBV[i];
@@ -910,7 +915,7 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
                                unsigned int _N_threads, double _EBV_max)
 	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.), N_threads(_N_threads),
-	  line_int(NULL), Delta_EBV_prior(NULL)
+	  line_int(NULL), Delta_EBV_prior(NULL), log_Delta_EBV_prior(NULL)
 {
 	line_int = new double[_img_stack->N_images * N_threads];
 	//std::cout << "Allocated line_int[" << _img_stack->N_images * N_threads << "] (" << _img_stack->N_images << " images, " << N_threads << " threads)" << std::endl;
@@ -925,6 +930,7 @@ TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
 TLOSMCMCParams::~TLOSMCMCParams() {
 	if(line_int != NULL) { delete[] line_int; }
 	if(Delta_EBV_prior != NULL) { delete[] Delta_EBV_prior; }
+	if(log_Delta_EBV_prior != NULL) { delete[] log_Delta_EBV_prior; }
 }
 
 void TLOSMCMCParams::set_p0(double _p0) {
@@ -969,6 +975,9 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	if(Delta_EBV_prior != NULL) { delete[] Delta_EBV_prior; }
 	Delta_EBV_prior = new double[N_regions+1];
 	
+	if(log_Delta_EBV_prior != NULL) { delete[] log_Delta_EBV_prior; }
+	log_Delta_EBV_prior = new double[N_regions+1];
+	
 	double EBV_sum;
 	
 	// Integrate Delta E(B-V) from close distance to mu_0
@@ -996,13 +1005,14 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	std::cout << "Delta_EBV_prior:" << std::endl;
 	//double Delta_EBV_quadrature = 0.1 * EBV_tot / (double)(N_regions + 1);
 	double Delta_EBV_quadrature = 0.01 * Delta_mu * (double)subsampling;
-	for(int i=1; i<N_regions+1; i++) {
+	for(int i=0; i<N_regions+1; i++) {
 		Delta_EBV_prior[i] *= EBV_tot / EBV_sum;
 		
 		// Add a little bit in in quadrature
 		Delta_EBV_prior[i] = sqrt(Delta_EBV_prior[i]*Delta_EBV_prior[i] + Delta_EBV_quadrature*Delta_EBV_quadrature);
+		log_Delta_EBV_prior[i] = log(Delta_EBV_prior[i]);
 		
-		std::cout << std::setprecision(6) << Delta_EBV_prior[i] << std::endl;
+		std::cout << std::setprecision(6) << Delta_EBV_prior[i] << "\t" << log_Delta_EBV_prior[i] << std::endl;
 	}
 	std::cout << std::endl;
 }
