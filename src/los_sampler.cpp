@@ -577,40 +577,31 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCParams& params) {
 	double lnp = 0.;
 	
-	const double bias = -5.;
-	const double sigma = (params.log_Delta_EBV_prior == NULL) ? 5. : 3.;
-	
 	double EBV_tot = 0.;
 	double EBV_tmp;
-	double Delta_EBV_prior_tmp;
-	for(size_t i=0; i<N; i++) {
-		EBV_tmp = exp(logEBV[i]);
-		EBV_tot += EBV_tmp;
+	
+	if(params.log_Delta_EBV_prior != NULL) {
+		const double sigma = 2.5;
 		
-		// Prior to prevent EBV from straying high
-		//lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (5. * 5.);
-		
-		if(params.log_Delta_EBV_prior != NULL) {
+		for(size_t i=0; i<N; i++) {
+			EBV_tmp = exp(logEBV[i]);
+			EBV_tot += EBV_tmp;
+			
 			// Prior that reddening traces stellar disk
 			lnp -= (logEBV[i] - params.log_Delta_EBV_prior[i]) * (logEBV[i] - params.log_Delta_EBV_prior[i]) / (2. * sigma * sigma);
-		} else {
+		}
+	} else {
+		const double bias = -5.;
+		const double sigma = 5.;
+		
+		for(size_t i=0; i<N; i++) {
+			EBV_tmp = exp(logEBV[i]);
+			EBV_tot += EBV_tmp;
+			
 			// Wide Gaussian prior on logEBV to prevent fit from straying drastically
 			lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
+			
 		}
-		
-		// Prior that reddening traces stellar disk
-		/*if(params.Delta_EBV_prior != NULL) {
-			Delta_EBV_prior_tmp = params.Delta_EBV_prior[i];
-			if(EBV_tmp >= Delta_EBV_prior_tmp) {
-				lnp -= (EBV_tmp - Delta_EBV_prior_tmp) * (EBV_tmp - Delta_EBV_prior_tmp) / (2. * Delta_EBV_prior_tmp * Delta_EBV_prior_tmp);
-				//lnp += 0.5 * (1. + logEBV[i] - log(Delta_EBV_prior_tmp) - EBV_tmp / Delta_EBV_prior_tmp);
-				//lnp += 0.5 * (1. - EBV_tmp / Delta_EBV_prior_tmp);
-				
-			}
-		}*/
-		
-		// To transform from dP/dx to dP/dlnx
-		lnp += logEBV[i];
 	}
 	
 	// Extinction must not exceed maximum value
@@ -1001,12 +992,16 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		EBV_sum += Delta_EBV_prior[i];
 	}
 	
+	double dEBV_ds = 0.2;	// mag kpc^{-1}
+	double dEBV_dmu = dEBV_ds * (0.01 * log(10.) / 5.); // * pow10(mu_0/5.);
+	double norm = dEBV_dmu / gal_los_model.dA_dmu(0.) / subsampling;
+	
 	// Normalize Delta E(B-V)
 	std::cout << "Delta_EBV_prior:" << std::endl;
 	//double Delta_EBV_quadrature = 0.1 * EBV_tot / (double)(N_regions + 1);
 	//double Delta_EBV_quadrature = 0.01 * Delta_mu * (double)subsampling;
 	for(int i=0; i<N_regions+1; i++) {
-		Delta_EBV_prior[i] *= EBV_tot / EBV_sum;
+		Delta_EBV_prior[i] *= norm;	//EBV_tot / EBV_sum;
 		
 		// Add a little bit in in quadrature
 		//Delta_EBV_prior[i] = sqrt(Delta_EBV_prior[i]*Delta_EBV_prior[i] + Delta_EBV_quadrature*Delta_EBV_quadrature);
