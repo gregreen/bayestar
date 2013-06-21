@@ -1009,6 +1009,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		
 		std::cout << std::setprecision(6) << Delta_EBV_prior[i] << "\t" << log_Delta_EBV_prior[i] << std::endl;
 	}
+	std::cout << "Total E(B-V) = " << EBV_sum * norm << std::endl;
 	std::cout << std::endl;
 }
 
