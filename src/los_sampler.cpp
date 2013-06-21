@@ -581,14 +581,14 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	double EBV_tmp;
 	
 	if(params.log_Delta_EBV_prior != NULL) {
-		const double sigma = 2.5;
+		//const double sigma = 2.5;
 		
 		for(size_t i=0; i<N; i++) {
 			EBV_tmp = exp(logEBV[i]);
 			EBV_tot += EBV_tmp;
 			
 			// Prior that reddening traces stellar disk
-			lnp -= (logEBV[i] - params.log_Delta_EBV_prior[i]) * (logEBV[i] - params.log_Delta_EBV_prior[i]) / (2. * sigma * sigma);
+			lnp -= (logEBV[i] - params.log_Delta_EBV_prior[i]) * (logEBV[i] - params.log_Delta_EBV_prior[i]) / (2. * params.sigma_log_Delta_EBV[i] * params.sigma_log_Delta_EBV[i]);
 		}
 	} else {
 		const double bias = -5.;
@@ -906,7 +906,8 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
                                unsigned int _N_threads, double _EBV_max)
 	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.), N_threads(_N_threads),
-	  line_int(NULL), Delta_EBV_prior(NULL), log_Delta_EBV_prior(NULL)
+	  line_int(NULL), Delta_EBV_prior(NULL), log_Delta_EBV_prior(NULL),
+	  sigma_log_Delta_EBV(NULL)
 {
 	line_int = new double[_img_stack->N_images * N_threads];
 	//std::cout << "Allocated line_int[" << _img_stack->N_images * N_threads << "] (" << _img_stack->N_images << " images, " << N_threads << " threads)" << std::endl;
@@ -922,6 +923,7 @@ TLOSMCMCParams::~TLOSMCMCParams() {
 	if(line_int != NULL) { delete[] line_int; }
 	if(Delta_EBV_prior != NULL) { delete[] Delta_EBV_prior; }
 	if(log_Delta_EBV_prior != NULL) { delete[] log_Delta_EBV_prior; }
+	if(sigma_log_Delta_EBV != NULL) { delete[] sigma_log_Delta_EBV; }
 }
 
 void TLOSMCMCParams::set_p0(double _p0) {
@@ -969,6 +971,9 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	if(log_Delta_EBV_prior != NULL) { delete[] log_Delta_EBV_prior; }
 	log_Delta_EBV_prior = new double[N_regions+1];
 	
+	if(sigma_log_Delta_EBV != NULL) { delete[] sigma_log_Delta_EBV; }
+	sigma_log_Delta_EBV = new double[N_regions+1];
+	
 	double EBV_sum;
 	
 	// Integrate Delta E(B-V) from close distance to mu_0
@@ -980,6 +985,11 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	Delta_EBV_prior[0] /= 5.;
 	EBV_sum = Delta_EBV_prior[0];
 	
+	double sigma_0 = 15.;
+	double a = 1.5;
+	double sigma_norm = exp(sigma_0) - 1.;
+	sigma_log_Delta_EBV[0] = log(1. + sigma_norm / pow10(a*mu_0/5.));
+	
 	// Integrate Delta E(B-V) in each region
 	for(int i=1; i<N_regions+1; i++) {
 		//mu = mu_0 + Delta_mu * (double)(i-1) * (double)subsampling;
@@ -990,6 +1000,8 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		}
 		
 		EBV_sum += Delta_EBV_prior[i];
+		
+		sigma_log_Delta_EBV[i] = log(1. + sigma_norm / pow10(a*mu/5.));
 	}
 	
 	double dEBV_ds = 0.2;	// mag kpc^{-1}
@@ -998,16 +1010,21 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	
 	// Normalize Delta E(B-V)
 	std::cout << "Delta_EBV_prior:" << std::endl;
+	double Delta_EBV_quadrature = 0.01 * Delta_EBV_prior[0] * norm;
 	//double Delta_EBV_quadrature = 0.1 * EBV_tot / (double)(N_regions + 1);
 	//double Delta_EBV_quadrature = 0.01 * Delta_mu * (double)subsampling;
 	for(int i=0; i<N_regions+1; i++) {
 		Delta_EBV_prior[i] *= norm;	//EBV_tot / EBV_sum;
 		
 		// Add a little bit in in quadrature
-		//Delta_EBV_prior[i] = sqrt(Delta_EBV_prior[i]*Delta_EBV_prior[i] + Delta_EBV_quadrature*Delta_EBV_quadrature);
+		Delta_EBV_prior[i] = sqrt(Delta_EBV_prior[i]*Delta_EBV_prior[i] + Delta_EBV_quadrature*Delta_EBV_quadrature);
+		sigma_log_Delta_EBV[i] = sqrt(sigma_log_Delta_EBV[i]*sigma_log_Delta_EBV[i] + 2.*2.);
+		
 		log_Delta_EBV_prior[i] = log(Delta_EBV_prior[i]);
 		
-		std::cout << std::setprecision(6) << Delta_EBV_prior[i] << "\t" << log_Delta_EBV_prior[i] << std::endl;
+		std::cout << std::setprecision(6) << Delta_EBV_prior[i]
+		          << "\t" << log_Delta_EBV_prior[i]
+		          << " +- " << sigma_log_Delta_EBV[i] << std::endl;
 	}
 	std::cout << "Total E(B-V) = " << EBV_sum * norm << std::endl;
 	std::cout << std::endl;
