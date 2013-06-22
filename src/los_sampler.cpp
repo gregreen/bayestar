@@ -1019,7 +1019,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	
 	// Normalize Delta E(B-V)
 	std::cout << "Delta_EBV_prior:" << std::endl;
-	double Delta_EBV_quadrature = 0.01 * Delta_EBV_prior[0] * norm;
+	double Delta_EBV_quadrature = 0.001 * Delta_EBV_prior[0] * norm;
 	//double Delta_EBV_quadrature = 0.1 * EBV_tot / (double)(N_regions + 1);
 	//double Delta_EBV_quadrature = 0.01 * Delta_mu * (double)subsampling;
 	for(int i=0; i<N_regions+1; i++) {
@@ -1027,7 +1027,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		
 		// Add a little bit in in quadrature
 		Delta_EBV_prior[i] = sqrt(Delta_EBV_prior[i]*Delta_EBV_prior[i] + Delta_EBV_quadrature*Delta_EBV_quadrature);
-		sigma_log_Delta_EBV[i] = sqrt(sigma_log_Delta_EBV[i]*sigma_log_Delta_EBV[i] + 2.*2.);
+		sigma_log_Delta_EBV[i] = sqrt(sigma_log_Delta_EBV[i]*sigma_log_Delta_EBV[i] + 1.*1.);
 		
 		log_Delta_EBV_prior[i] = log(Delta_EBV_prior[i]);
 		
