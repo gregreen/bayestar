@@ -994,7 +994,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	Delta_EBV_prior[0] /= 5.;
 	EBV_sum = Delta_EBV_prior[0];
 	
-	double sigma_0 = 8.;
+	double sigma_0 = 7.;
 	double a = 1.;
 	double sigma_norm = exp(sigma_0) - 1.;
 	sigma_log_Delta_EBV[0] = log(1. + sigma_norm / pow10(a*mu_0/5.));
