@@ -30,6 +30,7 @@ import scipy.stats
 
 import matplotlib.pyplot as plt
 import matplotlib as mplib
+from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 
 import argparse, sys
 from os.path import abspath
@@ -273,6 +274,10 @@ def main():
 		ax_density.plot([xlim[0]-1., xlim[1]+1.], [0., 0.], 'c:', lw=0.5, alpha=0.35)
 		ax_density.set_xlim(xlim)
 		ax_density.set_ylim(ylim)
+		ax_density.xaxis.set_major_locator(MaxNLocator(nbins=4))
+		ax_density.xaxis.set_minor_locator(AutoMinorLocator())
+		ax_density.yaxis.set_major_locator(MaxNLocator(nbins=4))
+		ax_density.yaxis.set_minor_locator(AutoMinorLocator())
 		
 		ax_histx.fill_between(DM_range, y1=p_DM, alpha=0.4, facecolor='b')
 		ax_histx.plot([0., 0.], [0., 1.1*np.max(p_DM)], 'g-', lw=0.5)
@@ -287,6 +292,9 @@ def main():
 		ax_histy.set_ylim(ylim)
 		ax_histy.set_xticklabels([])
 		ax_histy.set_yticklabels([])
+		
+		ax.set_xlabel(r'$\Delta \mu$', fontsize=16)
+		ax.set_ylabel(r'$\Delta \mathrm{E} \! \left( B \! - \! V \right)$', fontsize=16)
 		
 		fig.savefig(stack_fname, dpi=300)
 	
