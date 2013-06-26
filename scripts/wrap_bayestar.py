@@ -1,6 +1,7 @@
 import numpy as np, h5py, tempfile, subprocess
 
-def write_infile(filename, mag, err, maglimit, l=90., b=10., EBV_guess=2., access_mode='a'):
+def write_infile(filename, mag, err, maglimit,
+                 l=90., b=10., EBV_guess=2., access_mode='a'):
 	# Prepare output for pixel
 	n_stars = len(mag)
 	
@@ -32,7 +33,7 @@ def write_infile(filename, mag, err, maglimit, l=90., b=10., EBV_guess=2., acces
 	
 	nside = 512
 	nest = True
-	EBV = 0.
+	EBV = EBV_guess
 	att_f8 = np.array([EBV], dtype='f8')
 	att_u8 = np.array([pixIdx], dtype='u8')
 	att_u4 = np.array([nside], dtype='u4')
@@ -191,7 +192,9 @@ def main():
 	err = np.array([[ 2.25655623e-02, 2.05883402e-02, 2.04321481e-02, 2.09825877e-02, 2.16421112e-02],
 	                [ 2.32891608e-02, 2.07754262e-02, 2.06643697e-02, 2.12468710e-02, 2.20379084e-02],
 	                [ 2.67316885e-02, 2.14912761e-02, 2.12796684e-02, 2.34406944e-02, 2.59469077e-02]], dtype='f4')
-	maglim = np.array([
+	maglim = np.array([[24.5, 24.5, 24.5, 24.5, 24.5],
+	                   [24.5, 24.5, 24.5, 24.5, 24.5],
+	                   [24.5, 24.5, 24.5, 24.5, 24.5]])
 	l = 173.3075
 	b = 89.82
 	

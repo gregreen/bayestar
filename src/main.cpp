@@ -327,7 +327,7 @@ int main(int argc, char **argv) {
 			cout << "# of stars filtered: " << nFiltered << " of " << conv.size();
 			cout << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
 			
-			double p0 = 1.e-4;
+			double p0 = 1.e-3;
 			double EBV_max = -1.;
 			if(SFDPrior) {
 				if(SFDsubpixel) {
@@ -343,7 +343,7 @@ int main(int argc, char **argv) {
 			}
 			if(N_regions != 0) {
 				if(disk_prior) {
-					params.calc_Delta_EBV_prior(los_model, 10.*stellar_data.EBV, N_regions);
+					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, N_regions);
 				}
 				sample_los_extinction(output_fname, los_options, params, N_regions, *it, verbosity);
 			}

@@ -91,7 +91,8 @@ def observed(mags, mag_lim):
 	pass
 
 def draw_from_model(l, b, N, EBV_spread=0.02,
-                    mag_lim=(23., 22., 22., 21., 20.), EBV_of_mu=None):
+                    mag_lim=(23., 22., 22., 21., 20.),
+                    EBV_of_mu=None, EBV_uniform=False):
 	dtype = [('DM', 'f8'), ('EBV', 'f8'),
 	         ('Mr', 'f8'), ('FeH', 'f8'),
 	         ('mag', '5f8'), ('err', '5f8')]
@@ -128,9 +129,12 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		
 		# Draw EBV
 		ret['EBV'][idx] = 0.
-		if EBV_of_mu != None:
-			ret['EBV'][idx] += EBV_of_mu(ret['DM'][idx]) #+ np.random.normal(scale=EBV_spread, size=size)
-		ret['EBV'][idx] += EBV_spread * np.random.chisquare(1., size)
+		if EBV_uniform:
+			ret['EBV'][idx] += 1. + 3. * np.random.random(size=idx.size)
+		else:	
+			if EBV_of_mu != None:
+				ret['EBV'][idx] += EBV_of_mu(ret['DM'][idx]) #+ np.random.normal(scale=EBV_spread, size=size)
+			ret['EBV'][idx] += EBV_spread * np.random.chisquare(1., size)
 		
 		x, y, z = gal_model.Cartesian_coords(ret['DM'][idx], cos_l,
 		                                     sin_l, cos_b, sin_b)
@@ -223,13 +227,15 @@ def main():
 	                    help='Galactic latitude and longitude, in degrees.')
 	parser.add_argument('-EBV', '--mean-EBV', type=float, default=0.02,
 	                    metavar='mags', help='Mean E(B-V) extinction.')
+	parser.add_argument('--EBV-uniform', action='store_true',
+	                    help='Draw E(B-V) from U(1,4).')
 	parser.add_argument('-cl', '--clouds', type=float, nargs='+',
 	                    default=None, metavar='mu Delta_EBV',
 	                    help='Place clouds of reddening Delta_EBV at distances mu')
 	parser.add_argument('-r', '--max-r', type=float, default=23.,
 	                    metavar='mags', help='Limiting apparent r-band magnitude.')
 	parser.add_argument('-lim', '--limiting-mag', metavar='mags', type=float,
-	                    nargs=5, default=(22., 22.5, 22., 21., 20.),
+	                    nargs=5, default=(22.5, 22.5, 22., 21., 20.),
 	                    help='Limiting magnitudes in grizy.')
 	parser.add_argument('-flat', '--flat', action='store_true',
 	                    help='Draw parameters from flat distribution')
@@ -270,7 +276,8 @@ def main():
 	else:
 		params = draw_from_model(args.gal_lb[0], args.gal_lb[1],
 		                         args.N, EBV_spread=args.mean_EBV,
-		                         mag_lim=args.limiting_mag, EBV_of_mu=EBV_of_mu)
+		                         mag_lim=args.limiting_mag, EBV_of_mu=EBV_of_mu,
+		                         EBV_uniform=args.EBV_uniform)
 	
 	# Write Bayestar input file
 	if args.output != None:

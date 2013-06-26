@@ -393,35 +393,44 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	// Burn-in
 	if(verbosity >= 1) { std::cout << "# Burn-in ..." << std::endl; }
 	
+	// Round 1 (5/15)
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.35);
 	sampler.set_MH_bandwidth(0.15);
 	
+	sampler.tune_MH(5, 0.30);
 	sampler.step_MH(int(N_steps*2./15.), false);
+	
+	sampler.tune_stretch(5, 0.40);
 	sampler.step(int(N_steps*2./15.), false, 0., options.p_replacement);
 	sampler.step(int(N_steps*1./15.), false, 0., 1., true);
 	
 	if(verbosity >= 2) { sampler.print_stats(); }
 	
+	// Round 2 (5/15)
 	sampler.set_replacement_bandwidth(0.35);
-	sampler.set_MH_bandwidth(0.20);
-	
-	sampler.step(int(N_steps*2./15.), false, 0., 2.*options.p_replacement);
-	sampler.step_MH(int(N_steps*3./15.), false);
-	
-	sampler.set_replacement_bandwidth(0.35);	// TODO: Scale with number of regions
-	
 	sampler.tune_MH(5, 0.30);
 	sampler.tune_stretch(5, 0.40);
 	
+	sampler.step_MH(int(N_steps*3./15.), false);
+	sampler.step(int(N_steps*2./15.), false, 0., options.p_replacement);
+	
+	// Round 3 (5/15)
+	sampler.set_replacement_bandwidth(0.35);	// TODO: Scale with number of regions
+	sampler.tune_MH(8, 0.30);
+	sampler.tune_stretch(8, 0.40);
+	
+	sampler.step_MH(int(N_steps*2./15.), false);
 	sampler.step(int(N_steps*3./15.), false, 0., options.p_replacement);
-	sampler.step(int(N_steps*2./15.), false, 0., 2.*options.p_replacement);
-	sampler.step_MH(int(N_steps*5./15.), false);
+	
+	// Round 4 (5/15)
+	sampler.step(int(N_steps*2./15.), false, 0., options.p_replacement);
+	sampler.step_MH(int(N_steps*3./15.), false);
 	
 	if(verbosity >= 2) { sampler.print_stats(); }
 	sampler.clear();
 	
-	// Main sampling phase
+	// Main sampling phase (15/15)
 	if(verbosity >= 1) { std::cout << "# Main run ..." << std::endl; }
 	bool converged = false;
 	size_t attempt;
@@ -434,7 +443,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 				std::cout << sampler.get_sampler(k)->get_MH_bandwidth() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
 			}
 		}
-		sampler.tune_MH(8, 0.30);
+		sampler.tune_MH(10, 0.30);
 		if(verbosity >= 2) {
 			std::cout << ") -> (";
 			for(int k=0; k<sampler.get_N_samplers(); k++) {
@@ -458,7 +467,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 			std::cout << ")" << std::endl;
 		}
 		
-			sampler.step((1<<attempt)*N_steps*2./3., true, 0., options.p_replacement);
+		sampler.step((1<<attempt)*N_steps*2./3., true, 0., options.p_replacement);
 		sampler.step_MH((1<<attempt)*N_steps/3., true);
 		
 		sampler.calc_GR_transformed(GR_transf, &transf);
@@ -577,35 +586,31 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCParams& params) {
 	double lnp = 0.;
 	
-	const double bias = -5.;
-	const double sigma = 8.;
-	
 	double EBV_tot = 0.;
 	double EBV_tmp;
-	double Delta_EBV_prior_tmp;
-	for(size_t i=0; i<N; i++) {
-		EBV_tmp = exp(logEBV[i]);
-		EBV_tot += EBV_tmp;
+	
+	if(params.log_Delta_EBV_prior != NULL) {
+		//const double sigma = 2.5;
 		
-		// Prior to prevent EBV from straying high
-		//lnp -= 0.5 * (EBV_tmp * EBV_tmp) / (5. * 5.);
-		
-		// Wide Gaussian prior on logEBV to prevent fit from straying drastically
-		lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
-		
-		// Prior that reddening traces stellar disk
-		if(params.Delta_EBV_prior != NULL) {
-			Delta_EBV_prior_tmp = params.Delta_EBV_prior[i];
-			if(EBV_tmp >= Delta_EBV_prior_tmp) {
-				lnp -= (EBV_tmp - Delta_EBV_prior_tmp) * (EBV_tmp - Delta_EBV_prior_tmp) / (2. * Delta_EBV_prior_tmp * Delta_EBV_prior_tmp);
-				//lnp += 0.5 * (1. + logEBV[i] - log(Delta_EBV_prior_tmp) - EBV_tmp / Delta_EBV_prior_tmp);
-				//lnp += 0.5 * (1. - EBV_tmp / Delta_EBV_prior_tmp);
-				
-			}
+		for(size_t i=0; i<N; i++) {
+			EBV_tmp = exp(logEBV[i]);
+			EBV_tot += EBV_tmp;
+			
+			// Prior that reddening traces stellar disk
+			lnp -= (logEBV[i] - params.log_Delta_EBV_prior[i]) * (logEBV[i] - params.log_Delta_EBV_prior[i]) / (2. * params.sigma_log_Delta_EBV[i] * params.sigma_log_Delta_EBV[i]);
 		}
+	} else {
+		const double bias = -5.;
+		const double sigma = 5.;
 		
-		// To transform from dP/dx to dP/dlnx
-		lnp += logEBV[i];
+		for(size_t i=0; i<N; i++) {
+			EBV_tmp = exp(logEBV[i]);
+			EBV_tot += EBV_tmp;
+			
+			// Wide Gaussian prior on logEBV to prevent fit from straying drastically
+			lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
+			
+		}
 	}
 	
 	// Extinction must not exceed maximum value
@@ -910,7 +915,8 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
                                unsigned int _N_threads, double _EBV_max)
 	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.), N_threads(_N_threads),
-	  line_int(NULL), Delta_EBV_prior(NULL)
+	  line_int(NULL), Delta_EBV_prior(NULL), log_Delta_EBV_prior(NULL),
+	  sigma_log_Delta_EBV(NULL)
 {
 	line_int = new double[_img_stack->N_images * N_threads];
 	//std::cout << "Allocated line_int[" << _img_stack->N_images * N_threads << "] (" << _img_stack->N_images << " images, " << N_threads << " threads)" << std::endl;
@@ -925,6 +931,8 @@ TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
 TLOSMCMCParams::~TLOSMCMCParams() {
 	if(line_int != NULL) { delete[] line_int; }
 	if(Delta_EBV_prior != NULL) { delete[] Delta_EBV_prior; }
+	if(log_Delta_EBV_prior != NULL) { delete[] log_Delta_EBV_prior; }
+	if(sigma_log_Delta_EBV != NULL) { delete[] sigma_log_Delta_EBV; }
 }
 
 void TLOSMCMCParams::set_p0(double _p0) {
@@ -969,6 +977,12 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	if(Delta_EBV_prior != NULL) { delete[] Delta_EBV_prior; }
 	Delta_EBV_prior = new double[N_regions+1];
 	
+	if(log_Delta_EBV_prior != NULL) { delete[] log_Delta_EBV_prior; }
+	log_Delta_EBV_prior = new double[N_regions+1];
+	
+	if(sigma_log_Delta_EBV != NULL) { delete[] sigma_log_Delta_EBV; }
+	sigma_log_Delta_EBV = new double[N_regions+1];
+	
 	double EBV_sum;
 	
 	// Integrate Delta E(B-V) from close distance to mu_0
@@ -980,6 +994,11 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	Delta_EBV_prior[0] /= 5.;
 	EBV_sum = Delta_EBV_prior[0];
 	
+	double sigma_0 = 7.;
+	double a = 1.;
+	double sigma_norm = exp(sigma_0) - 1.;
+	sigma_log_Delta_EBV[0] = log(1. + sigma_norm / pow10(a*mu_0/5.));
+	
 	// Integrate Delta E(B-V) in each region
 	for(int i=1; i<N_regions+1; i++) {
 		//mu = mu_0 + Delta_mu * (double)(i-1) * (double)subsampling;
@@ -990,20 +1009,33 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		}
 		
 		EBV_sum += Delta_EBV_prior[i];
+		
+		sigma_log_Delta_EBV[i] = log(1. + sigma_norm / pow10(a*mu/5.));
 	}
+	
+	double dEBV_ds = 0.2;	// mag kpc^{-1}
+	double dEBV_dmu = dEBV_ds * (0.01 * log(10.) / 5.); // * pow10(mu_0/5.);
+	double norm = dEBV_dmu / gal_los_model.dA_dmu(0.) / subsampling;
 	
 	// Normalize Delta E(B-V)
 	std::cout << "Delta_EBV_prior:" << std::endl;
+	double Delta_EBV_quadrature = 0.001 * Delta_EBV_prior[0] * norm;
 	//double Delta_EBV_quadrature = 0.1 * EBV_tot / (double)(N_regions + 1);
-	double Delta_EBV_quadrature = 0.01 * Delta_mu * (double)subsampling;
-	for(int i=1; i<N_regions+1; i++) {
-		Delta_EBV_prior[i] *= EBV_tot / EBV_sum;
+	//double Delta_EBV_quadrature = 0.01 * Delta_mu * (double)subsampling;
+	for(int i=0; i<N_regions+1; i++) {
+		Delta_EBV_prior[i] *= norm;	//EBV_tot / EBV_sum;
 		
 		// Add a little bit in in quadrature
 		Delta_EBV_prior[i] = sqrt(Delta_EBV_prior[i]*Delta_EBV_prior[i] + Delta_EBV_quadrature*Delta_EBV_quadrature);
+		sigma_log_Delta_EBV[i] = sqrt(sigma_log_Delta_EBV[i]*sigma_log_Delta_EBV[i] + 1.*1.);
 		
-		std::cout << std::setprecision(6) << Delta_EBV_prior[i] << std::endl;
+		log_Delta_EBV_prior[i] = log(Delta_EBV_prior[i]);
+		
+		std::cout << std::setprecision(6) << Delta_EBV_prior[i]
+		          << "\t" << log_Delta_EBV_prior[i]
+		          << " +- " << sigma_log_Delta_EBV[i] << std::endl;
 	}
+	std::cout << "Total E(B-V) = " << EBV_sum * norm << std::endl;
 	std::cout << std::endl;
 }
 
