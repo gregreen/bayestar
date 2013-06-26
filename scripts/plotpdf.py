@@ -94,6 +94,7 @@ def clouds2ax(ax, fname, group, DM_lim, *args, **kwargs):
 		ax.plot(mu, EBV, *args, **kwargs)
 	
 	kwargs['c'] = 'r'
+	kwargs['alpha'] = 0.5
 	ax.plot(mu_all[0], EBV_all[0], *args, **kwargs)
 	
 	# Plot mean path
@@ -210,8 +211,8 @@ def main():
 	
 	bounds = [x_min[0], x_max[0], x_min[1], x_max[1]]
 	if args.show_pdfs:
-		ax.imshow(pdf_stack.T, extent=bounds, origin='lower',
-		             aspect='auto', cmap='hot', interpolation='nearest')
+		ax.imshow(np.sqrt(pdf_stack.T), extent=bounds, origin='lower',
+		             aspect='auto', cmap='Blues', interpolation='nearest')
 	
 	# Mini-plots of individual stellar pdfs
 	ax_indiv = []
@@ -227,8 +228,8 @@ def main():
 			ax_tmp = fig.add_axes(rect)
 			
 			if args.show_pdfs:
-				ax_tmp.imshow(pdf_indiv[i].T, extent=bounds, origin='lower',
-				              aspect='auto', cmap='hot', interpolation='nearest')
+				ax_tmp.imshow(np.sqrt(pdf_indiv[i].T), extent=bounds, origin='lower',
+				              aspect='auto', cmap='Blues', interpolation='nearest')
 			
 			ax_tmp.set_xticks([])
 			ax_tmp.set_yticks([])
@@ -240,17 +241,17 @@ def main():
 	
 	if args.show_los:
 		try:
-			los2ax(ax, fname, group, DM_lim, 'c', alpha=0.05, lw=1.5)
+			los2ax(ax, fname, group, DM_lim, c='k', alpha=0.05, lw=1.5)
 			for sub_ax in ax_indiv:
-				los2ax(sub_ax, fname, group, DM_lim, 'c', alpha=0.015)
+				los2ax(sub_ax, fname, group, DM_lim, c='k', alpha=0.015)
 		except:
 			pass
 	
 	if args.show_clouds:
 		try:
-			clouds2ax(ax, fname, group, DM_lim, 'g', alpha=0.15, lw=1.5)
+			clouds2ax(ax, fname, group, DM_lim, c='k', alpha=0.05, lw=1.5)
 			for sub_ax in ax_indiv:
-				clouds2ax(sub_ax, fname, group, DM_lim, 'g')
+				clouds2ax(sub_ax, fname, group, DM_lim, c='k')
 		except:
 			pass
 	
