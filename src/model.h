@@ -237,6 +237,7 @@ protected:
 	double R0, Z0;					// Solar position
 	double H1, L1;					// Thin disk (exponential)
 	double f_thick, H2, L2;				// Thick disk (exponential)
+	double L_epsilon;				// Smoothing of disk near Galactic center
 	double fh, qh, nh, R_br, nh_outer, R_epsilon2;	// Halo (broken power law)
 	double fh_outer;
 	

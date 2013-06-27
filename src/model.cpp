@@ -53,6 +53,9 @@ TGalacticModel::TGalacticModel() {
 	L2 = 3261;
 	H2 = 743;
 	
+	// Smoothing radial scale of disk
+	L_epsilon = 500;
+	
 	// Halo
 	fh = 0.0051;
 	qh = 0.70;
@@ -83,6 +86,7 @@ TGalacticModel::TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
 	  //lf(NULL)
 {
 	fh_outer = fh * pow(R_br/R0, nh - nh_outer);
+	L_epsilon = 100;
 	
 	disk_abundance = new TStellarAbundance(0);
 	halo_abundance = new TStellarAbundance(1);
@@ -104,8 +108,8 @@ double TGalacticModel::rho_halo(double R, double Z) const {
 }
 
 double TGalacticModel::rho_disk(double R, double Z) const {
-	double rho_thin = exp(-(fabs(Z+Z0) - fabs(Z0))/H1 - (R-R0)/L1);
-	double rho_thick = f_thick * exp(-(fabs(Z+Z0) - fabs(Z0))/H2 - (R-R0)/L2);
+	double rho_thin = exp(-(fabs(Z+Z0) - fabs(Z0))/H1 - sqrt((R-R0)*(R-R0)+L_epsilon*L_epsilon)/L1);
+	double rho_thick = f_thick * exp(-(fabs(Z+Z0) - fabs(Z0))/H2 - sqrt((R-R0)*(R-R0)+L_epsilon*L_epsilon)/L2);
 	return rho_thin + rho_thick;
 }
 
