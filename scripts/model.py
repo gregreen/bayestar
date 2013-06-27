@@ -62,6 +62,7 @@ class TGalacticModel:
 		self.rho_0 = rho_0
 		self.H_mu, self.Delta_mu, self.mu_FeH_inf = H_mu, Delta_mu, mu_FeH_inf
 		self.fh_outer = self.fh * (self.Rbr/self.R0)**(self.nh-self.nh_outer)
+		self.L_epsilon = 500.
 		#print self.fh_outer/self.fh
 		
 		self.data = np.loadtxt(abspath(LF_fname),
@@ -81,10 +82,10 @@ class TGalacticModel:
 		return x, y, z
 	
 	def rho_thin(self, r, z):
-		return self.rho_0 * np.exp(-(np.abs(z+self.Z0) - np.abs(self.Z0))/self.H1 - (r-self.R0)/self.L1)
+		return self.rho_0 * np.exp(-(np.abs(z+self.Z0) - np.abs(self.Z0))/self.H1 - np.sqrt((r-self.R0)*(r-self.R0)+self.L_epsilon*self.L_epsilon)/self.L1)
 	
 	def rho_thick(self, r, z):
-		return self.rho_0 * self.f * np.exp(-(np.abs(z+self.Z0) - np.abs(self.Z0))/self.H2 - (r-self.R0)/self.L2)
+		return self.rho_0 * self.f * np.exp(-(np.abs(z+self.Z0) - np.abs(self.Z0))/self.H2 - np.sqrt((r-self.R0)*(r-self.R0)+self.L_epsilon*self.L_epsilon)/self.L2)
 	
 	def rho_halo(self, r, z):
 		r_eff2 = r*r + (z/self.qh)*(z/self.qh) + self.Rep*self.Rep
@@ -132,8 +133,13 @@ class TGalacticModel:
 		else:
 			return self.rho_thin(r,z) + self.rho_thick(r,z) + self.rho_halo(r,z)'''
 	
-	def dn_dDM(self, DM, cos_l, sin_l, cos_b, sin_b, radius=1., component=None):
-		return self.rho(DM, cos_l, sin_l, cos_b, sin_b, component) * dV_dDM(DM, cos_l, sin_l, cos_b, sin_b, radius)
+	def dn_dDM(self, DM, cos_l, sin_l, cos_b, sin_b, radius=1.,
+	           component=None, correct=False):
+		tmp = self.rho(DM, cos_l, sin_l, cos_b, sin_b, component) * dV_dDM(DM, cos_l, sin_l, cos_b, sin_b, radius)
+		if correct:
+			return tmp * self.dn_dDM_corr(DM, m_max)
+		else:
+			return tmp
 	
 	def dn_dDM_corr(self, DM, m_max=23.):
 		Mr_max = m_max - DM
