@@ -86,7 +86,7 @@ TGalacticModel::TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
 	  //lf(NULL)
 {
 	fh_outer = fh * pow(R_br/R0, nh - nh_outer);
-	L_epsilon = 100;
+	L_epsilon = 0.;
 	
 	disk_abundance = new TStellarAbundance(0);
 	halo_abundance = new TStellarAbundance(1);

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#       query_lsd.py
+#       query_lsd_multiple.py
 #       
 #       Copyright 2012 Greg <greg@greg-G53JW>
 #       
@@ -182,6 +182,8 @@ def main():
 	                    help='Minimum # of stars in pixel (default: 1).')
 	parser.add_argument('-max', '--max-stars', type=int, default=50000,
 	                    help='Maximum # of stars in file')
+	parser.add_argument('-lim', '--limit-pixels', type=int, default=None,
+	                    help='Take at most N nearest stars to center of pixel.')
 	parser.add_argument('-sdss', '--sdss', action='store_true',
 	                    help='Only select objects identified in the SDSS catalog as stars.')
 	parser.add_argument('-ext', '--maxAr', type=float, default=None,

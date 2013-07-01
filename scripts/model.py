@@ -62,7 +62,7 @@ class TGalacticModel:
 		self.rho_0 = rho_0
 		self.H_mu, self.Delta_mu, self.mu_FeH_inf = H_mu, Delta_mu, mu_FeH_inf
 		self.fh_outer = self.fh * (self.Rbr/self.R0)**(self.nh-self.nh_outer)
-		self.L_epsilon = 500.
+		self.L_epsilon = 0.
 		#print self.fh_outer/self.fh
 		
 		self.data = np.loadtxt(abspath(LF_fname),
