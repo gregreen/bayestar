@@ -588,6 +588,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	
 	double EBV_tot = 0.;
 	double EBV_tmp;
+	double diff_scaled;
 	
 	if(params.log_Delta_EBV_prior != NULL) {
 		//const double sigma = 2.5;
@@ -597,7 +598,9 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 			EBV_tot += EBV_tmp;
 			
 			// Prior that reddening traces stellar disk
-			lnp -= (logEBV[i] - params.log_Delta_EBV_prior[i]) * (logEBV[i] - params.log_Delta_EBV_prior[i]) / (2. * params.sigma_log_Delta_EBV[i] * params.sigma_log_Delta_EBV[i]);
+			diff_scaled = (logEBV[i] - params.log_Delta_EBV_prior[i]) / params.sigma_log_Delta_EBV[i];
+			lnp -= 0.5 * diff_scaled * diff_scaled;
+			lnp += log(1. + erf(params.alpha_skew * diff_scaled * INV_SQRT2));
 		}
 	} else {
 		const double bias = -5.;
@@ -926,6 +929,7 @@ TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
 	EBV_guess_max = guess_EBV_max(*img_stack);
 	subpixel_max = 1.;
 	subpixel_min = 1.;
+	alpha_skew = 0.;
 }
 
 TLOSMCMCParams::~TLOSMCMCParams() {
@@ -966,6 +970,7 @@ void TLOSMCMCParams::set_subpixel_mask(std::vector<double>& new_mask) {
 	}
 }
 
+// Calculate the mean and std. dev. of log(delta_EBV)
 void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, double EBV_tot, unsigned int N_regions) {
 	double mu_0 = img_stack->rect->min[1];
 	double mu_1 = img_stack->rect->max[1];
@@ -973,6 +978,8 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	
 	int subsampling = 10;
 	double Delta_mu = (mu_1 - mu_0) / (double)(N_regions * subsampling);
+	
+	// Allocate space for information on priors
 	
 	if(Delta_EBV_prior != NULL) { delete[] Delta_EBV_prior; }
 	Delta_EBV_prior = new double[N_regions+1];
@@ -983,39 +990,52 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	if(sigma_log_Delta_EBV != NULL) { delete[] sigma_log_Delta_EBV; }
 	sigma_log_Delta_EBV = new double[N_regions+1];
 	
-	double EBV_sum;
+	// Calculate std. dev. in each region
+	double std_dev_coeff[] = {4.5557, -0.20864, -0.01103, 0.00071014};
+	
+	double mu_start = -999.;
+	double mu_end = mu_0;
+	double Delta_dist, mu_equiv;
+	
+	for(int i=0; i<N_regions+1; i++) {
+		Delta_dist = pow10(mu_end/5. + 1.) - pow10(mu_start/5. + 1.);
+		mu_equiv = 5. * (log10(Delta_dist) - 1.);
+		
+		sigma_log_Delta_EBV[i] = std_dev_coeff[0];
+		sigma_log_Delta_EBV[i] += std_dev_coeff[1] * mu_equiv;
+		sigma_log_Delta_EBV[i] += std_dev_coeff[2] * mu_equiv * mu_equiv;
+		sigma_log_Delta_EBV[i] += std_dev_coeff[3] * mu_equiv * mu_equiv * mu_equiv;
+		
+		mu_start = mu_end;
+		mu_end += Delta_mu * subsampling;
+	}
 	
 	// Integrate Delta E(B-V) from close distance to mu_0
+	double EBV_sum;
 	double mu = mu_0 - 5 * Delta_mu * (double)subsampling;
 	Delta_EBV_prior[0] = 0.;
 	for(int k=0; k<5*subsampling; k++, mu += Delta_mu) {
 		Delta_EBV_prior[0] += gal_los_model.dA_dmu(mu);
 	}
 	Delta_EBV_prior[0] /= 5.;
-	EBV_sum = Delta_EBV_prior[0];
-	
-	double sigma_0 = 7.;
-	double a = 1.;
-	double sigma_norm = exp(sigma_0) - 1.;
-	sigma_log_Delta_EBV[0] = log(1. + sigma_norm / pow10(a*mu_0/5.));
+	EBV_sum = Delta_EBV_prior[0] * exp(0.5 * sigma_log_Delta_EBV[0] * sigma_log_Delta_EBV[0]);
 	
 	// Integrate Delta E(B-V) in each region
 	for(int i=1; i<N_regions+1; i++) {
-		//mu = mu_0 + Delta_mu * (double)(i-1) * (double)subsampling;
 		Delta_EBV_prior[i] = 0.;
 		
 		for(int k=0; k<subsampling; k++, mu += Delta_mu) {
 			Delta_EBV_prior[i] += gal_los_model.dA_dmu(mu);
 		}
 		
-		EBV_sum += Delta_EBV_prior[i];
-		
-		sigma_log_Delta_EBV[i] = log(1. + sigma_norm / pow10(a*mu/5.));
+		EBV_sum += Delta_EBV_prior[i] * exp(0.5 * sigma_log_Delta_EBV[i] * sigma_log_Delta_EBV[i]);
 	}
 	
 	double dEBV_ds = 0.2;	// mag kpc^{-1}
 	double dEBV_dmu = dEBV_ds * (0.01 * log(10.) / 5.); // * pow10(mu_0/5.);
-	double norm = dEBV_dmu / gal_los_model.dA_dmu(0.) / subsampling;
+	double corr = exp(4.);//1.;//exp(0.5 * 2. * log(10.) * 2. * log(10.));
+	double norm = dEBV_dmu / (gal_los_model.dA_dmu(0.) * corr) / subsampling;
+	//double norm = EBV_tot / EBV_sum;
 	
 	// Normalize Delta E(B-V)
 	std::cout << "Delta_EBV_prior:" << std::endl;
@@ -1027,7 +1047,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		
 		// Add a little bit in in quadrature
 		Delta_EBV_prior[i] = sqrt(Delta_EBV_prior[i]*Delta_EBV_prior[i] + Delta_EBV_quadrature*Delta_EBV_quadrature);
-		sigma_log_Delta_EBV[i] = sqrt(sigma_log_Delta_EBV[i]*sigma_log_Delta_EBV[i] + 1.*1.);
+		//sigma_log_Delta_EBV[i] = sqrt(sigma_log_Delta_EBV[i]*sigma_log_Delta_EBV[i] + 1.*1.);
 		
 		log_Delta_EBV_prior[i] = log(Delta_EBV_prior[i]);
 		
@@ -1036,6 +1056,21 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		          << " +- " << sigma_log_Delta_EBV[i] << std::endl;
 	}
 	std::cout << "Total E(B-V) = " << EBV_sum * norm << std::endl;
+	std::cout << std::endl;
+	
+	// Convert means and errors for skew normal distribution
+	alpha_skew = 0.;
+	double delta_skew = alpha_skew / (1. + alpha_skew*alpha_skew);
+	
+	std::cout << "Skewed mean/variance:" << std::endl;
+	for(int i=0; i<N_regions+1; i++) {
+		sigma_log_Delta_EBV[i] /= sqrt(1. - 2. * delta_skew*delta_skew / PI);
+		log_Delta_EBV_prior[i] -= delta_skew * sigma_log_Delta_EBV[i] * SQRT2 / PI;
+		
+		std::cout << std::setprecision(6)
+		          << "\t" << log_Delta_EBV_prior[i]
+		          << " +- " << sigma_log_Delta_EBV[i] << std::endl;
+	}
 	std::cout << std::endl;
 }
 
