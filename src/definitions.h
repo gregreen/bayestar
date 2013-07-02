@@ -75,6 +75,10 @@ inline bool is_inf_replacement(double x) {
 #define SQRT2 1.4142135623730951
 #endif // SQRT2
 
+#ifndef INV_SQRT2
+#define INV_SQRT2 0.70710678118654746
+#endif // INV_SQRT2
+
 #ifndef SQRT2PI
 #define SQRT2PI 2.5066282746310002
 #endif // SQRT2PI

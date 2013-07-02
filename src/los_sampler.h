@@ -96,6 +96,7 @@ struct TLOSMCMCParams {
 	double *Delta_EBV_prior;
 	double *log_Delta_EBV_prior;
 	double *sigma_log_Delta_EBV;
+	double alpha_skew;
 	
 	TLOSMCMCParams(TImgStack* _img_stack, double _p0,
 	               unsigned int _N_threads, double _EBV_max=-1.);
