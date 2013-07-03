@@ -50,12 +50,22 @@ def mapper(qresult, target_tp, target_radius):
 		
 		# Group together stars belonging to the same target
 		for target_idx, block_idx in iterators.index_by_key(min_idx):
-			yield (target_idx, obj[block_idx])
+			yield (target_idx, (d[:,target_idx], obj[block_idx]))
 
 
-def reducer(keyvalue):
-	key, obj = keyvalue
+def reducer(keyvalue, max_per_pixel):
+	key, val = keyvalue
+	
+	# Reorganize distances and object records pairs
+	d = []
+	obj = []
+	
+	for dd,oo in val:
+		d.append(dd)
+		obj.append(oo)
+	
 	obj = lsd.colgroup.fromiter(obj, blocks=True)
+	d = lsd.colgroup.fromiter(d, blocks=True)
 	
 	# Find stars with bad detections
 	mask_zero_mag = (obj['mean'] == 0.)
@@ -73,8 +83,16 @@ def reducer(keyvalue):
 	mask_detect = np.sum(obj['mean'], axis=1).astype(np.bool)
 	mask_informative = (np.sum(obj['err'] > 1.e10, axis=1) < 3).astype(np.bool)
 	mask_keep = np.logical_and(mask_detect, mask_informative)
+	obj = obj[mask_keep]
 	
-	yield (key, obj[mask_keep])
+	# Limit number of stars
+	if max_per_pixel != None:
+		if len(obj) > max_per_pixel:
+			d = d[mask_keep]
+			idx = np.argsort(d)
+			obj = obj[idx[:max_per_pixel]]
+	
+	yield (key, obj)
 
 
 def start_file(base_fname, index):
@@ -182,7 +200,7 @@ def main():
 	                    help='Minimum # of stars in pixel (default: 1).')
 	parser.add_argument('-max', '--max-stars', type=int, default=50000,
 	                    help='Maximum # of stars in file')
-	parser.add_argument('-lim', '--limit-pixels', type=int, default=None,
+	parser.add_argument('-ppix', '--max-per-pix', type=int, default=None,
 	                    help='Take at most N nearest stars to center of pixel.')
 	parser.add_argument('-sdss', '--sdss', action='store_true',
 	                    help='Only select objects identified in the SDSS catalog as stars.')
@@ -269,8 +287,9 @@ def main():
 	nInFile = 0
 	
 	# Write each pixel to the same file
-	for (t_idx, obj) in query.execute([(mapper, target_tp, target_radius), reducer],
-	                                      bounds=query_bounds):
+	for (t_idx, obj) in query.execute([(mapper, target_tp, target_radius),
+	                                   (reducer, args.max_per_pix)],
+	                                  bounds=query_bounds):
 		if len(obj) < values.min_stars:
 			continue
 		
