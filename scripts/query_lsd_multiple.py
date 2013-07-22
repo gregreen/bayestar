@@ -288,7 +288,7 @@ def main():
 	
 	# Write each pixel to the same file
 	for (t_idx, obj) in query.execute([(mapper, target_tp, target_radius),
-	                                   (reducer, args.max_per_pix)],
+	                                   (reducer, values.max_per_pix)],
 	                                  bounds=query_bounds):
 		if len(obj) < values.min_stars:
 			continue
