@@ -130,7 +130,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		# Draw EBV
 		ret['EBV'][idx] = 0.
 		if EBV_uniform:
-			ret['EBV'][idx] += 1. + 3. * np.random.random(size=idx.size)
+			ret['EBV'][idx] += 4. * np.random.random(size=idx.size)
 		else:	
 			if EBV_of_mu != None:
 				ret['EBV'][idx] += EBV_of_mu(ret['DM'][idx]) #+ np.random.normal(scale=EBV_spread, size=size)
@@ -170,14 +170,13 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		ret['mag'][idx,3] = absmags_tmp['z']
 		ret['mag'][idx,4] = absmags_tmp['y']
 		
+		# Determine errors and magnitudes
 		for k in xrange(5):
 			ret['mag'][idx,k] += ret['DM'][idx]
 			ret['mag'][idx,k] += ret['EBV'][idx] * R[k]
 			ret['err'][idx,k] = 0.02 + 0.3 * np.exp(ret['mag'][idx][:,k] - mag_lim[k])
 			idx_tmp = ret['err'][idx,k] > 1.
 			ret['err'][idx[idx_tmp],k] = 1.
-		
-		ret['mag'][idx] += ret['err'][idx] * np.random.normal(size=(size,5))
 		
 		# Calculate observation probability
 		p_obs = np.empty((size, 5), dtype='f8')
@@ -187,12 +186,18 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		
 		obs = (p_obs > np.random.random(size=(size, 5)))
 		
+		# Add in error to stellar magnitudes
+		ret['mag'][idx] += ret['err'][idx] * np.random.normal(size=(size,5))
+		
 		for k in xrange(5):
 			ret['mag'][idx[~obs[:,k]],k] = 0.
 			ret['err'][idx[~obs[:,k]],k] = 1.e10
 		
-		# Require detection in g and at least two other bands
-		obs = obs[:,0] & (np.sum(obs, axis=1) > 2)
+		# Require detection in g and at least three other bands
+		#obs = obs[:,0] & (np.sum(obs, axis=1) > 2)
+		
+		# Require detection in all bands
+		obs = np.all(obs, axis=1)
 		
 		idx = idx[~obs]
 	
@@ -228,7 +233,7 @@ def main():
 	parser.add_argument('-EBV', '--mean-EBV', type=float, default=0.02,
 	                    metavar='mags', help='Mean E(B-V) extinction.')
 	parser.add_argument('--EBV-uniform', action='store_true',
-	                    help='Draw E(B-V) from U(1,4).')
+	                    help='Draw E(B-V) from U(0,4).')
 	parser.add_argument('-cl', '--clouds', type=float, nargs='+',
 	                    default=None, metavar='mu Delta_EBV',
 	                    help='Place clouds of reddening Delta_EBV at distances mu')

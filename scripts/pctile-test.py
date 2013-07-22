@@ -197,7 +197,8 @@ def main():
 	
 	f.close()
 	
-	mask_idx = det_idx #& lnZ_idx
+	#mask_idx = np.ones(p.shape[0]).astype(np.bool)
+	mask_idx = det_idx & conv #& lnZ_idx
 	p = p[mask_idx]
 	mean = mean[mask_idx]
 	lnp = lnp[mask_idx]
@@ -238,10 +239,12 @@ def main():
 		ax.hist(P_indiv, alpha=0.6)
 		
 		lower, upper = binom_confidence(10, p.shape[0], 0.95)
+		#lower, upper = 74., 127.
 		ax.fill_between([0., 1.], [lower, lower], [upper, upper],
 		                facecolor='g', alpha=0.2)
 		
 		lower, upper = binom_confidence(10, p.shape[0], 0.50)
+		#lower, upper = 80., 115.
 		ax.fill_between([0., 1.], [lower, lower], [upper, upper],
 		                facecolor='g', alpha=0.2)
 		
