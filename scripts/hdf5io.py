@@ -142,7 +142,7 @@ class TChain:
 		self.nDim -= 1
 		self.nSamples -= 1
 		
-		self.converged = dset.attrs['converged'][:]
+		self.converged = dset.attrs['converged'][:].astype(np.bool)
 		self.lnZ = dset.attrs['ln(Z)'][:]
 		
 		self.lnp = dset[:,1:,0]
