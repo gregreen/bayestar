@@ -130,7 +130,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		# Draw EBV
 		ret['EBV'][idx] = 0.
 		if EBV_uniform:
-			ret['EBV'][idx] += 4. * np.random.random(size=idx.size)
+			ret['EBV'][idx] += 2. * np.random.random(size=idx.size)
 		else:	
 			if EBV_of_mu != None:
 				ret['EBV'][idx] += EBV_of_mu(ret['DM'][idx]) #+ np.random.normal(scale=EBV_spread, size=size)
@@ -233,7 +233,7 @@ def main():
 	parser.add_argument('-EBV', '--mean-EBV', type=float, default=0.02,
 	                    metavar='mags', help='Mean E(B-V) extinction.')
 	parser.add_argument('--EBV-uniform', action='store_true',
-	                    help='Draw E(B-V) from U(0,4).')
+	                    help='Draw E(B-V) from U(0,2).')
 	parser.add_argument('-cl', '--clouds', type=float, nargs='+',
 	                    default=None, metavar='mu Delta_EBV',
 	                    help='Place clouds of reddening Delta_EBV at distances mu')

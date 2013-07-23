@@ -238,7 +238,7 @@ def main():
 		
 		ax.hist(P_indiv, alpha=0.6)
 		
-		lower, upper = binom_confidence(10, p.shape[0], 0.95)
+		lower, upper = binom_confidence(10, p.shape[0], 0.975)
 		#lower, upper = 74., 127.
 		ax.fill_between([0., 1.], [lower, lower], [upper, upper],
 		                facecolor='g', alpha=0.2)
