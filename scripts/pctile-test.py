@@ -243,7 +243,7 @@ def main():
 		ax.fill_between([0., 1.], [lower, lower], [upper, upper],
 		                facecolor='g', alpha=0.2)
 		
-		lower, upper = binom_confidence(10, p.shape[0], 0.50)
+		lower, upper = binom_confidence(10, p.shape[0], 0.75)
 		#lower, upper = 80., 115.
 		ax.fill_between([0., 1.], [lower, lower], [upper, upper],
 		                facecolor='g', alpha=0.2)
@@ -265,40 +265,43 @@ def main():
 		
 		stack_fname = abspath(args.stack_out)
 		
+		giant_idx = truth['Mr'] < 4.
+		use_idx = giant_idx | ~giant_idx
+		
 		# Simple statistics
-		Delta_DM = (truth['DM']-mean[:,0]) #/ np.sqrt(cov[:,0,0])
-		Delta_Ar = (truth['EBV']-mean[:,1]) #/ np.sqrt(cov[:,1,1])
-		Delta_Mr = (truth['Mr']-mean[:,2]) #/ np.sqrt(cov[:,2,2])
-		Delta_FeH = (truth['FeH']-mean[:,3]) #/ np.sqrt(cov[:,3,3])
+		Delta_DM = (truth['DM'][use_idx]-mean[use_idx,0]) #/ np.sqrt(cov[:,0,0])
+		Delta_Ar = (truth['EBV'][use_idx]-mean[use_idx,1]) #/ np.sqrt(cov[:,1,1])
+		Delta_Mr = (truth['Mr'][use_idx]-mean[use_idx,2]) #/ np.sqrt(cov[:,2,2])
+		Delta_FeH = (truth['FeH'][use_idx]-mean[use_idx,3]) #/ np.sqrt(cov[:,3,3])
 		
 		# Stacked surfaces
 		w_x = x_max[0] - x_min[0]
 		w_y = x_max[1] - x_min[1]
-		dx = x_min[0] + 0.5*w_x - truth['DM']
-		dy = x_min[1] + 0.5*w_y - truth['EBV']
+		dx = x_min[0] + 0.5*w_x - truth['DM'][use_idx]
+		dy = x_min[1] + 0.5*w_y - truth['EBV'][use_idx]
 		bounds_new = [-0.5*w_x, 0.5*w_x, -0.5*w_y, 0.5*w_y]
-		stack = stack_shifted(bounds, p, [dx,dy], norm)
+		stack = stack_shifted(bounds, p[use_idx], [dx,dy], norm[use_idx])
 		
 		# Histograms
 		DM_range = np.linspace(bounds_new[0], bounds_new[1], stack.shape[0])
 		p_DM = np.sum(stack, axis=1)
 		p_DM /= np.sum(p_DM)
 		p_DM_cumsum = np.cumsum(p_DM)
-		#DM_idx_low = np.max(np.where(p_DM_cumsum < 0.1587, np.arange(p_DM.size), -1))
-		#DM_idx_high = np.max(np.where(p_DM_cumsum < 0.8413, np.arange(p_DM.size), -1))
+		DM_idx_low = np.max(np.where(p_DM_cumsum < 0.1587, np.arange(p_DM.size), -1))
+		DM_idx_high = np.max(np.where(p_DM_cumsum < 0.8413, np.arange(p_DM.size), -1))
 		
 		dDM = (bounds_new[1] - bounds_new[0]) / stack.shape[0]
 		DM_val2idx = lambda xx: (xx - bounds_new[0]) / dDM
 		
 		DM_mean = np.mean(Delta_DM)
 		DM_std = np.std(Delta_DM)
-		DM_idx_low = DM_val2idx(DM_mean - DM_std)
-		DM_idx_high = DM_val2idx(DM_mean + DM_std)
+		#DM_idx_low = DM_val2idx(DM_mean - DM_std)
+		#DM_idx_high = DM_val2idx(DM_mean + DM_std)
 		print DM_mean, DM_std
 		
 		DM_idx_peak = np.argmax(p_DM)
-		DM_idx_low = np.max(np.where(p_DM_cumsum < p_DM_cumsum[DM_idx_peak] - 0.3413, np.arange(p_DM.size), -1))
-		DM_idx_high = np.max(np.where(p_DM_cumsum < p_DM_cumsum[DM_idx_peak] + 0.3413, np.arange(p_DM.size), -1))
+		#DM_idx_low = np.max(np.where(p_DM_cumsum < p_DM_cumsum[DM_idx_peak] - 0.3413, np.arange(p_DM.size), -1))
+		#DM_idx_high = np.max(np.where(p_DM_cumsum < p_DM_cumsum[DM_idx_peak] + 0.3413, np.arange(p_DM.size), -1))
 		
 		Ar_range = np.linspace(bounds_new[2], bounds_new[3], stack.shape[1])
 		p_Ar = np.sum(stack, axis=0)
@@ -308,21 +311,21 @@ def main():
 		#print p_Ar_cumsum
 		#for i,(a,b) in enumerate(zip(p_Ar, p_Ar_cumsum)):
 		#	print i, a, b
-		#Ar_idx_low = np.max(np.where(p_Ar_cumsum < 0.1587, np.arange(p_Ar.size), -1))
-		#Ar_idx_high = np.max(np.where(p_Ar_cumsum < 0.8413, np.arange(p_Ar.size), -1))
+		Ar_idx_low = np.max(np.where(p_Ar_cumsum < 0.1587, np.arange(p_Ar.size), -1))
+		Ar_idx_high = np.max(np.where(p_Ar_cumsum < 0.8413, np.arange(p_Ar.size), -1))
 		
 		dAr = (bounds_new[1] - bounds_new[2]) / stack.shape[1]
 		Ar_val2idx = lambda xx: (xx - bounds_new[2]) / dAr
 		
 		Ar_mean = np.mean(Delta_Ar)
 		Ar_std = np.std(Delta_Ar)
-		Ar_idx_low = Ar_val2idx(Ar_mean - Ar_std)
-		Ar_idx_high = Ar_val2idx(Ar_mean + Ar_std)
+		#Ar_idx_low = Ar_val2idx(Ar_mean - Ar_std)
+		#Ar_idx_high = Ar_val2idx(Ar_mean + Ar_std)
 		print Ar_mean, Ar_std
 		
 		Ar_idx_peak = np.argmax(p_Ar)
-		Ar_idx_low = np.max(np.where(p_Ar_cumsum < p_Ar_cumsum[Ar_idx_peak] - 0.3413, np.arange(p_Ar.size), -1))
-		Ar_idx_high = np.max(np.where(p_Ar_cumsum < p_Ar_cumsum[Ar_idx_peak] + 0.3413, np.arange(p_Ar.size), -1))
+		#Ar_idx_low = np.max(np.where(p_Ar_cumsum < p_Ar_cumsum[Ar_idx_peak] - 0.3413, np.arange(p_Ar.size), -1))
+		#Ar_idx_high = np.max(np.where(p_Ar_cumsum < p_Ar_cumsum[Ar_idx_peak] + 0.3413, np.arange(p_Ar.size), -1))
 
 		
 		# Determine geometry of density plot and histograms
