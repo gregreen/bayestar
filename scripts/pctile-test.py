@@ -109,6 +109,49 @@ def binom_confidence(nbins, ntrials, confidence):
 	
 	return lower, upper
 
+def draw_multinomial_sample(n_bins, n_samples):
+	idx = np.random.randint(n_bins, size=n_samples)
+	bins = np.zeros(n_bins, dtype='i4')
+	
+	for i in xrange(n_bins):
+		bins[i] += np.sum(idx == i)
+	
+	return bins
+
+def multinomial_confidence_interval(confidence, n_bins,
+                                    n_samples, n_trials=10000):
+	min_bin = []
+	max_bin = []
+	for i in xrange(n_trials):
+		bins = draw_multinomial_sample(n_bins, n_samples)
+		min_bin.append(np.min(bins))
+		max_bin.append(np.max(bins))
+	
+	min_bin = np.array(min_bin).astype('f8')
+	max_bin = np.array(max_bin).astype('f8')
+	
+	Delta_pct = np.linspace(0., 49.9, 100)
+	max_pct = np.percentile(max_bin, (50. + Delta_pct).tolist())
+	min_pct = np.percentile(min_bin, (50. - Delta_pct).tolist())
+	
+	Delta_conf = []
+	
+	for c in confidence:
+		for i,(D,low,high) in enumerate(zip(Delta_pct[1:], min_pct[1:], max_pct[1:])):
+			idx = (min_bin >= low) & (max_bin <= high)
+			
+			pct = np.sum(idx) / float(n_trials) * 100.
+			if pct >= c:
+				a = (pct - c) / (Delta_pct[i+1] - Delta_pct[i])
+				Delta_conf.append((1.-a) * Delta_pct[i+1] + a * Delta_pct[i])
+				break
+	
+	low, high = [], []
+	
+	low = np.percentile(min_bin, (50. - np.array(Delta_conf)).tolist())
+	high = np.percentile(max_bin, (50. + np.array(Delta_conf)).tolist())
+	
+	return low, high
 
 def main():
 	parser = argparse.ArgumentParser(
@@ -140,6 +183,7 @@ def main():
 		return 0
 	
 	# Read in pdfs
+	print 'Loading pdfs...'
 	group = 'pixel %d' % (args.index)
 	dset = '%s/stellar pdfs' % group
 	pdf = hdf5io.TProbSurf(args.output, dset)
@@ -147,6 +191,7 @@ def main():
 	p = pdf.get_p()[:,:]
 	
 	# Read in convergence information
+	print 'Loading samples and convergence information...'
 	dset = '%s/stellar chains' % group
 	chain = hdf5io.TChain(args.output, dset)
 	lnp = chain.get_lnp()[:]
@@ -179,6 +224,7 @@ def main():
 	bounds = [x_min[0], x_max[0], x_min[1], x_max[1]]
 	
 	# Read in true parameter values
+	print 'Loading true parameter values...'
 	f = h5py.File(args.input, 'r')
 	dset = f['/parameters/pixel %d' % (args.index)]
 	
@@ -238,15 +284,16 @@ def main():
 		
 		ax.hist(P_indiv, alpha=0.6)
 		
-		lower, upper = binom_confidence(10, p.shape[0], 0.975)
-		#lower, upper = 74., 127.
-		ax.fill_between([0., 1.], [lower, lower], [upper, upper],
-		                facecolor='g', alpha=0.2)
+		lower, upper = multinomial_confidence_interval([50., 95.],
+		                                               10, p.shape[0])
 		
-		lower, upper = binom_confidence(10, p.shape[0], 0.75)
-		#lower, upper = 80., 115.
-		ax.fill_between([0., 1.], [lower, lower], [upper, upper],
-		                facecolor='g', alpha=0.2)
+		#lower, upper = binom_confidence(10, p.shape[0], 0.975)
+		#lower, upper = 74., 127.
+		for i in xrange(2):
+			ax.fill_between([0., 1.],
+			                [lower[i], lower[i]],
+			                [upper[i], upper[i]],
+			                facecolor='g', alpha=0.2)
 		
 		ax.set_xlim(0., 1.)
 		ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
@@ -256,6 +303,14 @@ def main():
 		ax.set_ylabel(r'$\mathrm{\# \ of \ stars}$', fontsize=14)
 		
 		fig.subplots_adjust(left=0.18, bottom=0.18)
+		
+		ax.text(1.03, upper[0], r'$50\%$',
+		        ha='left', va='top', color='g',
+		        fontsize=12)
+		
+		ax.text(1.03, upper[1], r'$95\%$',
+		        ha='left', va='top', color='g',
+		        fontsize=12, alpha=0.60)
 		
 		fig.savefig(pct_fname, dpi=300)
 	
@@ -351,8 +406,8 @@ def main():
 		stack[idx] = np.sqrt(stack[idx])
 		ax_density.imshow(stack.T, extent=bounds_new, origin='lower', vmin=0.,
 						  aspect='auto', cmap='Blues', interpolation='nearest')
-		ax_density.plot([0., 0.], [ylim[0]-1.,ylim[1]+1.], 'c:', lw=0.8, alpha=0.35)
-		ax_density.plot([xlim[0]-1., xlim[1]+1.], [0., 0.], 'c:', lw=0.8, alpha=0.35)
+		ax_density.plot([0., 0.], [ylim[0]-1.,ylim[1]+1.], 'c:', lw=1.2, alpha=0.35)
+		ax_density.plot([xlim[0]-1., xlim[1]+1.], [0., 0.], 'c:', lw=1.2, alpha=0.35)
 		ax_density.set_xlim(xlim)
 		ax_density.set_ylim(ylim)
 		ax_density.xaxis.set_major_locator(MaxNLocator(nbins=4))
