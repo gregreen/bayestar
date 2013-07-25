@@ -50,7 +50,12 @@ def mapper(qresult, target_tp, target_radius):
 		
 		# Group together stars belonging to the same target
 		for target_idx, block_idx in iterators.index_by_key(min_idx):
-			yield (target_idx, obj[block_idx])
+			# Filter stars closer than the half-light radius
+			idx = (d[block_idx, target_idx] >= target_radius[target_idx])
+			print np.mean(d[block_idx, target_idx] / target_radius[target_idx])
+			#np.sum(idx)
+			
+			yield (target_idx, obj[block_idx][idx])
 
 
 def reducer(keyvalue):
