@@ -223,7 +223,7 @@ def main():
 	Mr_min, Mr_max = np.inf, -np.inf
 	
 	lnZ_max = 0.
-	Delta_lnZ = 10.
+	Delta_lnZ = 15.
 	
 	for cluster_num, cluster_name in enumerate(args.clusters):
 		# Load photometry
@@ -250,6 +250,12 @@ def main():
 				if ret != None:
 					lnZ = ret[:]
 					break
+		
+		idx = np.isfinite(lnZ)
+		n_rejected_20 = np.sum(lnZ < np.percentile(lnZ[idx], 95.) - 15.)
+		pct_rejected_20 = 100. * float(n_rejected_20) / np.float(lnZ.size)
+		n_rejected_10 = np.sum(lnZ < -10.)
+                pct_rejected_10 = 100. * float(n_rejected_10) / np.float(lnZ.size)
 		
 		isochrone = templates.get_isochrone(FeH)
 		
@@ -296,6 +302,8 @@ def main():
 		print '  E(B-V): %.2f' % (np.percentile(EBV, 95.))
 		print '  # of stars: %d' % (len(mags))
 		print '  %s-%s: %d stars' % (band_names[b1], band_names[b2], np.sum(idx))
+		print '  # rejected: %d (%.2f %%)' % (n_rejected_20, pct_rejected_20)
+		print '  # below Z = -10: %d (%.2f %%)' % (n_rejected_10, pct_rejected_10)
 		print ''
 		
 		# Reddening vector
@@ -340,7 +348,8 @@ def main():
 	norm = mplib.colors.Normalize(vmin=lnZ_max-Delta_lnZ, vmax=lnZ_max)
 	mappable = mplib.cm.ScalarMappable(cmap=br_cmap, norm=norm)
 	mappable.set_array(np.array([lnZ_max-Delta_lnZ, lnZ_max]))
-	fig.colorbar(mappable, cax=cax, ticks=[0., -2., -4., -6., -8., -10.])
+	#fig.colorbar(mappable, cax=cax, ticks=[0., -2., -4., -6., -8., -10.])
+	fig.colorbar(mappable, cax=cax, ticks=[0., -3., -6., -9., -12., -15.])
 	
 	cax.yaxis.set_label_position('right')
 	cax.yaxis.tick_right()

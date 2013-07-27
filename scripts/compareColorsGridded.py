@@ -215,7 +215,7 @@ def main():
 	color_names = ['gr', 'ri', 'iz', 'zy']
 	
 	lnZ_max = 0.
-	Delta_lnZ = 10.
+	Delta_lnZ = 15.
 	
 	# Load photometry
 	ret = read_photometry(args.photometry, args.name)
@@ -234,7 +234,7 @@ def main():
 		if ret != None:
 			lnZ, conv = ret
 	idx = np.isfinite(lnZ)
-	n_rejected = np.sum(lnZ < np.percentile(lnZ[idx], 95.) - 20.)
+	n_rejected = np.sum(lnZ < np.percentile(lnZ[idx], 95.) - 15.)
 	pct_rejected = 100. * float(n_rejected) / np.float(lnZ.size)
 	n_nonconv = np.sum(~conv)
 	pct_nonconv = 100. * float(n_nonconv) / np.float(conv.size)
@@ -373,7 +373,7 @@ def main():
 	norm = mplib.colors.Normalize(vmin=lnZ_max-Delta_lnZ, vmax=lnZ_max)
 	mappable = mplib.cm.ScalarMappable(cmap=br_cmap, norm=norm)
 	mappable.set_array(np.array([lnZ_max-Delta_lnZ, lnZ_max]))
-	fig.colorbar(mappable, cax=cax, ticks=[0., -2., -4., -6., -8., -10.])
+	fig.colorbar(mappable, cax=cax, ticks=[0., -3., -6., -9., -12., -15.])
 	
 	cax.yaxis.set_label_position('right')
 	cax.yaxis.tick_right()

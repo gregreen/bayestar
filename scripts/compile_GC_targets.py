@@ -233,7 +233,7 @@ def main():
 	db = lsd.DB(os.environ['LSD_DB'])
 	query = ("select obj_id, equgal(ra, dec) as (l, b), mean, err, "
 	         "mean_ap, nmag_ok, maglimit, SFD.EBV(l, b) as EBV "
-	         "from ucal_magsqw_noref_maglim "
+	         "from ucal_magsqx_noref "
 	         "where (numpy.sum(nmag_ok > 0, axis=1) >= %d) "
 	         "& (nmag_ok[:,0] > 0) "
 	         "& (numpy.sum(nmag_ok, axis=1) >= %d) "
