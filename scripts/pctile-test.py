@@ -40,6 +40,16 @@ import h5py
 import hdf5io
 
 
+def conv_to_subtractive(rgb, alpha):
+	res_shape = (alpha.shape[0], alpha.shape[1], 3)
+	res = np.empty(res_shape, alpha.dtype)
+	
+	res[:,:,0] = (rgb[1] + rgb[2]) * alpha
+	res[:,:,1] = (rgb[0] + rgb[2]) * alpha
+	res[:,:,2] = (rgb[0] + rgb[1]) * alpha
+	
+	return res
+
 def stack_shifted(bounds, p, shift, norm):
 	dx = shift[0] * p.shape[1] / (bounds[1] - bounds[0])
 	dy = shift[1] * p.shape[2] / (bounds[3] - bounds[2])
@@ -47,6 +57,8 @@ def stack_shifted(bounds, p, shift, norm):
 	p_stacked = np.zeros(p.shape[1:], dtype='f8')
 	for surf,D,Z in zip(p,dxy,norm):
 		tmp = interp.shift(surf, D) / Z
+		idx = (tmp < 0.)
+		tmp[idx] = 0.
 		p_stacked += tmp #*= tmp + 1.e-5*np.exp(-tmp/1.e-2)
 	return p_stacked
 
@@ -329,13 +341,29 @@ def main():
 		Delta_Mr = (truth['Mr'][use_idx]-mean[use_idx,2]) #/ np.sqrt(cov[:,2,2])
 		Delta_FeH = (truth['FeH'][use_idx]-mean[use_idx,3]) #/ np.sqrt(cov[:,3,3])
 		
-		# Stacked surfaces
+		print '  -> Stacking images...'
+		
 		w_x = x_max[0] - x_min[0]
 		w_y = x_max[1] - x_min[1]
+		bounds_new = [-0.5*w_x, 0.5*w_x, -0.5*w_y, 0.5*w_y]
 		dx = x_min[0] + 0.5*w_x - truth['DM'][use_idx]
 		dy = x_min[1] + 0.5*w_y - truth['EBV'][use_idx]
-		bounds_new = [-0.5*w_x, 0.5*w_x, -0.5*w_y, 0.5*w_y]
 		stack = stack_shifted(bounds, p[use_idx], [dx,dy], norm[use_idx])
+		
+		# Stacked dwarfs
+		#dx = x_min[0] + 0.5*w_x - truth['DM'][~giant_idx]
+		#dy = x_min[1] + 0.5*w_y - truth['EBV'][~giant_idx]
+		#stack_dwarfs = stack_shifted(bounds, p[~giant_idx], [dx,dy], norm[~giant_idx])
+		
+		# Stacked giants
+		#dx = x_min[0] + 0.5*w_x - truth['DM'][giant_idx]
+		#dy = x_min[1] + 0.5*w_y - truth['EBV'][giant_idx]
+		#stack_giants = stack_shifted(bounds, p[giant_idx], [dx,dy], norm[giant_idx])
+		
+		# Stacked surfaces (combined)
+		#stack = stack_dwarfs + stack_giants
+		
+		print '  -> Plotting...'
 		
 		# Histograms
 		DM_range = np.linspace(bounds_new[0], bounds_new[1], stack.shape[0])
@@ -352,7 +380,8 @@ def main():
 		DM_std = np.std(Delta_DM)
 		#DM_idx_low = DM_val2idx(DM_mean - DM_std)
 		#DM_idx_high = DM_val2idx(DM_mean + DM_std)
-		print DM_mean, DM_std
+		print '  -> <DM>, sigma_DM: %.3f, %.3f' % (DM_mean, DM_std)
+		print '  -> DM 1-sigma equivalent: %.3f' % (0.5 * (DM_idx_high - DM_idx_low) * dDM)
 		
 		DM_idx_peak = np.argmax(p_DM)
 		#DM_idx_low = np.max(np.where(p_DM_cumsum < p_DM_cumsum[DM_idx_peak] - 0.3413, np.arange(p_DM.size), -1))
@@ -369,14 +398,16 @@ def main():
 		Ar_idx_low = np.max(np.where(p_Ar_cumsum < 0.1587, np.arange(p_Ar.size), -1))
 		Ar_idx_high = np.max(np.where(p_Ar_cumsum < 0.8413, np.arange(p_Ar.size), -1))
 		
-		dAr = (bounds_new[1] - bounds_new[2]) / stack.shape[1]
+		dAr = (bounds_new[3] - bounds_new[2]) / stack.shape[1]
 		Ar_val2idx = lambda xx: (xx - bounds_new[2]) / dAr
 		
 		Ar_mean = np.mean(Delta_Ar)
 		Ar_std = np.std(Delta_Ar)
 		#Ar_idx_low = Ar_val2idx(Ar_mean - Ar_std)
 		#Ar_idx_high = Ar_val2idx(Ar_mean + Ar_std)
-		print Ar_mean, Ar_std
+		print '  -> <E(B-V)>, sigma_EBV: %.3f, %.3f' % (Ar_mean, Ar_std)
+		print '  -> E(B-V) 1-sigma equivalent: %.3f' % (0.5 * (Ar_idx_high - Ar_idx_low) * dAr)
+		
 		
 		Ar_idx_peak = np.argmax(p_Ar)
 		#Ar_idx_low = np.max(np.where(p_Ar_cumsum < p_Ar_cumsum[Ar_idx_peak] - 0.3413, np.arange(p_Ar.size), -1))
@@ -402,10 +433,32 @@ def main():
 		ylim = [-0.5, 0.5]
 		
 		# Density plot
-		idx = ~np.isnan(stack)
-		stack[idx] = np.sqrt(stack[idx])
+		idx = np.isfinite(stack)
+		stack[~idx] = 0.
+		stack = np.sqrt(stack)
+		
+		#idx = np.isfinite(stack_giants)
+		#stack_giants[~idx] = 0.
+		#stack_giants = np.sqrt(stack_giants)
+		
+		#idx = np.isfinite(stack_dwarfs)
+		#stack_dwarfs[~idx] = 0.
+		#stack_dwarfs = np.sqrt(stack_dwarfs)
+		
+		#img_shape = (stack_dwarfs.shape[1], stack_dwarfs.shape[0], 3)
+		#img = np.zeros(img_shape, dtype='f8')
+		#img += conv_to_subtractive([0., 119., 55.], stack_dwarfs.T)
+		#img += conv_to_subtractive([0., 24., 181.], stack_giants.T)
+		#img /= np.max(img)
+		#img = np.sqrt(img)
+		#img = 1. - img
+		
+		#ax_density.imshow(img, extent=bounds_new, origin='lower',
+		#                  aspect='auto', interpolation='nearest')
+		
 		ax_density.imshow(stack.T, extent=bounds_new, origin='lower', vmin=0.,
-						  aspect='auto', cmap='Blues', interpolation='nearest')
+		                  aspect='auto', cmap='Blues', interpolation='nearest')
+		
 		ax_density.plot([0., 0.], [ylim[0]-1.,ylim[1]+1.], 'c:', lw=1.2, alpha=0.35)
 		ax_density.plot([xlim[0]-1., xlim[1]+1.], [0., 0.], 'c:', lw=1.2, alpha=0.35)
 		ax_density.set_xlim(xlim)
