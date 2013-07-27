@@ -40,6 +40,16 @@ import h5py
 import hdf5io
 
 
+def conv_to_subtractive(rgb, alpha):
+	res_shape = (alpha.shape[0], alpha.shape[1], 3)
+	res = np.empty(res_shape, alpha.dtype)
+	
+	res[:,:,0] = (rgb[1] + rgb[2]) * alpha
+	res[:,:,1] = (rgb[0] + rgb[2]) * alpha
+	res[:,:,2] = (rgb[0] + rgb[1]) * alpha
+	
+	return res
+
 def stack_shifted(bounds, p, shift, norm):
 	dx = shift[0] * p.shape[1] / (bounds[1] - bounds[0])
 	dy = shift[1] * p.shape[2] / (bounds[3] - bounds[2])
@@ -47,6 +57,8 @@ def stack_shifted(bounds, p, shift, norm):
 	p_stacked = np.zeros(p.shape[1:], dtype='f8')
 	for surf,D,Z in zip(p,dxy,norm):
 		tmp = interp.shift(surf, D) / Z
+		idx = (tmp < 0.)
+		tmp[idx] = 0.
 		p_stacked += tmp #*= tmp + 1.e-5*np.exp(-tmp/1.e-2)
 	return p_stacked
 
@@ -109,6 +121,49 @@ def binom_confidence(nbins, ntrials, confidence):
 	
 	return lower, upper
 
+def draw_multinomial_sample(n_bins, n_samples):
+	idx = np.random.randint(n_bins, size=n_samples)
+	bins = np.zeros(n_bins, dtype='i4')
+	
+	for i in xrange(n_bins):
+		bins[i] += np.sum(idx == i)
+	
+	return bins
+
+def multinomial_confidence_interval(confidence, n_bins,
+                                    n_samples, n_trials=10000):
+	min_bin = []
+	max_bin = []
+	for i in xrange(n_trials):
+		bins = draw_multinomial_sample(n_bins, n_samples)
+		min_bin.append(np.min(bins))
+		max_bin.append(np.max(bins))
+	
+	min_bin = np.array(min_bin).astype('f8')
+	max_bin = np.array(max_bin).astype('f8')
+	
+	Delta_pct = np.linspace(0., 49.9, 100)
+	max_pct = np.percentile(max_bin, (50. + Delta_pct).tolist())
+	min_pct = np.percentile(min_bin, (50. - Delta_pct).tolist())
+	
+	Delta_conf = []
+	
+	for c in confidence:
+		for i,(D,low,high) in enumerate(zip(Delta_pct[1:], min_pct[1:], max_pct[1:])):
+			idx = (min_bin >= low) & (max_bin <= high)
+			
+			pct = np.sum(idx) / float(n_trials) * 100.
+			if pct >= c:
+				a = (pct - c) / (Delta_pct[i+1] - Delta_pct[i])
+				Delta_conf.append((1.-a) * Delta_pct[i+1] + a * Delta_pct[i])
+				break
+	
+	low, high = [], []
+	
+	low = np.percentile(min_bin, (50. - np.array(Delta_conf)).tolist())
+	high = np.percentile(max_bin, (50. + np.array(Delta_conf)).tolist())
+	
+	return low, high
 
 def main():
 	parser = argparse.ArgumentParser(
@@ -140,6 +195,7 @@ def main():
 		return 0
 	
 	# Read in pdfs
+	print 'Loading pdfs...'
 	group = 'pixel %d' % (args.index)
 	dset = '%s/stellar pdfs' % group
 	pdf = hdf5io.TProbSurf(args.output, dset)
@@ -147,6 +203,7 @@ def main():
 	p = pdf.get_p()[:,:]
 	
 	# Read in convergence information
+	print 'Loading samples and convergence information...'
 	dset = '%s/stellar chains' % group
 	chain = hdf5io.TChain(args.output, dset)
 	lnp = chain.get_lnp()[:]
@@ -179,6 +236,7 @@ def main():
 	bounds = [x_min[0], x_max[0], x_min[1], x_max[1]]
 	
 	# Read in true parameter values
+	print 'Loading true parameter values...'
 	f = h5py.File(args.input, 'r')
 	dset = f['/parameters/pixel %d' % (args.index)]
 	
@@ -238,15 +296,16 @@ def main():
 		
 		ax.hist(P_indiv, alpha=0.6)
 		
-		lower, upper = binom_confidence(10, p.shape[0], 0.975)
-		#lower, upper = 74., 127.
-		ax.fill_between([0., 1.], [lower, lower], [upper, upper],
-		                facecolor='g', alpha=0.2)
+		lower, upper = multinomial_confidence_interval([50., 95.],
+		                                               10, p.shape[0])
 		
-		lower, upper = binom_confidence(10, p.shape[0], 0.75)
-		#lower, upper = 80., 115.
-		ax.fill_between([0., 1.], [lower, lower], [upper, upper],
-		                facecolor='g', alpha=0.2)
+		#lower, upper = binom_confidence(10, p.shape[0], 0.975)
+		#lower, upper = 74., 127.
+		for i in xrange(2):
+			ax.fill_between([0., 1.],
+			                [lower[i], lower[i]],
+			                [upper[i], upper[i]],
+			                facecolor='g', alpha=0.2)
 		
 		ax.set_xlim(0., 1.)
 		ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
@@ -256,6 +315,14 @@ def main():
 		ax.set_ylabel(r'$\mathrm{\# \ of \ stars}$', fontsize=14)
 		
 		fig.subplots_adjust(left=0.18, bottom=0.18)
+		
+		ax.text(1.03, upper[0], r'$50\%$',
+		        ha='left', va='top', color='g',
+		        fontsize=12)
+		
+		ax.text(1.03, upper[1], r'$95\%$',
+		        ha='left', va='top', color='g',
+		        fontsize=12, alpha=0.60)
 		
 		fig.savefig(pct_fname, dpi=300)
 	
@@ -274,13 +341,29 @@ def main():
 		Delta_Mr = (truth['Mr'][use_idx]-mean[use_idx,2]) #/ np.sqrt(cov[:,2,2])
 		Delta_FeH = (truth['FeH'][use_idx]-mean[use_idx,3]) #/ np.sqrt(cov[:,3,3])
 		
-		# Stacked surfaces
+		print '  -> Stacking images...'
+		
 		w_x = x_max[0] - x_min[0]
 		w_y = x_max[1] - x_min[1]
+		bounds_new = [-0.5*w_x, 0.5*w_x, -0.5*w_y, 0.5*w_y]
 		dx = x_min[0] + 0.5*w_x - truth['DM'][use_idx]
 		dy = x_min[1] + 0.5*w_y - truth['EBV'][use_idx]
-		bounds_new = [-0.5*w_x, 0.5*w_x, -0.5*w_y, 0.5*w_y]
 		stack = stack_shifted(bounds, p[use_idx], [dx,dy], norm[use_idx])
+		
+		# Stacked dwarfs
+		#dx = x_min[0] + 0.5*w_x - truth['DM'][~giant_idx]
+		#dy = x_min[1] + 0.5*w_y - truth['EBV'][~giant_idx]
+		#stack_dwarfs = stack_shifted(bounds, p[~giant_idx], [dx,dy], norm[~giant_idx])
+		
+		# Stacked giants
+		#dx = x_min[0] + 0.5*w_x - truth['DM'][giant_idx]
+		#dy = x_min[1] + 0.5*w_y - truth['EBV'][giant_idx]
+		#stack_giants = stack_shifted(bounds, p[giant_idx], [dx,dy], norm[giant_idx])
+		
+		# Stacked surfaces (combined)
+		#stack = stack_dwarfs + stack_giants
+		
+		print '  -> Plotting...'
 		
 		# Histograms
 		DM_range = np.linspace(bounds_new[0], bounds_new[1], stack.shape[0])
@@ -297,7 +380,8 @@ def main():
 		DM_std = np.std(Delta_DM)
 		#DM_idx_low = DM_val2idx(DM_mean - DM_std)
 		#DM_idx_high = DM_val2idx(DM_mean + DM_std)
-		print DM_mean, DM_std
+		print '  -> <DM>, sigma_DM: %.3f, %.3f' % (DM_mean, DM_std)
+		print '  -> DM 1-sigma equivalent: %.3f' % (0.5 * (DM_idx_high - DM_idx_low) * dDM)
 		
 		DM_idx_peak = np.argmax(p_DM)
 		#DM_idx_low = np.max(np.where(p_DM_cumsum < p_DM_cumsum[DM_idx_peak] - 0.3413, np.arange(p_DM.size), -1))
@@ -314,14 +398,16 @@ def main():
 		Ar_idx_low = np.max(np.where(p_Ar_cumsum < 0.1587, np.arange(p_Ar.size), -1))
 		Ar_idx_high = np.max(np.where(p_Ar_cumsum < 0.8413, np.arange(p_Ar.size), -1))
 		
-		dAr = (bounds_new[1] - bounds_new[2]) / stack.shape[1]
+		dAr = (bounds_new[3] - bounds_new[2]) / stack.shape[1]
 		Ar_val2idx = lambda xx: (xx - bounds_new[2]) / dAr
 		
 		Ar_mean = np.mean(Delta_Ar)
 		Ar_std = np.std(Delta_Ar)
 		#Ar_idx_low = Ar_val2idx(Ar_mean - Ar_std)
 		#Ar_idx_high = Ar_val2idx(Ar_mean + Ar_std)
-		print Ar_mean, Ar_std
+		print '  -> <E(B-V)>, sigma_EBV: %.3f, %.3f' % (Ar_mean, Ar_std)
+		print '  -> E(B-V) 1-sigma equivalent: %.3f' % (0.5 * (Ar_idx_high - Ar_idx_low) * dAr)
+		
 		
 		Ar_idx_peak = np.argmax(p_Ar)
 		#Ar_idx_low = np.max(np.where(p_Ar_cumsum < p_Ar_cumsum[Ar_idx_peak] - 0.3413, np.arange(p_Ar.size), -1))
@@ -347,12 +433,34 @@ def main():
 		ylim = [-0.5, 0.5]
 		
 		# Density plot
-		idx = ~np.isnan(stack)
-		stack[idx] = np.sqrt(stack[idx])
+		idx = np.isfinite(stack)
+		stack[~idx] = 0.
+		stack = np.sqrt(stack)
+		
+		#idx = np.isfinite(stack_giants)
+		#stack_giants[~idx] = 0.
+		#stack_giants = np.sqrt(stack_giants)
+		
+		#idx = np.isfinite(stack_dwarfs)
+		#stack_dwarfs[~idx] = 0.
+		#stack_dwarfs = np.sqrt(stack_dwarfs)
+		
+		#img_shape = (stack_dwarfs.shape[1], stack_dwarfs.shape[0], 3)
+		#img = np.zeros(img_shape, dtype='f8')
+		#img += conv_to_subtractive([0., 119., 55.], stack_dwarfs.T)
+		#img += conv_to_subtractive([0., 24., 181.], stack_giants.T)
+		#img /= np.max(img)
+		#img = np.sqrt(img)
+		#img = 1. - img
+		
+		#ax_density.imshow(img, extent=bounds_new, origin='lower',
+		#                  aspect='auto', interpolation='nearest')
+		
 		ax_density.imshow(stack.T, extent=bounds_new, origin='lower', vmin=0.,
-						  aspect='auto', cmap='Blues', interpolation='nearest')
-		ax_density.plot([0., 0.], [ylim[0]-1.,ylim[1]+1.], 'c:', lw=0.8, alpha=0.35)
-		ax_density.plot([xlim[0]-1., xlim[1]+1.], [0., 0.], 'c:', lw=0.8, alpha=0.35)
+		                  aspect='auto', cmap='Blues', interpolation='nearest')
+		
+		ax_density.plot([0., 0.], [ylim[0]-1.,ylim[1]+1.], 'c:', lw=1.2, alpha=0.35)
+		ax_density.plot([xlim[0]-1., xlim[1]+1.], [0., 0.], 'c:', lw=1.2, alpha=0.35)
 		ax_density.set_xlim(xlim)
 		ax_density.set_ylim(ylim)
 		ax_density.xaxis.set_major_locator(MaxNLocator(nbins=4))
