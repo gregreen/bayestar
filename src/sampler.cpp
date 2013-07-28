@@ -517,9 +517,6 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	// Stars
 	TSED sed_tmp(true);
 	
-	// DM
-	x[1] = params.DM_min + (params.DM_max - params.DM_min) * (0.05 + 0.9 * gsl_rng_uniform(r));
-	
 	// Stellar type
 	double Mr, FeH;
 	Mr = -0.5 + 15.5 * gsl_rng_uniform(r);
@@ -572,9 +569,26 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 		}
 	}
 	
+	// Guess distance on the basis of model magnitudes vs. observed apparent magnitudes
+	double inv_sigma2_sum = 0.;
+	double weighted_sum = 0.;
+	double sigma;
+	
+	for(int i=0; i<NBANDS; i++) {
+		sigma = params.data->star[params.idx_star].err[i];
+		weighted_sum += (params.data->star[params.idx_star].m[i] - tmp_sed->absmag[i]) / (sigma * sigma);
+		inv_sigma2_sum += 1. / (sigma * sigma);
+	}
+	
+	x[1] = weighted_sum / inv_sigma2_sum + gsl_ran_gaussian_ziggurat(r, 0.1);
+	
+	// DM
+	//x[1] = params.DM_min + (params.DM_max - params.DM_min) * (0.05 + 0.9 * gsl_rng_uniform(r));
+	
 	//#pragma omp critical (cout)
 	//{
 	//std::cout << "E(B-V) guess: " << x[0] << " = " << "E(" << b2 << " - " << b1 << ") / (R_" << b2 << " - R_" << b1 << ")" << std::endl;
+	//std::cout << "DM guess: " << x[1] << std::endl;
 	//}
 	
 	delete tmp_sed;
