@@ -645,9 +645,17 @@ void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, T
 	double EBV_ceil = params.img_stack->rect->max[0] / params.subpixel_max;
 	double mu = log(1.5 * params.EBV_guess_max / params.subpixel_max / (double)N);
 	double EBV_sum = 0.;
-	for(size_t i=0; i<N; i++) {
-		logEBV[i] = mu + gsl_ran_gaussian_ziggurat(r, 2.5);
-		EBV_sum += exp(logEBV[i]);
+	
+	if(params.log_Delta_EBV_prior != NULL) {
+		for(size_t i=0; i<N; i++) {
+			logEBV[i] = params.log_Delta_EBV_prior[i] + gsl_ran_gaussian_ziggurat(r, 0.5 * params.sigma_log_Delta_EBV[i]);
+			EBV_sum += exp(logEBV[i]);
+		}
+	} else {
+		for(size_t i=0; i<N; i++) {
+			logEBV[i] = mu + gsl_ran_gaussian_ziggurat(r, 2.5);
+			EBV_sum += exp(logEBV[i]);
+		}
 	}
 	
 	// Ensure that reddening is not more than allowed
@@ -881,6 +889,19 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	assert(params.EBV_prof_guess.size() == N);
 	double EBV_ceil = params.img_stack->rect->max[0];
 	double EBV_sum = 0.;
+	
+	if(params.sigma_log_Delta_EBV != NULL) {
+		for(size_t i=0; i<N; i++) {
+			logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 0.5 * params.sigma_log_Delta_EBV[i]);
+			EBV_sum += logEBV[i];
+		}
+	} else {
+		for(size_t i=0; i<N; i++) {
+			logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);
+			EBV_sum += logEBV[i];
+		}
+	}
+	
 	for(size_t i=0; i<N; i++) {
 		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);
 		EBV_sum += logEBV[i];

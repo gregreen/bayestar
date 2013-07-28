@@ -517,9 +517,6 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	// Stars
 	TSED sed_tmp(true);
 	
-	// E(B-V)
-	x[0] = params.EBV_floor + (1.5 * params.data->EBV - params.EBV_floor) * (0.05 + 0.9 * gsl_rng_uniform(r));
-	
 	// DM
 	x[1] = params.DM_min + (params.DM_max - params.DM_min) * (0.05 + 0.9 * gsl_rng_uniform(r));
 	
@@ -531,13 +528,56 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	x[2] = Mr;
 	x[3] = FeH;
 	
+	double RV = params.RV_mean;;
 	if(params.vary_RV) {
-		double RV = -1.;
+		RV = -1.;
 		while((RV <= 2.1) || (RV >= 5.)) {
 			RV = params.RV_mean + gsl_ran_gaussian_ziggurat(r, 1.5*params.RV_variance*params.RV_variance);
 		}
 		x[4] = RV;
 	}
+	
+	// Guess E(B-V) on the basis of other parameters
+	
+	// Choose first two bands that have been observed
+	int b1, b2;
+	for(b1=0; b1<NBANDS-1; b1++) {
+		if(params.data->star[params.idx_star].err[b1] < 1.e9) {
+			break;
+		}
+	}
+	for(b2=b1+1; b2<NBANDS; b2++) {
+		if(params.data->star[params.idx_star].err[b2] < 1.e9) {
+			break;
+		}
+	}
+	
+	// Color excess
+	TSED * tmp_sed = new TSED(true);
+	params.emp_stellar_model->get_sed(Mr, FeH, *tmp_sed);
+	
+	double mod_color = tmp_sed->absmag[b2] - tmp_sed->absmag[b1];
+	double obs_color = params.data->star[params.idx_star].m[b2] - params.data->star[params.idx_star].m[b1];
+	
+	// Reddening vector
+	double R_XY = params.ext_model->get_A(RV, b2) - params.ext_model->get_A(RV, b1);
+	
+	// E(B-V)
+	for(int i=0; i<5; i++) {
+		x[0] = (obs_color - mod_color) / R_XY + gsl_ran_gaussian_ziggurat(r, 0.1);
+		if(x[0] > params.EBV_floor) {	// Accept first guess above E(B-V) floor
+			break;
+		} else if(i == 4) {	// Revert to dumb, uniform guess
+			x[0] = params.EBV_floor + (1.5 * params.data->EBV - params.EBV_floor) * (0.05 + 0.9 * gsl_rng_uniform(r));
+		}
+	}
+	
+	//#pragma omp critical (cout)
+	//{
+	//std::cout << "E(B-V) guess: " << x[0] << " = " << "E(" << b2 << " - " << b1 << ") / (R_" << b2 << " - R_" << b1 << ")" << std::endl;
+	//}
+	
+	delete tmp_sed;
 }
 
 double logP_indiv_simple_synth(const double *x, unsigned int N, TMCMCParams &params) {
