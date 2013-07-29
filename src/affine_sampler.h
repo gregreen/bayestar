@@ -362,12 +362,25 @@ TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_
 			#pragma omp critical
 			{
 			std::cerr << "! Re-seeding failed !" << std::endl;
+			std::cerr << "p(X) = " << X[i].pi << std::endl;
+			std::cerr << "X =";
+			for(int k=0; k<N; k++) {
+				std::cerr << " " << X[i].element[k];
 			}
+			std::cerr << std::endl;
+			}
+			abort();
 		}
+		
+		//#pragma omp critical
+		//{
+		//std::cout << tries << std::endl;
+		//}
 		
 		X[i].weight = 1;
 		if(X[i] > X[index_of_best]) { index_of_best = i; }
 	}
+	
 	X_ML = X[index_of_best];
 	
 	// Create working space for replacement move

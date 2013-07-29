@@ -312,7 +312,7 @@ int main(int argc, char **argv) {
 		size_t nFiltered = 0;
 		std::vector<double> subpixel;
 		for(size_t n=0; n<conv.size(); n++) {
-			tmpFilter = conv[n] && (lnZmax - lnZ[n] < evCut);
+			tmpFilter = conv[n] && (lnZ[n] > lnZmax - evCut) && !isnan(lnZ[n]) && !is_inf_replacement(lnZ[n]);
 			keep.push_back(tmpFilter);
 			if(tmpFilter) {
 				subpixel.push_back(stellar_data.star[n].EBV);

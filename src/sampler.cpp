@@ -562,10 +562,15 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	// E(B-V)
 	for(int i=0; i<5; i++) {
 		x[0] = (obs_color - mod_color) / R_XY + gsl_ran_gaussian_ziggurat(r, 0.1);
-		if(x[0] > params.EBV_floor) {	// Accept first guess above E(B-V) floor
+		if((x[0] > params.EBV_floor) && (x[0] < 8.)) {	// Accept first guess above E(B-V) floor
 			break;
 		} else if(i == 4) {	// Revert to dumb, uniform guess
-			x[0] = params.EBV_floor + (1.5 * params.data->EBV - params.EBV_floor) * (0.05 + 0.9 * gsl_rng_uniform(r));
+			//#pragma omp critical
+			//{
+			//std::cout << "  <E(B-V)> = " << x[0] << " >~ " << 8. << std::endl;
+			//}
+			x[0] = fabs(gsl_ran_gaussian_ziggurat(r, 0.1));
+			//x[0] = params.EBV_floor + (1.5 * params.data->EBV - params.EBV_floor) * (0.05 + 0.9 * gsl_rng_uniform(r));
 		}
 	}
 	
@@ -582,8 +587,15 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	
 	x[1] = weighted_sum / inv_sigma2_sum + gsl_ran_gaussian_ziggurat(r, 0.1);
 	
-	// DM
-	//x[1] = params.DM_min + (params.DM_max - params.DM_min) * (0.05 + 0.9 * gsl_rng_uniform(r));
+	// Don't allow the distance guess to be crazy
+	/*if((x[1] < params.DM_min - 2.) || (x[1] > params.DM_max)) {
+		#pragma omp critical
+		{
+			std::cerr << "!!! DM = " << x[1];
+			x[1] = params.DM_min + (params.DM_max - params.DM_min) * (0.05 + 0.9 * gsl_rng_uniform(r));
+			std::cerr << " --> " << x[1] << " !!!" << std::endl;
+		}
+	}*/
 	
 	//#pragma omp critical (cout)
 	//{

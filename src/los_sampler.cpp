@@ -892,7 +892,7 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	
 	if(params.sigma_log_Delta_EBV != NULL) {
 		for(size_t i=0; i<N; i++) {
-			logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 0.5 * params.sigma_log_Delta_EBV[i]);
+			logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);//1.0 * params.sigma_log_Delta_EBV[i]);
 			EBV_sum += logEBV[i];
 		}
 	} else {
@@ -908,7 +908,7 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	}
 	
 	// Switch adjacent reddenings
-	int n_switches = gsl_rng_uniform_int(r, 3);
+	int n_switches = 0;//gsl_rng_uniform_int(r, 3);
 	size_t k;
 	double tmp_log_EBV;
 	//int max_dist = std::min((int)(N-1)/2, 5);
@@ -1027,6 +1027,9 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		sigma_log_Delta_EBV[i] += std_dev_coeff[2] * mu_equiv * mu_equiv;
 		sigma_log_Delta_EBV[i] += std_dev_coeff[3] * mu_equiv * mu_equiv * mu_equiv;
 		
+		// TODO: Redo the sigma curve
+		sigma_log_Delta_EBV[i] *= 2.;
+		
 		mu_start = mu_end;
 		mu_end += Delta_mu * subsampling;
 	}
@@ -1080,7 +1083,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	std::cout << std::endl;
 	
 	// Convert means and errors for skew normal distribution
-	alpha_skew = 0.;
+	alpha_skew = 1.;
 	double delta_skew = alpha_skew / (1. + alpha_skew*alpha_skew);
 	
 	std::cout << "Skewed mean/variance:" << std::endl;
