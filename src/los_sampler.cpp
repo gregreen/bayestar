@@ -907,7 +907,7 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	}
 	
 	// Switch adjacent reddenings
-	int n_switches = 0;//gsl_rng_uniform_int(r, 3);
+	int n_switches = gsl_rng_uniform_int(r, 2);
 	size_t k;
 	double tmp_log_EBV;
 	//int max_dist = std::min((int)(N-1)/2, 5);
