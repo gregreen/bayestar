@@ -55,7 +55,7 @@ def load_empirical(fname):
 
 def main():
 	outfn = '../plots/color-vs-Mr.png'
-	templatefn = '../data/pscolors_efs_v0.txt'
+	templatefn = '../data/PScolors_fine.dat'
 	max_r = 15.
 	
 	# Load in templates
