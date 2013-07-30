@@ -43,10 +43,19 @@ def los2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	
 	# Plot all paths
 	EBV_all = np.cumsum(np.exp(chain.get_samples(0)), axis=1)
-	for EBV in EBV_all[1:]:
+	lnp = chain.get_lnp()[0, 1:]
+	#lnp = np.exp(lnp - np.max(lnp))
+	lnp_min, lnp_max = np.percentile(lnp, [10., 90.])
+	lnp = (lnp - lnp_min) / (lnp_max - lnp_min)
+	lnp[lnp > 1.] = 1.
+	lnp[lnp < 0.] = 0.
+	print lnp
+	for i,EBV in enumerate(EBV_all[1:]):
+		c = (1.-lnp[i], 0., lnp[i])
+		kwargs['c'] = c
 		ax.plot(mu, EBV, *args, **kwargs)
 	
-	kwargs['c'] = 'r'
+	kwargs['c'] = 'g'
 	kwargs['lw'] = 1.5
 	kwargs['alpha'] = 0.5
 	ax.plot(mu, EBV_all[0], *args, **kwargs)
