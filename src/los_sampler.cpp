@@ -603,8 +603,8 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 			lnp += log(1. + erf(params.alpha_skew * diff_scaled * INV_SQRT2));
 		}
 	} else {
-		const double bias = -5.;
-		const double sigma = 5.;
+		const double bias = -4.;
+		const double sigma = 2.;
 		
 		for(size_t i=0; i<N; i++) {
 			EBV_tmp = exp(logEBV[i]);
