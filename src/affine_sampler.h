@@ -835,10 +835,7 @@ void TAffineSampler<TParams, TLogger>::step_affine(bool record_step) {
 				}
 			}
 		}
-	}
-	
-	// Update ensemble
-	for(unsigned int j=0; j<L; j++) {
+		
 		// Update sampler j
 		if(accept[j]) {
 			if(record_step) {
@@ -930,10 +927,7 @@ void TAffineSampler<TParams, TLogger>::step_replacement(bool record_step, bool u
 				}
 			}
 		}
-	}
-	
-	// Update ensemble
-	for(unsigned int j=0; j<L; j++) {
+		
 		// Update sampler j
 		if(accept[j]) {
 			if(record_step) {
@@ -1009,10 +1003,7 @@ void TAffineSampler<TParams, TLogger>::step_MH(bool record_step) {
 				}
 			}
 		}
-	}
-	
-	// Update ensemble
-	for(unsigned int j=0; j<L; j++) {
+		
 		// Update sampler j
 		if(accept[j]) {
 			if(record_step) {
