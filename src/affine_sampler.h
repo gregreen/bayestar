@@ -369,6 +369,9 @@ TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_
 			}
 			std::cerr << std::endl;
 			}
+			
+			//X[i].pi = pdf(X[i].element, N, params);
+			
 			abort();
 		}
 		

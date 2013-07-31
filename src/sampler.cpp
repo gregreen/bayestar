@@ -578,10 +578,12 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	double inv_sigma2_sum = 0.;
 	double weighted_sum = 0.;
 	double sigma;
+	double reddened_mag;
 	
 	for(int i=0; i<NBANDS; i++) {
 		sigma = params.data->star[params.idx_star].err[i];
-		weighted_sum += (params.data->star[params.idx_star].m[i] - tmp_sed->absmag[i]) / (sigma * sigma);
+		reddened_mag = tmp_sed->absmag[i] + x[0] * params.ext_model->get_A(RV, i);
+		weighted_sum += (params.data->star[params.idx_star].m[i] - reddened_mag) / (sigma * sigma);
 		inv_sigma2_sum += 1. / (sigma * sigma);
 	}
 	
