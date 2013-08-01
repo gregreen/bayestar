@@ -906,6 +906,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		}
 		
 		// Round 2 (1/6)
+		sampler.set_replacement_accept_bias(1.e-2);
 		sampler.step(N_steps*(1./6.), false, 0., 1.);
 		
 		sampler.tune_stretch(6, 0.30);
@@ -920,6 +921,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		}
 		
 		// Round 3 (3/6)
+		sampler.set_replacement_accept_bias(1.e-5);
 		sampler.step_MH(N_steps*(1./6.), false);
 		sampler.step(N_steps*(2./6.), false, 0., options.p_replacement);
 		
