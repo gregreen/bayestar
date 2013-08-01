@@ -890,6 +890,8 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		//std::cerr << "# Burn-in" << std::endl;
 		
 		// Burn-in
+		
+		// Round 1 (3/6)
 		sampler.step_MH(N_steps*(1./6.), false);
 		sampler.step(N_steps*(2./6.), false, 0., options.p_replacement);
 		
@@ -901,8 +903,13 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
 			}
 		}
+		
+		// Round 2 (1/6)
+		sampler.step(N_steps*(1./6.), false, 0., options.p_replacement, true);
+		
 		sampler.tune_stretch(6, 0.30);
 		sampler.tune_MH(6, 0.30);
+		
 		if(verbosity >= 2) {
 			std::cout << ") -> (";
 			for(int k=0; k<sampler.get_N_samplers(); k++) {
@@ -911,6 +918,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 			std::cout << ")" << std::endl;
 		}
 		
+		// Round 3 (3/6)
 		sampler.step_MH(N_steps*(1./6.), false);
 		sampler.step(N_steps*(2./6.), false, 0., options.p_replacement);
 		
@@ -921,8 +929,10 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
 			}
 		}
+		
 		sampler.tune_stretch(6, 0.30);
 		sampler.tune_MH(6, 0.30);
+		
 		if(verbosity >= 2) {
 			std::cout << ") -> (";
 			for(int k=0; k<sampler.get_N_samplers(); k++) {
