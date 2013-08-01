@@ -162,7 +162,7 @@ def main():
 		nPointlike = 1
 	
 	# Determine the query bounds
-	query_bounds = []
+	query_bounds = None
 	if values.bounds != None:
 		pix_scale = hp.pixelfunc.nside2resol(values.nside) * 180. / np.pi
 		query_bounds.append(max([0., values.bounds[0] - 3.*pix_scale]))
@@ -171,9 +171,9 @@ def main():
 		query_bounds.append(min([90., values.bounds[3] + 3.*pix_scale]))
 	#else:
 	#	query_bounds = [0., 360., -90., 90.]
-	query_bounds = lsd.bounds.rectangle(query_bounds[0], query_bounds[2],
-	                                    query_bounds[1], query_bounds[3],
-	                                    coordsys='gal')
+		query_bounds = lsd.bounds.rectangle(query_bounds[0], query_bounds[2],
+		                                    query_bounds[1], query_bounds[3],
+		                                    coordsys='gal')
 	#query_bounds = (query_bounds, []) 
 	query_bounds = lsd.bounds.make_canonical(query_bounds)
 	
