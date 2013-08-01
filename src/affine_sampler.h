@@ -84,6 +84,7 @@ class TAffineSampler {
 	double logL;		// Log of ensemble size
 	double sqrta;		// Square-root of dimensionless step scale a (a = 2 by default). Can be tuned to achieve desired acceptance rate.
 	double h, log_h, h_MH, log_h_MH;
+	double replacement_accept_bias;
 	double twopiN;
 	bool use_log;		// If true, <pdf> returns log(pi(X)). Else, <pdf> returns pi(X). Default value is <true>.
 	
@@ -162,6 +163,7 @@ public:
 	void set_scale(double a);			// Set dimensionless step scale
 	void set_replacement_bandwidth(double _h);	// Set smoothing scale to be used for replacement steps, in units of the covariance
 	void set_MH_bandwidth(double _h);
+	void set_replacement_accept_bias(double epsilon);
 	void flush(bool record_steps=true);		// Clear the weights in the ensemble and record the outstanding component states
 	void clear();					// Clear the stats, acceptance information and weights
 	
@@ -224,6 +226,7 @@ public:
 	void set_scale(double a) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_scale(a); } };				// Set the dimensionless step size a
 	void set_replacement_bandwidth(double h) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_replacement_bandwidth(h); } };	// Set size of replacement steps (in units of covariance) 
 	void set_MH_bandwidth(double h) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_MH_bandwidth(h); } };	// Set size of M-H steps (in units of covariance) 
+	void set_replacement_accept_bias(double epsilon) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_replacement_accept_bias(epsilon); } };
 	void init_gaussian_mixture_target(unsigned int nclusters, unsigned int iterations=100) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->init_gaussian_mixture_target(nclusters, iterations); } };
 	void clear() { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->clear(); }; stats.clear(); };
 	
@@ -410,7 +413,10 @@ TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_
 	set_MH_bandwidth(0.25);
 	
 	// Set the initial step scale. 2 is good for most situations.
-	set_scale(2);
+	set_scale(2.);
+	
+	// Set the replacement sampler to be ergodic
+	set_replacement_accept_bias(0.);
 	
 	// Initialize number of accepted and rejected steps to zero
 	N_accepted = 0;
@@ -650,7 +656,8 @@ void TAffineSampler<TParams, TLogger>::replacement_proposal(unsigned int j, bool
 		if(tmp > XY_cutoff) { pi_XY += exp(tmp); }
 		if(tmp > YX_cutoff) { pi_YX += exp(tmp); }
 		
-		Y[j].replacement_factor = pi_XY / pi_YX;
+		// Factor to ensure reversibility
+		Y[j].replacement_factor = pi_XY / pi_YX + replacement_accept_bias;
 	}
 	
 	// Get pdf(Y) and initialize weight of proposal point to unity
@@ -727,7 +734,7 @@ void TAffineSampler<TParams, TLogger>::replacement_proposal_diag(unsigned int j,
 		if(tmp > XY_cutoff) { pi_XY += exp(tmp); }
 		if(tmp > YX_cutoff) { pi_YX += exp(tmp); }
 		
-		Y[j].replacement_factor = pi_XY / pi_YX;
+		Y[j].replacement_factor = pi_XY / pi_YX + replacement_accept_bias;
 	}
 	
 	// Get pdf(Y) and initialize weight of proposal point to unity
@@ -1032,19 +1039,28 @@ void TAffineSampler<TParams, TLogger>::step_MH(bool record_step) {
 // Set the dimensionless step scale
 template<class TParams, class TLogger>
 void TAffineSampler<TParams, TLogger>::set_scale(double a) {
+	assert(a > 0);
 	sqrta = sqrt(a);
 }
 
 template<class TParams, class TLogger>
 void TAffineSampler<TParams, TLogger>::set_replacement_bandwidth(double _h) {
+	assert(_h > 0.);
 	h = _h;
 	log_h = log(h);
 }
 
 template<class TParams, class TLogger>
 void TAffineSampler<TParams, TLogger>::set_MH_bandwidth(double _h) {
+	assert(_h > 0);
 	h_MH = _h;
 	log_h_MH = log(h_MH);
+}
+
+template<class TParams, class TLogger>
+void TAffineSampler<TParams, TLogger>::set_replacement_accept_bias(double epsilon) {
+	assert(epsilon >= 0.);
+	replacement_accept_bias = epsilon;
 }
 
 template<class TParams, class TLogger>

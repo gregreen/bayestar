@@ -886,6 +886,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 		sampler.set_scale(1.5);
 		sampler.set_replacement_bandwidth(0.25);
+		sampler.set_replacement_accept_bias(1.e-5);
 		
 		//std::cerr << "# Burn-in" << std::endl;
 		
@@ -905,7 +906,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		}
 		
 		// Round 2 (1/6)
-		sampler.step(N_steps*(1./6.), false, 0., 1., true);
+		sampler.step(N_steps*(1./6.), false, 0., 1.);
 		
 		sampler.tune_stretch(6, 0.30);
 		sampler.tune_MH(6, 0.30);
