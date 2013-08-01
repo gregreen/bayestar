@@ -264,7 +264,7 @@ struct TAffineSampler<TParams, TLogger>::TState {
 	unsigned int N;
 	double pi;		// pdf(X) = likelihood of state (up to normalization)
 	unsigned int weight;	// # of times the chain has remained on this state
-	double replacement_factor;	// Factor of pi(X|Y) / pi(Y|X) used when evaluating acceptance probability of replacement step
+	double replacement_factor;	// Factor of Q(Y->X) / Q(X->Y) used when evaluating acceptance probability of replacement step
 	
 	TState() : N(0), element(NULL) {}
 	TState(unsigned int _N) : N(_N) { element = new double[N]; }
@@ -505,28 +505,68 @@ static void calc_sqrt_A(gsl_matrix *A, const gsl_matrix * const S, gsl_vector* w
 
 template<class TParams, class TLogger>
 void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
+	double sum_weight;
+	double weight;
+	
 	// Mean
-	for(unsigned int i=0; i<N; i++) {
-		ensemble_mean[i] = 0.;
-		for(unsigned int n=0; n<L; n++) { ensemble_mean[i] += X[n].element[i]; }
-		ensemble_mean[i] /= (double)L;
+	sum_weight = 0.;
+	
+	for(unsigned int i=0; i<N; i++) { ensemble_mean[i] = 0.; }
+	
+	for(unsigned int n=0; n<L; n++) {
+		weight = exp(X[n].pi);
+		sum_weight += weight;
+		for(unsigned int i=0; i<N; i++) { ensemble_mean[i] += weight * X[n].element[i]; }
 	}
+	
+	for(unsigned int i=0; i<N; i++) { ensemble_mean[i] /= sum_weight; }
 	
 	// Covariance
 	double tmp;
-	for(unsigned int j=0; j<N; j++) {
-		for(unsigned int k=j; k<N; k++) {
-			tmp = 0.;
-			for(unsigned int n=0; n<L; n++) { tmp += (X[n].element[j] - ensemble_mean[j]) * (X[n].element[k] - ensemble_mean[k]); }
-			tmp /= (double)(L - 1);
-			if(k == j) {
-				gsl_matrix_set(ensemble_cov, j, k, tmp);//*1.005 + 0.005);		// Small factor added in to avoid singular matrices
-			} else {
-				gsl_matrix_set(ensemble_cov, j, k, tmp);
-				gsl_matrix_set(ensemble_cov, k, j, tmp);
+	
+	if(use_log) {
+		for(unsigned int j=0; j<N; j++) {
+			for(unsigned int k=j; k<N; k++) {
+				tmp = 0.;
+				sum_weight = 0;
+				for(unsigned int n=0; n<L; n++) {
+					weight = exp(X[n].pi);
+					tmp += weight * (X[n].element[j] - ensemble_mean[j]) * (X[n].element[k] - ensemble_mean[k]);
+					sum_weight += weight;
+				}
+				tmp /= sum_weight;
+				if(k == j) {
+					gsl_matrix_set(ensemble_cov, j, k, tmp);//*1.005 + 0.005);	// Small factor added in to avoid singular matrices
+				} else {
+					gsl_matrix_set(ensemble_cov, j, k, tmp);
+					gsl_matrix_set(ensemble_cov, k, j, tmp);
+				}
+			}
+		}
+	} else {
+		for(unsigned int j=0; j<N; j++) {
+			for(unsigned int k=j; k<N; k++) {
+				tmp = 0.;
+				sum_weight = 0.;
+				for(unsigned int n=0; n<L; n++) {
+					weight = X[n].pi;
+					tmp += weight * (X[n].element[j] - ensemble_mean[j]) * (X[n].element[k] - ensemble_mean[k]);
+				}
+				tmp /= (double)(L - 1) * sum_weight;
+				if(k == j) {
+					gsl_matrix_set(ensemble_cov, j, k, tmp);//*1.005 + 0.005);	// Small factor added in to avoid singular matrices
+				} else {
+					gsl_matrix_set(ensemble_cov, j, k, tmp);
+					gsl_matrix_set(ensemble_cov, k, j, tmp);
+				}
 			}
 		}
 	}
+	
+	/*#pragma omp critical (cout)
+	{
+	std::cerr << gsl_matrix_get(ensemble_cov, 0, 0) << std::endl;
+	}*/
 	
 	// Inverse and Sqrt of Covariance
 	det_ensemble_cov = invert_matrix(ensemble_cov, inv_ensemble_cov, wp, wm1);
