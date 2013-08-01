@@ -905,7 +905,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		}
 		
 		// Round 2 (1/6)
-		sampler.step(N_steps*(1./6.), false, 0., options.p_replacement, true);
+		sampler.step(N_steps*(1./6.), false, 0., 1., true);
 		
 		sampler.tune_stretch(6, 0.30);
 		sampler.tune_MH(6, 0.30);
