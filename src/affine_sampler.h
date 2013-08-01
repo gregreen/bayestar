@@ -84,6 +84,7 @@ class TAffineSampler {
 	double logL;		// Log of ensemble size
 	double sqrta;		// Square-root of dimensionless step scale a (a = 2 by default). Can be tuned to achieve desired acceptance rate.
 	double h, log_h, h_MH, log_h_MH;
+	double replacement_accept_bias;
 	double twopiN;
 	bool use_log;		// If true, <pdf> returns log(pi(X)). Else, <pdf> returns pi(X). Default value is <true>.
 	
@@ -162,6 +163,7 @@ public:
 	void set_scale(double a);			// Set dimensionless step scale
 	void set_replacement_bandwidth(double _h);	// Set smoothing scale to be used for replacement steps, in units of the covariance
 	void set_MH_bandwidth(double _h);
+	void set_replacement_accept_bias(double epsilon);
 	void flush(bool record_steps=true);		// Clear the weights in the ensemble and record the outstanding component states
 	void clear();					// Clear the stats, acceptance information and weights
 	
@@ -224,6 +226,7 @@ public:
 	void set_scale(double a) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_scale(a); } };				// Set the dimensionless step size a
 	void set_replacement_bandwidth(double h) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_replacement_bandwidth(h); } };	// Set size of replacement steps (in units of covariance) 
 	void set_MH_bandwidth(double h) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_MH_bandwidth(h); } };	// Set size of M-H steps (in units of covariance) 
+	void set_replacement_accept_bias(double epsilon) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_replacement_accept_bias(epsilon); } };
 	void init_gaussian_mixture_target(unsigned int nclusters, unsigned int iterations=100) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->init_gaussian_mixture_target(nclusters, iterations); } };
 	void clear() { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->clear(); }; stats.clear(); };
 	
@@ -261,7 +264,7 @@ struct TAffineSampler<TParams, TLogger>::TState {
 	unsigned int N;
 	double pi;		// pdf(X) = likelihood of state (up to normalization)
 	unsigned int weight;	// # of times the chain has remained on this state
-	double replacement_factor;	// Factor of pi(X|Y) / pi(Y|X) used when evaluating acceptance probability of replacement step
+	double replacement_factor;	// Factor of Q(Y->X) / Q(X->Y) used when evaluating acceptance probability of replacement step
 	
 	TState() : N(0), element(NULL) {}
 	TState(unsigned int _N) : N(_N) { element = new double[N]; }
@@ -410,7 +413,10 @@ TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_
 	set_MH_bandwidth(0.25);
 	
 	// Set the initial step scale. 2 is good for most situations.
-	set_scale(2);
+	set_scale(2.);
+	
+	// Set the replacement sampler to be ergodic
+	set_replacement_accept_bias(0.);
 	
 	// Initialize number of accepted and rejected steps to zero
 	N_accepted = 0;
@@ -499,28 +505,102 @@ static void calc_sqrt_A(gsl_matrix *A, const gsl_matrix * const S, gsl_vector* w
 
 template<class TParams, class TLogger>
 void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
+	double sum_weight = 0.;
+	double weight;
+	
 	// Mean
-	for(unsigned int i=0; i<N; i++) {
-		ensemble_mean[i] = 0.;
-		for(unsigned int n=0; n<L; n++) { ensemble_mean[i] += X[n].element[i]; }
-		ensemble_mean[i] /= (double)L;
+	for(unsigned int i=0; i<N; i++) { ensemble_mean[i] = 0.; }
+	
+	if(use_log) {
+		for(unsigned int n=0; n<L; n++) {
+			weight = exp(X[n].pi);
+			sum_weight += weight;
+			for(unsigned int i=0; i<N; i++) { ensemble_mean[i] += weight * X[n].element[i]; }
+		}
+	} else {
+		for(unsigned int n=0; n<L; n++) {
+			weight = X[n].pi;
+			sum_weight += weight;
+			for(unsigned int i=0; i<N; i++) { ensemble_mean[i] += weight * X[n].element[i]; }
+		}
 	}
+	
+	for(unsigned int i=0; i<N; i++) { ensemble_mean[i] /= sum_weight; }
 	
 	// Covariance
 	double tmp;
-	for(unsigned int j=0; j<N; j++) {
-		for(unsigned int k=j; k<N; k++) {
-			tmp = 0.;
-			for(unsigned int n=0; n<L; n++) { tmp += (X[n].element[j] - ensemble_mean[j]) * (X[n].element[k] - ensemble_mean[k]); }
-			tmp /= (double)(L - 1);
-			if(k == j) {
-				gsl_matrix_set(ensemble_cov, j, k, tmp);//*1.005 + 0.005);		// Small factor added in to avoid singular matrices
-			} else {
+	
+	if(use_log) {
+		for(unsigned int j=0; j<N; j++) {
+			for(unsigned int k=j; k<N; k++) {
+				gsl_matrix_set(ensemble_cov, j, k, 0.);
+			}
+		}
+		
+		for(unsigned int n=0; n<L; n++) {
+			weight = exp(X[n].pi);
+			
+			for(unsigned int j=0; j<N; j++) {
+				for(unsigned int k=j; k<N; k++) {
+					tmp = gsl_matrix_get(ensemble_cov, j, k);
+					tmp += weight * (X[n].element[j] - ensemble_mean[j]) * (X[n].element[k] - ensemble_mean[k]);
+					gsl_matrix_set(ensemble_cov, j, k, tmp);
+				}
+			}
+		}
+		
+		for(unsigned int j=0; j<N; j++) {
+			for(unsigned int k=j; k<N; k++) {
+				tmp = gsl_matrix_get(ensemble_cov, j, k) / sum_weight;
 				gsl_matrix_set(ensemble_cov, j, k, tmp);
 				gsl_matrix_set(ensemble_cov, k, j, tmp);
 			}
 		}
+		
+		/*for(unsigned int j=0; j<N; j++) {
+			for(unsigned int k=j; k<N; k++) {
+				tmp = 0.;
+				sum_weight = 0;
+				for(unsigned int n=0; n<L; n++) {
+					weight = exp(X[n].pi);
+					tmp += weight * (X[n].element[j] - ensemble_mean[j]) * (X[n].element[k] - ensemble_mean[k]);
+					sum_weight += weight;
+				}
+				tmp /= sum_weight;
+				if(k == j) {
+					gsl_matrix_set(ensemble_cov, j, k, tmp);//*1.005 + 0.005);	// Small factor added in to avoid singular matrices
+				} else {
+					gsl_matrix_set(ensemble_cov, j, k, tmp);
+					gsl_matrix_set(ensemble_cov, k, j, tmp);
+				}
+			}
+		}*/
+	} else {
+		for(unsigned int j=0; j<N; j++) {
+			for(unsigned int k=j; k<N; k++) {
+				tmp = 0.;
+				sum_weight = 0.;
+				for(unsigned int n=0; n<L; n++) {
+					weight = X[n].pi;
+					tmp += weight * (X[n].element[j] - ensemble_mean[j]) * (X[n].element[k] - ensemble_mean[k]);
+				}
+				tmp /= (double)(L - 1) * sum_weight;
+				if(k == j) {
+					gsl_matrix_set(ensemble_cov, j, k, tmp);//*1.005 + 0.005);	// Small factor added in to avoid singular matrices
+				} else {
+					gsl_matrix_set(ensemble_cov, j, k, tmp);
+					gsl_matrix_set(ensemble_cov, k, j, tmp);
+				}
+			}
+		}
 	}
+	
+	/*
+	#pragma omp critical (cout)
+	{
+	std::cerr << sqrt(gsl_matrix_get(ensemble_cov, 0, 0)) << std::endl;
+	}
+	*/
 	
 	// Inverse and Sqrt of Covariance
 	det_ensemble_cov = invert_matrix(ensemble_cov, inv_ensemble_cov, wp, wm1);
@@ -650,7 +730,8 @@ void TAffineSampler<TParams, TLogger>::replacement_proposal(unsigned int j, bool
 		if(tmp > XY_cutoff) { pi_XY += exp(tmp); }
 		if(tmp > YX_cutoff) { pi_YX += exp(tmp); }
 		
-		Y[j].replacement_factor = pi_XY / pi_YX;
+		// Factor to ensure reversibility
+		Y[j].replacement_factor = pi_XY / pi_YX + replacement_accept_bias;
 	}
 	
 	// Get pdf(Y) and initialize weight of proposal point to unity
@@ -727,7 +808,7 @@ void TAffineSampler<TParams, TLogger>::replacement_proposal_diag(unsigned int j,
 		if(tmp > XY_cutoff) { pi_XY += exp(tmp); }
 		if(tmp > YX_cutoff) { pi_YX += exp(tmp); }
 		
-		Y[j].replacement_factor = pi_XY / pi_YX;
+		Y[j].replacement_factor = pi_XY / pi_YX + replacement_accept_bias;
 	}
 	
 	// Get pdf(Y) and initialize weight of proposal point to unity
@@ -1032,19 +1113,28 @@ void TAffineSampler<TParams, TLogger>::step_MH(bool record_step) {
 // Set the dimensionless step scale
 template<class TParams, class TLogger>
 void TAffineSampler<TParams, TLogger>::set_scale(double a) {
+	assert(a > 0);
 	sqrta = sqrt(a);
 }
 
 template<class TParams, class TLogger>
 void TAffineSampler<TParams, TLogger>::set_replacement_bandwidth(double _h) {
+	assert(_h > 0.);
 	h = _h;
 	log_h = log(h);
 }
 
 template<class TParams, class TLogger>
 void TAffineSampler<TParams, TLogger>::set_MH_bandwidth(double _h) {
+	assert(_h > 0);
 	h_MH = _h;
 	log_h_MH = log(h_MH);
+}
+
+template<class TParams, class TLogger>
+void TAffineSampler<TParams, TLogger>::set_replacement_accept_bias(double epsilon) {
+	assert(epsilon >= 0.);
+	replacement_accept_bias = epsilon;
 }
 
 template<class TParams, class TLogger>

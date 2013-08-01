@@ -157,7 +157,7 @@ def probsurf_bayestar(mag, err, maglimit,
 	logfile = tempfile.NamedTemporaryFile()
 	
 	# Run bayestar
-	binary = '/home/greg/projects/bayestar/build/bayestar'
+	binary = '/home/greg/projects/bayestar/bayestar'
 	args = [binary, infile.name, outfile.name,
 	        '--save-surfs', #'--star-steps', '300',
 	        #'--star-samplers', '30',
@@ -207,7 +207,23 @@ def main():
 	print ln_p
 	
 	import matplotlib.pyplot as plt
+	import matplotlib
 	
+	for i in xrange(len(surfs)):
+		fig = plt.figure()
+		
+		plt.subplot(1,2,1)
+		
+		plt.imshow(surfs[i].T, origin='lower', extent=bounds,
+		aspect='auto', interpolation='nearest', vmax=0.005, cmap='binary', norm=matplotlib.colors.LogNorm())
+		
+		plt.subplot(1,2,2)
+		
+		plt.scatter(chains[i,:,1], chains[i,:,0], c=ln_p[i,:], edgecolor='none',
+		vmin=np.max(ln_p[i,:])-15)
+		plt.colorbar()
+	
+	'''
 	fig = plt.figure()
 	ax = fig.add_subplot(1,1,1)
 	ax.imshow(surfs[0].T, origin='lower', extent=bounds,
@@ -221,6 +237,7 @@ def main():
 	img[~idx] = img_min
 	ax.imshow(img, origin='lower', extent=bounds,
 	          aspect='auto', cmap='hot', interpolation='nearest')
+	'''
 	
 	plt.show()
 	

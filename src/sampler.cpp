@@ -885,11 +885,14 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		//std::cerr << "# Setting up sampler" << std::endl;
 		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 		sampler.set_scale(1.5);
-		sampler.set_replacement_bandwidth(0.25);
+		sampler.set_replacement_bandwidth(0.40);
+		sampler.set_replacement_accept_bias(1.e-5);
 		
 		//std::cerr << "# Burn-in" << std::endl;
 		
 		// Burn-in
+		
+		// Round 1 (3/6)
 		sampler.step_MH(N_steps*(1./6.), false);
 		sampler.step(N_steps*(2./6.), false, 0., options.p_replacement);
 		
@@ -901,8 +904,16 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
 			}
 		}
+		
+		// Remove spurious modes
+		sampler.set_replacement_accept_bias(1.e-2);
+		int N_steps_biased = N_steps*(1./6.);
+		if(N_steps_biased > 20) { N_steps_biased = 20; }
+		sampler.step(N_steps_biased, false, 0., 1.);
+		
 		sampler.tune_stretch(6, 0.30);
 		sampler.tune_MH(6, 0.30);
+		
 		if(verbosity >= 2) {
 			std::cout << ") -> (";
 			for(int k=0; k<sampler.get_N_samplers(); k++) {
@@ -911,6 +922,8 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 			std::cout << ")" << std::endl;
 		}
 		
+		// Round 2 (3/6)
+		sampler.set_replacement_accept_bias(0.);
 		sampler.step_MH(N_steps*(1./6.), false);
 		sampler.step(N_steps*(2./6.), false, 0., options.p_replacement);
 		
@@ -921,8 +934,10 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
 			}
 		}
+		
 		sampler.tune_stretch(6, 0.30);
 		sampler.tune_MH(6, 0.30);
+		
 		if(verbosity >= 2) {
 			std::cout << ") -> (";
 			for(int k=0; k<sampler.get_N_samplers(); k++) {
