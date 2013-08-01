@@ -505,18 +505,24 @@ static void calc_sqrt_A(gsl_matrix *A, const gsl_matrix * const S, gsl_vector* w
 
 template<class TParams, class TLogger>
 void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
-	double sum_weight;
+	double sum_weight = 0.;
 	double weight;
 	
 	// Mean
-	sum_weight = 0.;
-	
 	for(unsigned int i=0; i<N; i++) { ensemble_mean[i] = 0.; }
 	
-	for(unsigned int n=0; n<L; n++) {
-		weight = exp(X[n].pi);
-		sum_weight += weight;
-		for(unsigned int i=0; i<N; i++) { ensemble_mean[i] += weight * X[n].element[i]; }
+	if(use_log) {
+		for(unsigned int n=0; n<L; n++) {
+			weight = exp(X[n].pi);
+			sum_weight += weight;
+			for(unsigned int i=0; i<N; i++) { ensemble_mean[i] += weight * X[n].element[i]; }
+		}
+	} else {
+		for(unsigned int n=0; n<L; n++) {
+			weight = X[n].pi;
+			sum_weight += weight;
+			for(unsigned int i=0; i<N; i++) { ensemble_mean[i] += weight * X[n].element[i]; }
+		}
 	}
 	
 	for(unsigned int i=0; i<N; i++) { ensemble_mean[i] /= sum_weight; }
@@ -526,6 +532,32 @@ void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
 	
 	if(use_log) {
 		for(unsigned int j=0; j<N; j++) {
+			for(unsigned int k=j; k<N; k++) {
+				gsl_matrix_set(ensemble_cov, j, k, 0.);
+			}
+		}
+		
+		for(unsigned int n=0; n<L; n++) {
+			weight = exp(X[n].pi);
+			
+			for(unsigned int j=0; j<N; j++) {
+				for(unsigned int k=j; k<N; k++) {
+					tmp = gsl_matrix_get(ensemble_cov, j, k);
+					tmp += weight * (X[n].element[j] - ensemble_mean[j]) * (X[n].element[k] - ensemble_mean[k]);
+					gsl_matrix_set(ensemble_cov, j, k, tmp);
+				}
+			}
+		}
+		
+		for(unsigned int j=0; j<N; j++) {
+			for(unsigned int k=j; k<N; k++) {
+				tmp = gsl_matrix_get(ensemble_cov, j, k) / sum_weight;
+				gsl_matrix_set(ensemble_cov, j, k, tmp);
+				gsl_matrix_set(ensemble_cov, k, j, tmp);
+			}
+		}
+		
+		/*for(unsigned int j=0; j<N; j++) {
 			for(unsigned int k=j; k<N; k++) {
 				tmp = 0.;
 				sum_weight = 0;
@@ -542,7 +574,7 @@ void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
 					gsl_matrix_set(ensemble_cov, k, j, tmp);
 				}
 			}
-		}
+		}*/
 	} else {
 		for(unsigned int j=0; j<N; j++) {
 			for(unsigned int k=j; k<N; k++) {
@@ -563,10 +595,12 @@ void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
 		}
 	}
 	
-	/*#pragma omp critical (cout)
+	/*
+	#pragma omp critical (cout)
 	{
-	std::cerr << gsl_matrix_get(ensemble_cov, 0, 0) << std::endl;
-	}*/
+	std::cerr << sqrt(gsl_matrix_get(ensemble_cov, 0, 0)) << std::endl;
+	}
+	*/
 	
 	// Inverse and Sqrt of Covariance
 	det_ensemble_cov = invert_matrix(ensemble_cov, inv_ensemble_cov, wp, wm1);
