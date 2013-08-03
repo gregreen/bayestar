@@ -603,7 +603,7 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 		x[0] = EBV_est + gsl_ran_gaussian_ziggurat(r, 0.1);
 		if((x[0] > params.EBV_floor) && (x[0] < 8.)) {	// Accept first guess above E(B-V) floor
 			break;
-		} else if(i == 4) {	// Revert to dumb, uniform guess
+		} else if(i == 4) {	// Revert to dumber guess
 			//#pragma omp critical
 			//{
 			//std::cout << "  <E(B-V)> = " << x[0] << " >~ " << 8. << std::endl;

@@ -508,18 +508,24 @@ void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
 	double sum_weight = 0.;
 	double weight;
 	
+	// Find probability density of best point in ensemble
+	double pi_0 = neg_inf_replacement;
+	for(unsigned int n=0; n<L; n++) {
+		if(X[n].pi > pi_0) { pi_0 = X[n].pi; }
+	}
+	
 	// Mean
 	for(unsigned int i=0; i<N; i++) { ensemble_mean[i] = 0.; }
 	
 	if(use_log) {
 		for(unsigned int n=0; n<L; n++) {
-			weight = exp(X[n].pi);
+			weight = exp(X[n].pi - pi_0);
 			sum_weight += weight;
 			for(unsigned int i=0; i<N; i++) { ensemble_mean[i] += weight * X[n].element[i]; }
 		}
 	} else {
 		for(unsigned int n=0; n<L; n++) {
-			weight = X[n].pi;
+			weight = X[n].pi / pi_0;
 			sum_weight += weight;
 			for(unsigned int i=0; i<N; i++) { ensemble_mean[i] += weight * X[n].element[i]; }
 		}
@@ -538,7 +544,7 @@ void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
 		}
 		
 		for(unsigned int n=0; n<L; n++) {
-			weight = exp(X[n].pi);
+			weight = exp(X[n].pi - pi_0);
 			
 			for(unsigned int j=0; j<N; j++) {
 				for(unsigned int k=j; k<N; k++) {
@@ -581,7 +587,7 @@ void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
 				tmp = 0.;
 				sum_weight = 0.;
 				for(unsigned int n=0; n<L; n++) {
-					weight = X[n].pi;
+					weight = X[n].pi / pi_0;
 					tmp += weight * (X[n].element[j] - ensemble_mean[j]) * (X[n].element[k] - ensemble_mean[k]);
 				}
 				tmp /= (double)(L - 1) * sum_weight;
@@ -595,12 +601,13 @@ void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
 		}
 	}
 	
-	/*
-	#pragma omp critical (cout)
+	/*#pragma omp critical (cout)
 	{
-	std::cerr << sqrt(gsl_matrix_get(ensemble_cov, 0, 0)) << std::endl;
+	for(int k=0; k<N; k++) {
+		std::cerr << sqrt(gsl_matrix_get(ensemble_cov, k, k)) << "  ";
 	}
-	*/
+	std::cerr << std::endl;
+	}*/
 	
 	// Inverse and Sqrt of Covariance
 	det_ensemble_cov = invert_matrix(ensemble_cov, inv_ensemble_cov, wp, wm1);
@@ -861,11 +868,16 @@ void TAffineSampler<TParams, TLogger>::step(bool record_step, double p_replaceme
                                             bool unbalanced, bool diag_approx) {
 	// Make either a stretch or a replacement step
 	double p = gsl_rng_uniform(r);
+	//#pragma omp critical
+	//{
 	if(p < p_replacement) {
+		//std::cerr << "replacement" << std::endl;
 		step_replacement(record_step, unbalanced, diag_approx);
 	} else {
+		//std::cerr << "affine" << std::endl;
 		step_affine(record_step);
 	}
+	//}
 }
 
 template<class TParams, class TLogger>

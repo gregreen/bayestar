@@ -76,7 +76,7 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	//std::cerr << "# Setting up sampler" << std::endl;
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 	sampler.set_scale(2.);
-	sampler.set_replacement_bandwidth(0.20);
+	sampler.set_replacement_bandwidth(0.35);
 	
 	// Burn-in
 	if(verbosity >= 1) {
@@ -251,9 +251,8 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	int mu_tot_idx = ceil((mu_tot * params.subpixel_max - params.img_stack->rect->min[1]) / params.img_stack->rect->dx[1]);
 	if(mu_tot_idx + 1 >= params.img_stack->rect->N_bins[1]) { return neg_inf_replacement; }
 	
-	
 	const double bias = -5.;
-	const double sigma = 10.;
+	const double sigma = 5.;
 	
 	double EBV_tot = 0.;
 	double tmp;
@@ -395,7 +394,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	// Round 1 (5/15)
 	sampler.set_scale(1.1);
-	sampler.set_replacement_bandwidth(0.35);
+	sampler.set_replacement_bandwidth(0.50);
 	sampler.set_MH_bandwidth(0.15);
 	
 	sampler.tune_MH(5, 0.30);
@@ -408,7 +407,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	if(verbosity >= 2) { sampler.print_stats(); }
 	
 	// Round 2 (5/15)
-	sampler.set_replacement_bandwidth(0.35);
+	sampler.set_replacement_bandwidth(0.50);
+	sampler.set_replacement_accept_bias(1.e-2);
 	sampler.tune_MH(5, 0.30);
 	sampler.tune_stretch(5, 0.40);
 	
@@ -416,7 +416,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	sampler.step(int(N_steps*2./15.), false, 0., options.p_replacement);
 	
 	// Round 3 (5/15)
-	sampler.set_replacement_bandwidth(0.35);	// TODO: Scale with number of regions
+	sampler.set_replacement_bandwidth(0.50);	// TODO: Scale with number of regions
 	sampler.tune_MH(8, 0.30);
 	sampler.tune_stretch(8, 0.40);
 	
@@ -424,6 +424,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	sampler.step(int(N_steps*3./15.), false, 0., options.p_replacement);
 	
 	// Round 4 (5/15)
+	sampler.set_replacement_accept_bias(0.);
 	sampler.step(int(N_steps*2./15.), false, 0., options.p_replacement);
 	sampler.step_MH(int(N_steps*3./15.), false);
 	
