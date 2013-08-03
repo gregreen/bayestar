@@ -129,7 +129,7 @@ int main(int argc, char **argv) {
 	double los_p_replacement = 0.0;
 	
 	unsigned int N_clouds = 1;
-	unsigned int cloud_steps = 200;
+	unsigned int cloud_steps = 1000;
 	unsigned int cloud_samplers = 80;
 	double cloud_p_replacement = 0.2;
 	

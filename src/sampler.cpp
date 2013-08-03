@@ -537,7 +537,7 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	// Guess E(B-V) on the basis of other parameters
 	
 	// Choose first two bands that have been observed
-	int b1, b2;
+	/*int b1, b2;
 	for(b1=0; b1<NBANDS-1; b1++) {
 		if(params.data->star[params.idx_star].err[b1] < 1.e9) {
 			break;
@@ -572,22 +572,72 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 			x[0] = fabs(gsl_ran_gaussian_ziggurat(r, 0.1));
 			//x[0] = params.EBV_floor + (1.5 * params.data->EBV - params.EBV_floor) * (0.05 + 0.9 * gsl_rng_uniform(r));
 		}
+	}*/
+	
+	TSED * tmp_sed = new TSED(true);
+	params.emp_stellar_model->get_sed(Mr, FeH, *tmp_sed);
+	
+	double mod_color, obs_color, R_XY;
+	
+	double inv_sigma2_sum = 0.;
+	double weighted_sum = 0.;
+	double sigma1, sigma2;
+	
+	for(int b1=0; b1<NBANDS-1; b1++) {
+		for(int b2=b1+1; b2<NBANDS; b2++) {
+			mod_color = tmp_sed->absmag[b2] - tmp_sed->absmag[b1];
+			obs_color = params.data->star[params.idx_star].m[b2] - params.data->star[params.idx_star].m[b1];
+			R_XY = params.ext_model->get_A(RV, b2) - params.ext_model->get_A(RV, b1);
+			
+			sigma1 = params.data->star[params.idx_star].err[b1];
+			sigma2 = params.data->star[params.idx_star].err[b2];
+			
+			weighted_sum += (obs_color - mod_color) / R_XY / (sigma1*sigma1 + sigma2*sigma2);
+			inv_sigma2_sum += 1. / (sigma1*sigma1 + sigma2*sigma2);
+		}
+	}
+	
+	double EBV_est = weighted_sum / inv_sigma2_sum;
+	
+	for(int i=0; i<5; i++) {
+		x[0] = EBV_est + gsl_ran_gaussian_ziggurat(r, 0.1);
+		if((x[0] > params.EBV_floor) && (x[0] < 8.)) {	// Accept first guess above E(B-V) floor
+			break;
+		} else if(i == 4) {	// Revert to dumber guess
+			//#pragma omp critical
+			//{
+			//std::cout << "  <E(B-V)> = " << x[0] << " >~ " << 8. << std::endl;
+			//}
+			if(EBV_est > 8.) {
+				x[0] = 8. - fabs(gsl_ran_gaussian_ziggurat(r, 0.1));
+			} else {
+				x[0] = fabs(gsl_ran_gaussian_ziggurat(r, 0.1));
+			}
+			//x[0] = params.EBV_floor + (1.5 * params.data->EBV - params.EBV_floor) * (0.05 + 0.9 * gsl_rng_uniform(r));
+		}
 	}
 	
 	// Guess distance on the basis of model magnitudes vs. observed apparent magnitudes
-	double inv_sigma2_sum = 0.;
-	double weighted_sum = 0.;
+	inv_sigma2_sum = 0.;
+	weighted_sum = 0.;
 	double sigma;
 	double reddened_mag;
+	double obs_mag;
 	
 	for(int i=0; i<NBANDS; i++) {
 		sigma = params.data->star[params.idx_star].err[i];
 		reddened_mag = tmp_sed->absmag[i] + x[0] * params.ext_model->get_A(RV, i);
-		weighted_sum += (params.data->star[params.idx_star].m[i] - reddened_mag) / (sigma * sigma);
+		obs_mag = params.data->star[params.idx_star].m[i];
+		if(obs_mag > params.data->star[params.idx_star].maglimit[i]) {
+			obs_mag = params.data->star[params.idx_star].maglimit[i];
+		}
+		weighted_sum += (obs_mag - reddened_mag) / (sigma * sigma);
 		inv_sigma2_sum += 1. / (sigma * sigma);
 	}
 	
-	x[1] = weighted_sum / inv_sigma2_sum + gsl_ran_gaussian_ziggurat(r, 0.1);
+	double DM_est = weighted_sum / inv_sigma2_sum;
+	
+	x[1] = DM_est + gsl_ran_gaussian_ziggurat(r, 0.1);
 	
 	// Don't allow the distance guess to be crazy
 	/*if((x[1] < params.DM_min - 2.) || (x[1] > params.DM_max)) {
