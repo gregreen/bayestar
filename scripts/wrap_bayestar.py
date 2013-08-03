@@ -159,11 +159,13 @@ def probsurf_bayestar(mag, err, maglimit,
 	# Run bayestar
 	binary = '/home/greg/projects/bayestar/bayestar'
 	args = [binary, infile.name, outfile.name,
-	        '--save-surfs', #'--star-steps', '300',
-	        #'--star-samplers', '30',
+	        '--save-surfs',
+	        #'--star-steps', '1',
+	        #'--star-samplers', '100',
 	        #'--star-p-replacement', '0.2',
 	        '--verbosity', '2',
-	        '--clouds', '0', '--regions', '0']
+	        '--clouds', '0',
+	        '--regions', '0']
 	res = subprocess.call(args, stdout=logfile, stderr=logfile)
 	
 	# Read output
@@ -186,25 +188,37 @@ def main():
 	err[idx] = 1.e10
 	'''
 	
-	mag = np.array([[ 19.15384674, 17.96580505, 17.17712402, 16.8208065 , 16.66966629],
+	mag = np.array([[ 21.6930, 18.3321, 21.4233, 21.0054, 0.0000],
+	                [ 24.3780, 20.9731, 20.3322, 20.0769, 19.7944]],
+	               dtype='f4')
+	err = np.array([[ 0.196, 0.443, 0.112, 0.132, np.inf],
+	                [ 0.276, 0.041, 0.038, 0.066, 0.092]],
+	               dtype='f4')
+	maglim = np.array([[23., 23., 23., 23., 23.],
+	                   [22.448, 22.330, 21.960, 21.278, 20.150]],
+	                  dtype='f4')
+	
+	'''mag = np.array([[ 19.15384674, 17.96580505, 17.17712402, 16.8208065 , 16.66966629],
 	                [ 19.60111427, 18.40708351, 17.57635117, 17.19038963, 17.02507591],
-	                [ 20.14488411, 18.8828907 , 18.08464813, 17.7223835 , 17.54846764]], dtype='f4')
+	                [ 20.14488411, 18.8828907 , 18.08464813, 17.7223835 , 17.54846764]],
+	               dtype='f4')
 	err = np.array([[ 2.25655623e-02, 2.05883402e-02, 2.04321481e-02, 2.09825877e-02, 2.16421112e-02],
 	                [ 2.32891608e-02, 2.07754262e-02, 2.06643697e-02, 2.12468710e-02, 2.20379084e-02],
-	                [ 2.67316885e-02, 2.14912761e-02, 2.12796684e-02, 2.34406944e-02, 2.59469077e-02]], dtype='f4')
+	                [ 2.67316885e-02, 2.14912761e-02, 2.12796684e-02, 2.34406944e-02, 2.59469077e-02]],
+	               dtype='f4')
 	maglim = np.array([[24.5, 24.5, 24.5, 24.5, 24.5],
 	                   [24.5, 24.5, 24.5, 24.5, 24.5],
-	                   [24.5, 24.5, 24.5, 24.5, 24.5]])
-	l = 173.3075
-	b = 89.82
+	                   [24.5, 24.5, 24.5, 24.5, 24.5]],
+	                  dtype='f4')'''
+	l = 50. #173.3075
+	b = 0. #89.82
 	
 	(bounds, surfs), (converged, lnZ), chains, ln_p, log = probsurf_bayestar(mag, err, maglim,
 	                                                                         l=l, b=b, EBV_guess=2.)
 	print log
 	
-	print 'E(B-V) = %.3f +- %.3f' % (np.mean(chains[0,:,0]), np.std(chains[0,:,0]))
-	
-	print ln_p
+	#print 'E(B-V) = %.3f +- %.3f' % (np.mean(chains[0,:,0]), np.std(chains[0,:,0]))
+	#print ln_p
 	
 	import matplotlib.pyplot as plt
 	import matplotlib
