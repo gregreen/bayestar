@@ -89,6 +89,7 @@ struct TLOSMCMCParams {
 	double EBV_max;
 	double EBV_guess_max;
 	std::vector<double> EBV_prof_guess;
+	gsl_matrix *guess_cov, *guess_sqrt_cov;
 	
 	std::vector<double> subpixel;
 	double subpixel_min, subpixel_max;
@@ -108,6 +109,8 @@ struct TLOSMCMCParams {
 	
 	void calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model,
 	                          double EBV_tot, unsigned int N_regions);
+	
+	void gen_guess_covariance(unsigned int N_regions, double scale_length);
 	
 	double* get_line_int(unsigned int thread_num);
 };

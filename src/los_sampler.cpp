@@ -889,22 +889,52 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	assert(params.EBV_prof_guess.size() == N);
 	double EBV_ceil = params.img_stack->rect->max[0];
 	double EBV_sum = 0.;
+	double guess_sum = 0.;
+	double factor;
 	
-	if(params.sigma_log_Delta_EBV != NULL) {
+	//if(params.sigma_log_Delta_EBV != NULL) {
+	//	for(size_t i=0; i<N; i++) {
+	//		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);//1.0 * params.sigma_log_Delta_EBV[i]);
+	//		EBV_sum += logEBV[i];
+	//	}
+	//} else {
+	//for(size_t i=0; i<N; i++) {
+	//	logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);
+	//	EBV_sum += logEBV[i];
+	//}
+	//}
+	
+	double sigma = 1.;
+	
+	if(params.guess_cov == NULL) {
 		for(size_t i=0; i<N; i++) {
-			logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);//1.0 * params.sigma_log_Delta_EBV[i]);
-			EBV_sum += logEBV[i];
+			logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, sigma);
+			EBV_sum += exp(logEBV[i]);
 		}
 	} else {
+		// Redistribute reddening among distance bins
+		draw_from_cov(logEBV, params.guess_sqrt_cov, N, r);
+		
 		for(size_t i=0; i<N; i++) {
-			logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);
-			EBV_sum += logEBV[i];
+			logEBV[i] *= sigma;
+			logEBV[i] += params.EBV_prof_guess[i];
+			EBV_sum += exp(logEBV[i]);
+			guess_sum += exp(params.EBV_prof_guess[i]);
 		}
-	}
-	
-	for(size_t i=0; i<N; i++) {
-		logEBV[i] = params.EBV_prof_guess[i] + gsl_ran_gaussian_ziggurat(r, 1.);
-		EBV_sum += logEBV[i];
+		
+		// Change in reddening at infinity
+		double norm = exp(gsl_ran_gaussian_ziggurat(r, 0.1));
+		
+		factor = log(norm * guess_sum / EBV_sum);
+		for(size_t i=0; i<N; i++) { logEBV[i] += factor; }
+		
+		#pragma omp critical (cout)
+		{
+		for(int i=0; i<N; i++) {
+			std::cout << std::setw(6) << std::setprecision(2) << logEBV[i] << " ";
+		}
+		std::cout << std::endl;
+		}
 	}
 	
 	// Switch adjacent reddenings
@@ -922,7 +952,7 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	
 	// Ensure that reddening is not more than allowed
 	if(EBV_sum >= 0.95 * EBV_ceil) {
-		double factor = log(0.95 * EBV_ceil / EBV_sum);
+		factor = log(0.95 * EBV_ceil / EBV_sum);
 		for(size_t i=0; i<N; i++) {
 			logEBV[i] += factor;
 		}
@@ -939,8 +969,9 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
                                unsigned int _N_threads, double _EBV_max)
 	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.), N_threads(_N_threads),
-	  line_int(NULL), Delta_EBV_prior(NULL), log_Delta_EBV_prior(NULL),
-	  sigma_log_Delta_EBV(NULL)
+	  line_int(NULL), Delta_EBV_prior(NULL),
+	  log_Delta_EBV_prior(NULL), sigma_log_Delta_EBV(NULL),
+	  guess_cov(NULL), guess_sqrt_cov(NULL)
 {
 	line_int = new double[_img_stack->N_images * N_threads];
 	//std::cout << "Allocated line_int[" << _img_stack->N_images * N_threads << "] (" << _img_stack->N_images << " images, " << N_threads << " threads)" << std::endl;
@@ -958,6 +989,8 @@ TLOSMCMCParams::~TLOSMCMCParams() {
 	if(Delta_EBV_prior != NULL) { delete[] Delta_EBV_prior; }
 	if(log_Delta_EBV_prior != NULL) { delete[] log_Delta_EBV_prior; }
 	if(sigma_log_Delta_EBV != NULL) { delete[] sigma_log_Delta_EBV; }
+	if(guess_cov != NULL) { gsl_matrix_free(guess_cov); }
+	if(guess_sqrt_cov != NULL) { gsl_matrix_free(guess_sqrt_cov); }
 }
 
 void TLOSMCMCParams::set_p0(double _p0) {
@@ -1152,6 +1185,45 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	
 	delete[] log_Delta_EBV_bias;
 }
+
+
+void TLOSMCMCParams::gen_guess_covariance(unsigned int N_regions, double scale_length) {
+	if(guess_cov != NULL) { gsl_matrix_free(guess_cov); }
+	if(guess_sqrt_cov != NULL) { gsl_matrix_free(guess_sqrt_cov); }
+	
+	guess_cov = gsl_matrix_alloc(N_regions+1, N_regions+1);
+	guess_sqrt_cov = gsl_matrix_alloc(N_regions+1, N_regions+1);
+	
+	// Generate guess covariance matrix
+	double val;
+	
+	for(int k=0; k<N_regions+1; k++) {
+		gsl_matrix_set(guess_cov, k, k, 1.);
+	}
+	
+	for(int offset=1; offset<N_regions+1; offset++) {
+		val = -exp(-(double)(offset*offset) / (2. * scale_length * scale_length));
+		
+		for(int k=0; k<N_regions+1-offset; k++) {
+			gsl_matrix_set(guess_cov, k+offset, k, val);
+			gsl_matrix_set(guess_cov, k, k+offset, val);
+		}
+	}
+	
+	// Find square root of covariance matrix (A A^T = B)
+	sqrt_matrix(guess_cov, guess_sqrt_cov);
+	
+	std::cout << std::endl;
+	std::cout << "Guess covariance:" << std::endl;
+	for(int i=0; i<N_regions+1; i++) {
+		for(int j=0; j<N_regions+1; j++) {
+			std::cout << std::setprecision(2) << gsl_matrix_get(guess_cov, i, j) << "  ";
+		}
+		std::cout << std::endl;
+	}
+	std::cout << std::endl;
+}
+
 
 
 double* TLOSMCMCParams::get_line_int(unsigned int thread_num) {
