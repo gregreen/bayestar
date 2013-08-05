@@ -342,7 +342,7 @@ int main(int argc, char **argv) {
 				sample_los_extinction_clouds(output_fname, cloud_options, params, N_clouds, *it, verbosity);
 			}
 			if(N_regions != 0) {
-				params.gen_guess_covariance(N_regions, 2.);
+				params.gen_guess_covariance(N_regions, 1.);
 				if(disk_prior) {
 					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, N_regions);
 				}

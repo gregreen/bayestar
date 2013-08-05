@@ -160,6 +160,10 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned i
 
 void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<double>& Delta_EBV, TMCMCOptions& options);
 
+double switch_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params);
+
+double mix_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params);
+
 
 // Sample cloud model
 
