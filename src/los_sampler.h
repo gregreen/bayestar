@@ -108,7 +108,8 @@ struct TLOSMCMCParams {
 	void set_subpixel_mask(std::vector<double>& new_mask);
 	
 	void calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model,
-	                          double EBV_tot, unsigned int N_regions);
+	                          double EBV_tot, unsigned int N_regions,
+	                          int verbosity=1);
 	
 	void gen_guess_covariance(unsigned int N_regions, double scale_length);
 	
@@ -163,6 +164,8 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 double switch_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params);
 
 double mix_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params);
+
+double step_one_Delta_EBV(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params);
 
 
 // Sample cloud model

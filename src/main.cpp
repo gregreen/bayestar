@@ -124,8 +124,8 @@ int main(int argc, char **argv) {
 	double minEBV = 0.;
 	
 	unsigned int N_regions = 20;
-	unsigned int los_steps = 300;
-	unsigned int los_samplers = 20;
+	unsigned int los_steps = 2000;
+	unsigned int los_samplers = 5;
 	double los_p_replacement = 0.0;
 	
 	unsigned int N_clouds = 1;
@@ -342,9 +342,9 @@ int main(int argc, char **argv) {
 				sample_los_extinction_clouds(output_fname, cloud_options, params, N_clouds, *it, verbosity);
 			}
 			if(N_regions != 0) {
-				params.gen_guess_covariance(N_regions, 1.);
+				params.gen_guess_covariance(N_regions, 1.);	// Covariance matrix for guess has (anti-)correlation length of 1 distance bin
 				if(disk_prior) {
-					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, N_regions);
+					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, N_regions, verbosity);
 				}
 				sample_los_extinction(output_fname, los_options, params, N_regions, *it, verbosity);
 			}
