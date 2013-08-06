@@ -124,8 +124,8 @@ int main(int argc, char **argv) {
 	double minEBV = 0.;
 	
 	unsigned int N_regions = 20;
-	unsigned int los_steps = 2000;
-	unsigned int los_samplers = 5;
+	unsigned int los_steps = 3000;
+	unsigned int los_samplers = 2;
 	double los_p_replacement = 0.0;
 	
 	unsigned int N_clouds = 1;

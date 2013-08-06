@@ -1036,7 +1036,8 @@ double switch_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N
 	
 	// Choose two Deltas to switch
 	int j = gsl_rng_uniform_int(r, _N);
-	int k = gsl_rng_uniform_int(r, _N);
+	int k = gsl_rng_uniform_int(r, _N-1);
+	if(k >= j) { k++; }
 	
 	_Y[j] = _X[k];
 	_Y[k] = _X[j];
@@ -1051,7 +1052,8 @@ double mix_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, g
 	
 	// Choose two Deltas to mix
 	int j = gsl_rng_uniform_int(r, _N);
-	int k = gsl_rng_uniform_int(r, _N);
+	int k = gsl_rng_uniform_int(r, _N-1);
+	if(k >= j) { k++; }
 	double pct = gsl_rng_uniform(r);
 	
 	_Y[j] = log(1. - pct) + _X[j];
