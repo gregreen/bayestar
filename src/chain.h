@@ -51,6 +51,8 @@
 #include <gsl/gsl_eigen.h>
 #include <gsl/gsl_sf_gamma.h>
 
+#include <gsl/gsl_errno.h>
+
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 

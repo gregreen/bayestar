@@ -171,6 +171,9 @@ def probsurf_bayestar(mag, err, maglimit,
 	# Read output
 	logfile.seek(0)
 	log = logfile.read()
+	
+	print log
+	
 	surfs, bounds, converged, lnZ, chains, ln_p = getProbSurfs(outfile.name)
 	
 	return (bounds, surfs), (converged, lnZ), chains, ln_p, log
@@ -188,7 +191,24 @@ def main():
 	err[idx] = 1.e10
 	'''
 	
-	mag = np.array([[ 21.6930, 18.3321, 21.4233, 21.0054, 0.0000],
+	
+	mag = np.array([[22.1953, 0.0000, 21.1190, 20.2057, 19.9909]],
+	               dtype='f4')
+	err = np.array([[0.239, 10000000100.204, 0.055, 0.045, 0.120]],
+	               dtype='f4')
+	maglim = np.array([[22.537, 22.195, 22.056, 21.461, 20.544]],
+	                  dtype='f4')
+	
+	'''
+	mag = np.array([[ 21.8472,  0.0000,  21.6913,  20.8056,  20.1619]],
+	               dtype='f4')
+	err = np.array([[ 0.228,  10000000100.204,  0.097,  0.104,  0.270]],
+	               dtype='f4')
+	maglim = np.array([[22.627,  22.289,  22.195,  21.620,  20.553]],
+	                  dtype='f4')
+	'''
+	
+	'''mag = np.array([[ 21.6930, 18.3321, 21.4233, 21.0054, 0.0000],
 	                [ 24.3780, 20.9731, 20.3322, 20.0769, 19.7944]],
 	               dtype='f4')
 	err = np.array([[ 0.196, 0.443, 0.112, 0.132, np.inf],
@@ -196,7 +216,7 @@ def main():
 	               dtype='f4')
 	maglim = np.array([[23., 23., 23., 23., 23.],
 	                   [22.448, 22.330, 21.960, 21.278, 20.150]],
-	                  dtype='f4')
+	                  dtype='f4')'''
 	
 	'''mag = np.array([[ 19.15384674, 17.96580505, 17.17712402, 16.8208065 , 16.66966629],
 	                [ 19.60111427, 18.40708351, 17.57635117, 17.19038963, 17.02507591],
@@ -210,12 +230,12 @@ def main():
 	                   [24.5, 24.5, 24.5, 24.5, 24.5],
 	                   [24.5, 24.5, 24.5, 24.5, 24.5]],
 	                  dtype='f4')'''
-	l = 50. #173.3075
-	b = 0. #89.82
+	l = 34.01 #173.3075
+	b = -19.0 #89.82
 	
 	(bounds, surfs), (converged, lnZ), chains, ln_p, log = probsurf_bayestar(mag, err, maglim,
 	                                                                         l=l, b=b, EBV_guess=2.)
-	print log
+	#print log
 	
 	#print 'E(B-V) = %.3f +- %.3f' % (np.mean(chains[0,:,0]), np.std(chains[0,:,0]))
 	#print ln_p

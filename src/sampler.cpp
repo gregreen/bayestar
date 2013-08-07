@@ -620,24 +620,50 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	// Guess distance on the basis of model magnitudes vs. observed apparent magnitudes
 	inv_sigma2_sum = 0.;
 	weighted_sum = 0.;
+	
 	double sigma;
-	double reddened_mag;
-	double obs_mag;
+	double reddened_mag, obs_mag, maglim;
+	double max_DM = inf_replacement;
 	
 	for(int i=0; i<NBANDS; i++) {
 		sigma = params.data->star[params.idx_star].err[i];
 		reddened_mag = tmp_sed->absmag[i] + x[0] * params.ext_model->get_A(RV, i);
 		obs_mag = params.data->star[params.idx_star].m[i];
-		if(obs_mag > params.data->star[params.idx_star].maglimit[i]) {
-			obs_mag = params.data->star[params.idx_star].maglimit[i];
+		maglim = params.data->star[params.idx_star].maglimit[i];
+		if(obs_mag > maglim) {
+			obs_mag = maglim;
 		}
 		weighted_sum += (obs_mag - reddened_mag) / (sigma * sigma);
 		inv_sigma2_sum += 1. / (sigma * sigma);
+		
+		// Update maximum allowable distance modulus
+		if(maglim - reddened_mag < max_DM) {
+			max_DM = maglim - reddened_mag;
+		}
 	}
 	
 	double DM_est = weighted_sum / inv_sigma2_sum;
 	
 	x[1] = DM_est + gsl_ran_gaussian_ziggurat(r, 0.1);
+	
+	// Adjust distance to ensure that star is observable
+	if(x[1] > max_DM + 0.25) {
+		//#pragma omp critical (cout)
+		//{
+		//std::cerr << "DM: " << x[1] << " --> ";
+		x[1] = max_DM + gsl_ran_gaussian_ziggurat(r, 0.1);
+		//std::cerr << x[1] << std::endl;
+		//}
+	}
+	
+	/*#pragma omp critical (cout)
+	{
+	//std::cerr << " " << x[0] << " " << max_DM;
+	for(int i=0; i<NBANDS; i++) {
+		std::cerr << " " << tmp_sed->absmag[i] + x[0] * params.ext_model->get_A(RV, i) + x[1];
+	}
+	std::cerr << std::endl;
+	}*/
 	
 	// Don't allow the distance guess to be crazy
 	/*if((x[1] < params.DM_min - 2.) || (x[1] > params.DM_max)) {
