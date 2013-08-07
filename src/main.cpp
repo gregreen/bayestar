@@ -105,6 +105,9 @@ void mock_test() {
 }
 
 int main(int argc, char **argv) {
+	gsl_set_error_handler_off();
+	
+	
 	/*
 	 *  Default commandline arguments
 	 */

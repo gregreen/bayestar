@@ -1554,13 +1554,16 @@ double invert_matrix(gsl_matrix* A, gsl_matrix* inv_A, gsl_permutation* p, gsl_m
 	
 	int s;
 	int status = 1;
-	unsigned int count = 0;
+	int count = 0;
 	while(status) {
-		if(count > 5) { std::cerr << "Error inverting matrix." << std::endl; abort(); }
+		if(count > 5) { std::cerr << "! Error inverting matrix." << std::endl; abort(); }
 		
 		// Invert A using LU decomposition
 		gsl_matrix_memcpy(LU, A);
-		if(count != 0) { gsl_matrix_add_diagonal(LU, 0.001); std::cerr << "Added small constant" << std::endl; }	// If inversion fails the first time, add small constant to diagonal
+		if(count != 0) {	// If inversion fails the first time, add small constant to diagonal
+			gsl_matrix_add_diagonal(LU, pow10((double)count - 6.));
+			std::cerr << "Invert matrix: Added 10^" << count - 6 << " to diagonal." << std::endl;
+		}
 		gsl_linalg_LU_decomp(LU, p, &s);
 		if(inv_A == NULL) {
 			status = gsl_linalg_LU_invert(LU, p, A);
