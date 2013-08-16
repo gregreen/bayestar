@@ -111,6 +111,7 @@ class TAffineSampler {
 	gsl_matrix* inv_ensemble_cov;
 	double det_ensemble_cov;
 	double log_norm_ensemble_cov;
+	double sigma_min;
 	
 	// Diagonal approximation of ensemble covariance
 	double* diag_cov;
@@ -168,6 +169,7 @@ public:
 	void set_replacement_bandwidth(double _h);	// Set smoothing scale to be used for replacement steps, in units of the covariance
 	void set_MH_bandwidth(double _h);
 	void set_replacement_accept_bias(double epsilon);
+	void set_sigma_min(double _sigma_min);
 	void flush(bool record_steps=true);		// Clear the weights in the ensemble and record the outstanding component states
 	void clear();					// Clear the stats, acceptance information and weights
 	
@@ -239,6 +241,7 @@ public:
 	void set_replacement_bandwidth(double h) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_replacement_bandwidth(h); } };	// Set size of replacement steps (in units of covariance) 
 	void set_MH_bandwidth(double h) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_MH_bandwidth(h); } };	// Set size of M-H steps (in units of covariance) 
 	void set_replacement_accept_bias(double epsilon) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_replacement_accept_bias(epsilon); } };
+	void set_sigma_min(double _sigma_min) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->set_sigma_min(_sigma_min); } };
 	void init_gaussian_mixture_target(unsigned int nclusters, unsigned int iterations=100) { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->init_gaussian_mixture_target(nclusters, iterations); } };
 	void clear() { for(unsigned int i=0; i<N_samplers; i++) { sampler[i]->clear(); }; stats.clear(); };
 	
@@ -431,6 +434,9 @@ TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_
 	// Set the replacement sampler to be ergodic
 	set_replacement_accept_bias(0.);
 	
+	// Set minimum proposal kernel size for M-H and replacement steps
+	set_sigma_min(0.);
+	
 	// Initialize number of accepted and rejected steps to zero
 	N_accepted = 0;
 	N_rejected = 0;
@@ -611,6 +617,15 @@ void TAffineSampler<TParams, TLogger>::update_ensemble_cov() {
 					gsl_matrix_set(ensemble_cov, k, j, tmp);
 				}
 			}
+		}
+	}
+	
+	// Add in small constant along diagonals
+	if(sigma_min > 0.) {
+		for(unsigned int j=0; j<N; j++) {
+			tmp = gsl_matrix_get(ensemble_cov, j, j);
+			tmp = sqrt(tmp*tmp + sigma_min*sigma_min);
+			gsl_matrix_set(ensemble_cov, j, j, tmp);
 		}
 	}
 	
@@ -1234,6 +1249,12 @@ void TAffineSampler<TParams, TLogger>::set_MH_bandwidth(double _h) {
 	assert(_h > 0);
 	h_MH = _h;
 	log_h_MH = log(h_MH);
+}
+
+template<class TParams, class TLogger>
+void TAffineSampler<TParams, TLogger>::set_sigma_min(double _sigma_min) {
+	assert(_sigma_min >= 0.);
+	sigma_min = _sigma_min;
 }
 
 template<class TParams, class TLogger>
