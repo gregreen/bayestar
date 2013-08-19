@@ -791,6 +791,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 		sampler.set_scale(1.2);
 		sampler.set_replacement_bandwidth(0.2);
+		sampler.set_sigma_min(0.02);
 		
 		//std::cerr << "# Burn-in" << std::endl;
 		sampler.step(N_steps, false, 0., 0.2);
@@ -963,6 +964,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		sampler.set_scale(1.5);
 		sampler.set_replacement_bandwidth(0.40);
 		sampler.set_replacement_accept_bias(1.e-5);
+		sampler.set_sigma_min(0.02);
 		
 		//std::cerr << "# Burn-in" << std::endl;
 		
@@ -1060,7 +1062,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		
 		// Save binned p(DM, EBV) surface
 		if(gatherSurfs) {
-			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 0.02, 0.1, 30.);
+			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 0.0125, 0.1, 30.);
 		}
 		if(saveSurfs) { imgBuffer->add(*(img_stack.img[n])); }
 		

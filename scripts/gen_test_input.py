@@ -92,7 +92,8 @@ def observed(mags, mag_lim):
 
 def draw_from_model(l, b, N, EBV_spread=0.02,
                     mag_lim=(23., 22., 22., 21., 20.),
-                    EBV_of_mu=None, EBV_uniform=False):
+                    EBV_of_mu=None, EBV_uniform=False,
+                    redraw=True):
 	dtype = [('DM', 'f8'), ('EBV', 'f8'),
 	         ('Mr', 'f8'), ('FeH', 'f8'),
 	         ('mag', '5f8'), ('err', '5f8')]
@@ -107,7 +108,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	stellar_model = TStellarModel(os.path.expanduser('~/projects/bayestar/data/PScolors.dat'))
 	R = np.array([3.172, 2.271, 1.682, 1.322, 1.087])
 	
-	mu_max = mag_lim[1] - gal_model.Mr_min + 2.
+	mu_max = mag_lim[1] - gal_model.Mr_min + 3.
 	mu_min = min(0., mu_max-15.)
 	Mr_max = min(mag_lim[1], gal_model.Mr_max)
 	
@@ -119,7 +120,9 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	
 	idx = np.arange(N)
 	
-	while idx.size > 0:
+	keep_sampling = True
+	
+	while keep_sampling:
 		size = idx.size
 		print 'Drawing %d...' % size
 		
@@ -182,8 +185,9 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		p_obs = np.empty((size, 5), dtype='f8')
 		
 		for k in xrange(5):
-			p_obs[:,k] = 0.5 - 0.5 * erf((ret['mag'][idx,k] - mag_lim[k] + 0.5) / 0.25)
+			p_obs[:,k] = 0.5 - 0.5 * erf((ret['mag'][idx,k] - mag_lim[k] + 0.1) / 0.25)
 		
+		# Determine which bands stars are observed in
 		obs = (p_obs > np.random.random(size=(size, 5)))
 		
 		# Add in error to stellar magnitudes
@@ -194,12 +198,20 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 			ret['err'][idx[~obs[:,k]],k] = 1.e10
 		
 		# Require detection in g and at least three other bands
-		#obs = obs[:,0] & (np.sum(obs, axis=1) > 2)
+		obs = obs[:,0] & (np.sum(obs, axis=1) >= 4)
 		
 		# Require detection in all bands
-		obs = np.all(obs, axis=1)
+		#obs = np.all(obs, axis=1)
 		
 		idx = idx[~obs]
+		
+		if redraw:
+			if idx.size == 0:
+				keep_sampling = False
+		else:
+			keep_sampling = False
+			
+			ret = ret[obs]
 	
 	return ret
 
@@ -224,7 +236,8 @@ def main():
 	parser = argparse.ArgumentParser(prog='gen_test_input.py',
 	                                 description='Generates test input file for galstar.',
 	                                 add_help=True)
-	parser.add_argument('N', type=int, help='# of stars to generate.')
+	parser.add_argument('-N', type=int, default=None, help='# of stars to generate.')
+	parser.add_argument('-rad', '--radius', type=float, default=None, help='Radius of beam.')
 	parser.add_argument('-o', '--output', type=str, default=None,
 	                    help='Output filename (creates Bayestar input file).')
 	parser.add_argument('-lb', '--gal-lb', type=float, nargs=2,
@@ -253,6 +266,24 @@ def main():
 		offset = 1
 	args = parser.parse_args(sys.argv[offset:])
 	
+	# Determine number of stars to draw
+	redraw = False
+	N_stars = None
+	
+	if args.N == None:
+		if args.radius == None:
+			print 'Either -N or -rad must be specified'
+		
+		model = TGalacticModel()
+		N_stars = model.tot_num_stars(args.gal_lb[0], args.gal_lb[1], args.radius)
+		N_stars = np.random.poisson(lam=N_stars)
+	else:
+		if args.radius != None:
+			print 'Cannot specify both -N and -rad'
+		
+		redraw = True
+		N_stars = args.N
+	
 	EBV_of_mu = None
 	if args.clouds != None:
 		mu = np.linspace(-5., 35., 1000)
@@ -280,15 +311,16 @@ def main():
 		#                   r_max=values.max_r, EBV_of_mu=EBV_of_mu)
 	else:
 		params = draw_from_model(args.gal_lb[0], args.gal_lb[1],
-		                         args.N, EBV_spread=args.mean_EBV,
+		                         N_stars, EBV_spread=args.mean_EBV,
 		                         mag_lim=args.limiting_mag, EBV_of_mu=EBV_of_mu,
-		                         EBV_uniform=args.EBV_uniform)
+		                         EBV_uniform=args.EBV_uniform, redraw=redraw)
+		print '%d stars observed' % (len(params))
 	
 	# Write Bayestar input file
 	if args.output != None:
 		mag_lim = np.array(args.limiting_mag)
 		mag_lim.shape = (1, 5)
-		mag_lim = np.repeat(mag_lim, args.N, axis=0)
+		mag_lim = np.repeat(mag_lim, len(params), axis=0)
 		write_infile(args.output, params['mag'], params['err'], mag_lim,
 		             l=args.gal_lb[0], b=args.gal_lb[1],
 		             access_mode='w')
@@ -354,6 +386,17 @@ def main():
 		fig.subplots_adjust(hspace=0.40, wspace=0.25,
 		                    bottom=0.13, top=0.95,
 		                    left=0.1, right=0.9)
+		
+		# CMD of stars
+		
+		fig = plt.figure(figsize=(6,4), dpi=150)
+		ax = fig.add_subplot(1,1,1)
+		ax.hexbin(params['mag'][:,0] - params['mag'][:,2], params['mag'][:,1],
+		          gridsize=50)
+		ax.set_xlabel(r'$g - i$', fontsize=14)
+		ax.set_ylabel(r'$r$', fontsize=14)
+		ylim = ax.get_ylim()
+		ax.set_ylim(ylim[1], ylim[0])
 		
 		plt.show()
 	
