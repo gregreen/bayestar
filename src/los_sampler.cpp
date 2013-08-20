@@ -459,8 +459,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(int(N_steps*2./20.), switch_step, false);
-	//sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
+	sampler.step_custom_reversible(int(N_steps*1./20.), switch_step, false);
+	sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
 	sampler.step_custom_reversible(int(N_steps*1./20.), move_one_step, false);
 	
 	if(verbosity >= 2) {
@@ -489,8 +489,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	//sampler.step_MH(int(N_steps*1./20.), false);
 	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(int(N_steps*2./20.), switch_step, false);
-	//sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
+	sampler.step_custom_reversible(int(N_steps*1./20.), switch_step, false);
+	sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
 	sampler.step_custom_reversible(int(N_steps*1./20.), move_one_step, false);
 	
 	if(verbosity >= 2) {
@@ -521,8 +521,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	//sampler.step_MH(int(N_steps*2./15.), false);
 	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(int(N_steps*2./20.), switch_step, false);
-	//sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
+	sampler.step_custom_reversible(int(N_steps*1./20.), switch_step, false);
+	sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
 	sampler.step_custom_reversible(int(N_steps*1./20.), move_one_step, false);
 	
 	if(verbosity >= 2) {
@@ -572,22 +572,22 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 		
 		// Round 1 (5/15)
 		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*2./15., switch_step, true);
-		//sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
+		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., switch_step, true);
+		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
 		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		// Round 2 (5/15)
 		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*2./15., switch_step, true);
-		//sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
+		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., switch_step, true);
+		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
 		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		// Round 3 (5/15)
 		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*2./15., switch_step, true);
-		//sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
+		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., switch_step, true);
+		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
 		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
@@ -822,18 +822,29 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned i
 	
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction;
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t switch_step = &switch_adjacent_log_Delta_EBVs;
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t mix_step = &mix_log_Delta_EBVs;
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t move_one_step = &step_one_Delta_EBV;
 	
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 	sampler.set_scale(1.05);
 	sampler.set_replacement_bandwidth(0.75);
 	
 	sampler.step_MH(int(N_steps*10./100.), false);
-	sampler.step(int(N_steps*30./100.), true, 0., 0.);
-	sampler.step(int(N_steps*20./100), true, 0., 1., true);
+	sampler.step(int(N_steps*20./100.), true, 0., 0.);
+	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, false);
+	
+	sampler.step(int(N_steps*10./100), true, 0., 1., true);
 	sampler.step_MH(int(N_steps*10./100.), true);
-	sampler.step(int(N_steps*30./100.), true, 0., 0.5, true);
+	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, false);
+	
+	sampler.step(int(N_steps*20./100.), true, 0., 0.5, true);
 	sampler.step(int(N_steps*20./100), true, 0., 1., true);
+	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, false);
+	
 	sampler.step_MH(int(N_steps*10./100.), false);
+	
+	
 	
 	//if(verbosity >= 2) {
 	//	sampler.print_stats();
