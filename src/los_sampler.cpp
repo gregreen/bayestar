@@ -393,7 +393,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction_from_guess;
-	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t switch_step = &switch_log_Delta_EBVs;
+	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t switch_step = &switch_adjacent_log_Delta_EBVs;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t mix_step = &mix_log_Delta_EBVs;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t move_one_step = &step_one_Delta_EBV;
 	
@@ -403,6 +403,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	if(verbosity >= 1) { std::cout << "# Burn-in ..." << std::endl; }
 	
 	// Round 1 (5/20)
+	
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.10);
 	sampler.set_MH_bandwidth(0.15);
@@ -413,7 +414,20 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	sampler.tune_MH(8, 0.25);
 	sampler.step_MH(int(N_steps*1./20.), false);
 	
+	if(verbosity >= 2) {
+		std::cout << "scale: (";
+		for(int k=0; k<sampler.get_N_samplers(); k++) {
+			std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+		}
+	}
 	sampler.tune_stretch(5, 0.30);
+	if(verbosity >= 2) {
+		std::cout << ") -> (";
+		for(int k=0; k<sampler.get_N_samplers(); k++) {
+			std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+		}
+		std::cout << ")" << std::endl;
+	}
 	
 	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
 	sampler.step(int(N_steps*1./20.), false, 0., 1., true, true);
@@ -427,14 +441,26 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	// Round 2 (5/20)
 	
 	sampler.set_replacement_accept_bias(1.e-2);
-	//sampler.tune_MH(5, 0.25);
-	sampler.tune_stretch(5, 0.30);
 	
-	//sampler.step_MH(int(N_steps*1./20.), false);
+	if(verbosity >= 2) {
+		std::cout << "scale: (";
+		for(int k=0; k<sampler.get_N_samplers(); k++) {
+			std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+		}
+	}
+	sampler.tune_stretch(8, 0.30);
+	if(verbosity >= 2) {
+		std::cout << ") -> (";
+		for(int k=0; k<sampler.get_N_samplers(); k++) {
+			std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+		}
+		std::cout << ")" << std::endl;
+	}
+	
 	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(int(N_steps*1./20.), switch_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
+	sampler.step_custom_reversible(int(N_steps*2./20.), switch_step, false);
+	//sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
 	sampler.step_custom_reversible(int(N_steps*1./20.), move_one_step, false);
 	
 	if(verbosity >= 2) {
@@ -444,14 +470,27 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	}
 	
 	// Round 3 (5/20)
-	//sampler.tune_MH(8, 0.25);
+	
+	if(verbosity >= 2) {
+		std::cout << "scale: (";
+		for(int k=0; k<sampler.get_N_samplers(); k++) {
+			std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+		}
+	}
 	sampler.tune_stretch(8, 0.30);
+	if(verbosity >= 2) {
+		std::cout << ") -> (";
+		for(int k=0; k<sampler.get_N_samplers(); k++) {
+			std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+		}
+		std::cout << ")" << std::endl;
+	}
 	
 	//sampler.step_MH(int(N_steps*1./20.), false);
 	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(int(N_steps*1./20.), switch_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
+	sampler.step_custom_reversible(int(N_steps*2./20.), switch_step, false);
+	//sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
 	sampler.step_custom_reversible(int(N_steps*1./20.), move_one_step, false);
 	
 	if(verbosity >= 2) {
@@ -464,13 +503,26 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	sampler.set_replacement_accept_bias(0.);
 	
 	//sampler.tune_MH(8, 0.25);
+	if(verbosity >= 2) {
+		std::cout << "scale: (";
+		for(int k=0; k<sampler.get_N_samplers(); k++) {
+			std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+		}
+	}
 	sampler.tune_stretch(8, 0.30);
+	if(verbosity >= 2) {
+		std::cout << ") -> (";
+		for(int k=0; k<sampler.get_N_samplers(); k++) {
+			std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+		}
+		std::cout << ")" << std::endl;
+	}
 	
 	//sampler.step_MH(int(N_steps*2./15.), false);
 	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(int(N_steps*1./20.), switch_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
+	sampler.step_custom_reversible(int(N_steps*2./20.), switch_step, false);
+	//sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
 	sampler.step_custom_reversible(int(N_steps*1./20.), move_one_step, false);
 	
 	if(verbosity >= 2) {
@@ -520,22 +572,22 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 		
 		// Round 1 (5/15)
 		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., switch_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
-		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
-		
-		// Round 3 (5/15)
-		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., switch_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
+		sampler.step_custom_reversible((1<<attempt)*N_steps*2./15., switch_step, true);
+		//sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
 		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		// Round 2 (5/15)
 		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., switch_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
+		sampler.step_custom_reversible((1<<attempt)*N_steps*2./15., switch_step, true);
+		//sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
+		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
+		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
+		
+		// Round 3 (5/15)
+		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
+		sampler.step_custom_reversible((1<<attempt)*N_steps*2./15., switch_step, true);
+		//sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
 		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
@@ -1046,14 +1098,36 @@ double switch_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N
 	return 0.;
 }
 
+// Custom reversible step for piecewise-linear model.
+// Switch two log(Delta E(B-V)) values.
+double switch_adjacent_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params) {
+	for(int i=0; i<_N; i++) { _Y[i] = _X[i]; }
+	
+	// Choose which Deltas to switch
+	int j = gsl_rng_uniform_int(r, _N-1);
+	
+	_Y[j] = _X[j+1];
+	_Y[j+1] = _X[j];
+	
+	// log[Q(Y -> X) / Q(X -> Y)]
+	return 0.;
+}
+
 
 double mix_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params) {
 	for(int i=0; i<_N; i++) { _Y[i] = _X[i]; }
 	
 	// Choose two Deltas to mix
-	int j = gsl_rng_uniform_int(r, _N);
-	int k = gsl_rng_uniform_int(r, _N-1);
-	if(k >= j) { k++; }
+	int j = gsl_rng_uniform_int(r, _N-1);
+	int k;
+	if(gsl_rng_uniform(r) < 0.5) {
+		k = j;
+		j += 1;
+	} else {
+		k = j+1;
+	}
+	//int k = gsl_rng_uniform_int(r, _N-1);
+	//if(k >= j) { k++; }
 	double pct = gsl_rng_uniform(r);
 	
 	_Y[j] = log(1. - pct) + _X[j];
@@ -1206,8 +1280,8 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	double norm = -1.;
 	double log_norm;
 	double dist = 0.;
-	double dist_norm = 1.;	// kpc
-	double dEBV_ds = 0.2;	// mag kpc^{-1}
+	double dist_norm = 0.01;	// kpc
+	double dEBV_ds = 0.0025;	// mag kpc^{-1}
 	double EBV_sum = 0.;
 	
 	for(int i=0; i<N_regions+1; i++) {
@@ -1256,9 +1330,9 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		log_Delta_EBV_prior[i] += log_norm;
 		
 		// Cap log(Delta E(B-V)) at some maximum value
-		if(log_Delta_EBV_prior[i] > -1.) {
-			log_Delta_EBV_prior[i] = tanh((log_Delta_EBV_prior[i]+1.)) - 1.;
-		}
+		//if(log_Delta_EBV_prior[i] > -1.) {
+		//	log_Delta_EBV_prior[i] = tanh((log_Delta_EBV_prior[i]+1.)) - 1.;
+		//}
 		
 		Delta_EBV_prior[i] = exp(log_Delta_EBV_prior[i]);
 		

@@ -1,4 +1,12 @@
 # PS1 luminosity function from Parsec.
+# 
+# Assumes an age of 7 +- 2 Gyr, and a metallicity of
+# [Fe/H] = -0.5 +- 0.5 dex.
+# 
+# For M_r <~ 5, the Parsec LF is smoothed by a Gaussian kernel with
+# sigma = 0.1 mag. For M_r >~ 5, the LF is smoothed with sigma = 0.5 mag.
+# The transition between these two regimes is smooth, and takes place over
+# a distance of ~1 mag in M_r.
 #
 #  M_r         LF
 #  (P1)  (stars/pc^3/mag)

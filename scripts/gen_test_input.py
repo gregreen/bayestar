@@ -36,11 +36,13 @@ import matplotlib as mplib
 from model import TGalacticModel, TStellarModel
 from wrap_bayestar import write_infile, write_true_params
 
+fh = 0.0051
 
 class TSample1D:
 	'''
 	Draw samples from a 1D probability density function.
 	'''
+	
 	def __init__(self, f, x_min, x_max, N=100, M=1000):
 		x = np.linspace(x_min, x_max, N)
 		try:
@@ -90,10 +92,18 @@ def mock_mags(stellarmodel, mu, Ar, Mr, FeH, mag_limit=(23., 23., 23., 23., 23.)
 def observed(mags, mag_lim):
 	pass
 
+def err_model(mag, mag_lim):
+	err = np.sqrt(0.02*0.02 + 0.2 * np.exp(2. * (mag - mag_lim + 0.1) / 0.25))
+	
+	idx = (err > 1.)
+	err[idx] = 1.
+	
+	return err
+
 def draw_from_model(l, b, N, EBV_spread=0.02,
                     mag_lim=(23., 22., 22., 21., 20.),
                     EBV_of_mu=None, EBV_uniform=False,
-                    redraw=True):
+                    redraw=True, n_bands=4):
 	dtype = [('DM', 'f8'), ('EBV', 'f8'),
 	         ('Mr', 'f8'), ('FeH', 'f8'),
 	         ('mag', '5f8'), ('err', '5f8')]
@@ -104,7 +114,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	cos_l, sin_l = np.cos(l), np.sin(l)
 	cos_b, sin_b = np.cos(b), np.sin(b)
 	
-	gal_model = TGalacticModel()
+	gal_model = TGalacticModel(fh=fh)
 	stellar_model = TStellarModel(os.path.expanduser('~/projects/bayestar/data/PScolors.dat'))
 	R = np.array([3.172, 2.271, 1.682, 1.322, 1.087])
 	
@@ -165,7 +175,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 			                                          0.2, size=np.sum(thick))
 			thick &= (ret['FeH'][idx] <= -2.5) | (ret['FeH'][idx] >= 0.)
 		
-		# Calculate stellar magnitudes
+		# Calculate absolute stellar magnitudes
 		absmags_tmp = stellar_model.absmags(ret['Mr'][idx], ret['FeH'][idx])
 		ret['mag'][idx,0] = absmags_tmp['g']
 		ret['mag'][idx,1] = absmags_tmp['r']
@@ -173,13 +183,14 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		ret['mag'][idx,3] = absmags_tmp['z']
 		ret['mag'][idx,4] = absmags_tmp['y']
 		
-		# Determine errors and magnitudes
+		# Determine errors and apparent magnitudes
 		for k in xrange(5):
 			ret['mag'][idx,k] += ret['DM'][idx]
 			ret['mag'][idx,k] += ret['EBV'][idx] * R[k]
-			ret['err'][idx,k] = 0.02 + 0.3 * np.exp(ret['mag'][idx][:,k] - mag_lim[k])
-			idx_tmp = ret['err'][idx,k] > 1.
-			ret['err'][idx[idx_tmp],k] = 1.
+			ret['err'][idx,k] = err_model(ret['mag'][idx][:,k], mag_lim[k])
+			#0.02 + 0.3 * np.exp(ret['mag'][idx][:,k] - mag_lim[k])
+			#idx_tmp = ret['err'][idx,k] > 1.
+			#ret['err'][idx[idx_tmp],k] = 1.
 		
 		# Calculate observation probability
 		p_obs = np.empty((size, 5), dtype='f8')
@@ -190,18 +201,22 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		# Determine which bands stars are observed in
 		obs = (p_obs > np.random.random(size=(size, 5)))
 		
-		# Add in error to stellar magnitudes
+		# Add in errors to apparent stellar magnitudes
 		ret['mag'][idx] += ret['err'][idx] * np.random.normal(size=(size,5))
+		
+		# Re-estimate errors based on magnitudes
+		for k in xrange(5):
+			ret['err'][idx,k] = err_model(ret['err'][idx,k], mag_lim[k])
+		
+		# Remove observations with errors above 0.2 mags
+		obs = obs & (ret['err'][idx] < 0.2)
 		
 		for k in xrange(5):
 			ret['mag'][idx[~obs[:,k]],k] = 0.
 			ret['err'][idx[~obs[:,k]],k] = 1.e10
 		
-		# Require detection in g and at least three other bands
-		obs = obs[:,0] & (np.sum(obs, axis=1) >= 4)
-		
-		# Require detection in all bands
-		#obs = np.all(obs, axis=1)
+		# Require detection in g and at least n_bands-1 other bands
+		obs = obs[:,0] & (np.sum(obs, axis=1) >= n_bands)
 		
 		idx = idx[~obs]
 		
@@ -255,6 +270,8 @@ def main():
 	parser.add_argument('-lim', '--limiting-mag', metavar='mags', type=float,
 	                    nargs=5, default=(22.5, 22.5, 22., 21., 20.),
 	                    help='Limiting magnitudes in grizy.')
+	parser.add_argument('-nb', '--n-bands', type=int, default=4,
+	                    help='# of bands required to keep object.')
 	parser.add_argument('-flat', '--flat', action='store_true',
 	                    help='Draw parameters from flat distribution')
 	parser.add_argument('-sh', '--show', action='store_true',
@@ -274,7 +291,7 @@ def main():
 		if args.radius == None:
 			print 'Either -N or -rad must be specified'
 		
-		model = TGalacticModel()
+		model = TGalacticModel(fh=fh)
 		N_stars = model.tot_num_stars(args.gal_lb[0], args.gal_lb[1], args.radius)
 		N_stars = np.random.poisson(lam=N_stars)
 	else:
@@ -313,7 +330,8 @@ def main():
 		params = draw_from_model(args.gal_lb[0], args.gal_lb[1],
 		                         N_stars, EBV_spread=args.mean_EBV,
 		                         mag_lim=args.limiting_mag, EBV_of_mu=EBV_of_mu,
-		                         EBV_uniform=args.EBV_uniform, redraw=redraw)
+		                         EBV_uniform=args.EBV_uniform, redraw=redraw,
+		                         n_bands=args.n_bands)
 		print '%d stars observed' % (len(params))
 	
 	# Write Bayestar input file
@@ -342,7 +360,7 @@ def main():
 	#	print '%.3f  %.3f  %.3f  %.3f' % (p['DM'], p['EBV'], p['Mr'], p['FeH']), p['mag'], p['err']
 	
 	if args.show:
-		model = TGalacticModel()
+		model = TGalacticModel(fh=fh)
 		l = np.pi/180. * args.gal_lb[0]
 		b = np.pi/180. * args.gal_lb[1]
 		cos_l, sin_l = np.cos(l), np.sin(l)
@@ -391,10 +409,14 @@ def main():
 		
 		fig = plt.figure(figsize=(6,4), dpi=150)
 		ax = fig.add_subplot(1,1,1)
-		ax.hexbin(params['mag'][:,0] - params['mag'][:,2], params['mag'][:,1],
-		          gridsize=50)
+		idx = ((params['err'][:,0] < 1.e9)
+		       & (params['err'][:,1] < 1.e9)
+		       & (params['err'][:,2] < 1.e9))
+		ax.hexbin(params['mag'][idx,0] - params['mag'][idx,2],
+		          params['mag'][idx,1],
+		          gridsize=100, bins='log')
 		ax.set_xlabel(r'$g - i$', fontsize=14)
-		ax.set_ylabel(r'$r$', fontsize=14)
+		ax.set_ylabel(r'$m_{r}$', fontsize=14)
 		ylim = ax.get_ylim()
 		ax.set_ylim(ylim[1], ylim[0])
 		
