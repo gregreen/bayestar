@@ -64,6 +64,9 @@ class TGalacticModel:
         self.fh_outer = self.fh * (self.Rbr/self.R0)**(self.nh-self.nh_outer)
         self.L_epsilon = 0.
         
+        self.H_ISM = 150.
+        self.L_ISM = 4500.
+        
         self.data = np.loadtxt(abspath(LF_fname),
                                usecols=(0,1),
                                dtype=[('Mr','f4'), ('LF','f4')],
@@ -85,7 +88,20 @@ class TGalacticModel:
         x = self.R0 - cos_l*cos_b*d
         y = -sin_l*cos_b*d
         z = sin_b*d
+        
         return x, y, z
+    
+    def Cartesian_2_cylindrical(self, x, y, z):
+        r = np.sqrt(x*x + y*y)
+        
+        return r, z
+    
+    def gal_2_cylindrical(self, l, b, DM):
+        cos_l, sin_l = np.cos(np.pi/180. * l), np.sin(np.pi/180. * l)
+        cos_b, sin_b = np.cos(np.pi/180. * b), np.sin(np.pi/180. * b)
+        x,y,z = self.Cartesian_coords(DM, cos_l, sin_l, cos_b, sin_b)
+        
+        return self.Cartesian_2_cylindrical(x, y, z)
     
     def rho_thin(self, r, z):
         return (
@@ -119,6 +135,10 @@ class TGalacticModel:
                 return self.rho_0 * self.fh * (r_eff2/self.R0/self.R0)**(self.nh/2.)
             else:
                 return self.rho_0 * self.fh_outer * (r_eff2/self.R0/self.R0)**(self.nh_outer/2.)
+    
+    def rho_ISM(self, r, z):
+        return np.exp( - (np.abs(z+self.Z0) - np.abs(self.Z0)) / self.H_ISM
+                          - np.sqrt((r-self.R0)*(r-self.R0)+self.L_epsilon*self.L_epsilon) / self.L_ISM )
     
     def f_halo(self, DM, cos_l, sin_l, cos_b, sin_b):
         x,y,z = self.Cartesian_coords(DM, cos_l, sin_l, cos_b, sin_b)
@@ -204,6 +224,82 @@ class TGalacticModel:
         
         return N_tot
     
+    def dA_dmu(self, l, b, DM):
+        r, z = self.gal_2_cylindrical(l, b, DM)
+        
+        return self.rho_ISM(r, z) * np.power(10., DM / 5.)
+    
+    def EBV_prior(self, l, b, n_regions=20, EBV_per_kpc=0.0025, norm_dist=1.):
+        mu_0, mu_1 = 4., 19.
+        
+        DM = np.linspace(mu_0, mu_1, n_regions+1)
+        Delta_DM = DM[1] - DM[0]
+        Delta_EBV = np.empty(n_regions+1, dtype='f8')
+        
+        # Integrate from d = 0 to beginning of first distance bin
+        DM_fine = np.linspace(mu_0 - 10., mu_0, 1000)
+        Delta_EBV[0] = np.sum(self.dA_dmu(l, b, DM_fine)) * (10. / 1000.)
+        
+        # Find Delta EBV in each distance bin
+        DM_fine = np.linspace(mu_0, mu_1, 64 * n_regions)
+        Delta_EBV_tmp = self.dA_dmu(l, b, DM_fine)
+        Delta_EBV[1:] = downsample_by_four(downsample_by_four(downsample_by_four(Delta_EBV_tmp))) * Delta_DM
+        
+        # 1.5 orders of magnitude variance
+        std_dev_coeff = np.array([3.6506, -0.047222, -0.021878, 0.0010066, -7.6386e-06])
+        mean_bias_coeff = np.array([0.57694, 0.037259, -0.001347, -4.6156e-06])
+        
+        # 1 order of magnitude variance
+        #std_dev_coeff = np.array([2.4022, -0.040931, -0.012309, 0.00039482, 3.1342e-06])
+        #mean_bias_coeff = np.array([0.52751, 0.022036, -0.0010742, 7.0748e-06])
+        
+        # Calculate bias and std. dev. of reddening in each bin
+        dist = np.power(10., DM / 5. + 1.) # in pc
+        Delta_dist = np.hstack([dist[0], np.diff(dist)])
+        DM_equiv = 5. * (np.log10(Delta_dist) - 1.)
+        
+        bias = (mean_bias_coeff[0] * DM_equiv
+              + mean_bias_coeff[1] * DM_equiv * DM_equiv
+              + mean_bias_coeff[2] * DM_equiv * DM_equiv * DM_equiv
+              + mean_bias_coeff[3] * DM_equiv * DM_equiv * DM_equiv * DM_equiv)
+        
+        sigma = (std_dev_coeff[0]
+               + std_dev_coeff[1] * DM_equiv
+               + std_dev_coeff[2] * DM_equiv * DM_equiv
+               + std_dev_coeff[3] * DM_equiv * DM_equiv * DM_equiv
+               + std_dev_coeff[4] * DM_equiv * DM_equiv * DM_equiv * DM_equiv)
+        
+        log_Delta_EBV = np.log(Delta_EBV) + bias
+        
+        # Calculate mean reddening in each bin
+        mean_Delta_EBV = Delta_EBV * np.exp(bias + 0.5 * sigma * sigma)
+        mean_EBV = np.cumsum(mean_Delta_EBV)
+        
+        # Normalize E(B-V) per kpc locally
+        DM_norm = 5. * (np.log10(norm_dist) - 1.)
+        DM_fine = np.linspace(DM_norm - 10., DM_norm, 100)
+        Delta_DM = DM_fine[1] - DM_fine[0]
+        EBV_local = np.sum(self.dA_dmu(l, b, DM_fine)) * Delta_DM
+        EBV_local *= np.exp(0.5 * std_dev_coeff[0]**2.)
+        norm = 0.001 * EBV_per_kpc * norm_dist / EBV_local
+        
+        #idx = np.max(np.where(dist <= norm_dist, np.arange(dist.size), -1.))
+        #print idx
+        #norm = 0.001 * EBV_per_kpc * dist[idx] / mean_EBV[idx]
+        
+        mean_EBV *= norm
+        mean_Delta_EBV *= norm
+        
+        log_Delta_EBV += np.log(norm)
+        
+        return DM, log_Delta_EBV, sigma, mean_Delta_EBV, norm
+
+
+def downsample_by_four(x):
+    return 0.25 * (x[::4] + x[1::4] + x[2::4] + x[3::4])
+
+def downsample_by_two(x):
+    return 0.5 * (x[:-1:2] + x[1::2])
 
 
 def dV_dDM_dOmega(DM):
@@ -382,11 +478,72 @@ class TStellarModel:
         return self.color_name
 
 
-def main():
+def get_SFD_map(fname='~/projects/bayestar/data/SFD_Ebv_512.fits', nside=64):
+    import pyfits
+    import healpy as hp
+    
+    fname = expanduser(fname)
+    
+    f = pyfits.open(fname)
+    EBV_ring = f[0].data[:]
+    f.close()
+    
+    EBV_nest = hp.reorder(EBV_ring, r2n=True)
+    
+    nside2_map = EBV_nest.size / 12
+    
+    while nside2_map > nside * nside:
+        EBV_nest = downsample_by_four(EBV_nest)
+        nside2_map = EBV_nest.size / 12
+    
+    hp.mollview(EBV_nest, nest=True)
+    #plt.show()
+    
+    return EBV_nest
+
+def plot_EBV_prior(model, nside=64):
+    import healpy as hp
+    
+    n = np.arange(12 * nside**2)
+    EBV = np.empty(n.size)
+    norm = np.empty(n.size)
+    
+    for i in n:
+        t, p = hp.pixelfunc.pix2ang(nside, i, nest=True)
+        l = 180./np.pi * p
+        b = 90. - 180./np.pi * t
+        
+        DM, log_Delta_EBV, sigma_log_Delta_EBV, mean_Delta_EBV, norm_tmp = model.EBV_prior(l, b)
+        
+        EBV[i] = np.sum(mean_Delta_EBV)
+        norm[i] = norm_tmp
+        
+        #print '(%.3f, %.3f): %.3f' % (l, b, EBV[i])
+    
+    print ''
+    print np.percentile(norm, [1., 10., 33., 50., 67., 90., 99.])
+    print np.mean(norm), np.std(norm)
+    
+    # Compare to SFD
+    EBV_SFD = get_SFD_map()
+    
+    print np.mean(EBV_SFD / EBV)
+    print np.mean(EBV_SFD) / np.mean(EBV)
+    print np.std(EBV_SFD), np.std(EBV)
+    
+    mplib.rc('text', usetex=True)
+    hp.visufunc.mollview(np.log10(EBV), nest=True, title=r'$\log_{10} \Delta \mathrm{E} \left( B - V \right)$')
+    hp.visufunc.mollview(EBV, nest=True, max=1.)
+    hp.visufunc.mollview(np.log10(EBV) - np.log10(EBV_SFD), nest=True)
+    
+    plt.show()
+
+def test_EBV_prior():
     model = TGalacticModel()
     
-    l, b, radius = 0., 10., 0.1
+    l, b, radius = 0., 0., 0.1
     
+    '''
     N_thin = model.tot_num_stars(l, b, radius=radius, component='thin')
     N_thick = model.tot_num_stars(l, b, radius=radius, component='thick')
     N_halo = model.tot_num_stars(l, b, radius=radius, component='halo')
@@ -394,6 +551,22 @@ def main():
     print '# of stars in thin disk: %d' % N_thin
     print '     "     in thick disk: %d' % N_thick
     print '     "     in halo: %d' % N_halo
+    '''
+    
+    DM, log_Delta_EBV, sigma_log_Delta_EBV, mean_Delta_EBV, norm = model.EBV_prior(l, b)
+    
+    dist = np.power(10., DM / 5. - 2.)  # in kpc
+    
+    for d, mean, sigma in zip(dist, log_Delta_EBV, sigma_log_Delta_EBV):
+        print 'd = %.3f: %.3f +- %.3f --> Delta E(B-V) = %.3f' % (d, mean, sigma, np.exp(mean + 0.5 * sigma * sigma))
+    
+    print 'E(B-V) = %.3f' % np.sum(mean_Delta_EBV)
+    
+    plot_EBV_prior(model)
+
+
+def main():
+    test_EBV_prior()
     
     return 0
 
