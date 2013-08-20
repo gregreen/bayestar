@@ -217,6 +217,9 @@ public:
 	double rho_halo(double R, double Z) const;
 	double rho_disk(double R, double Z) const;
 	
+	// ISM density
+	double rho_ISM(double R, double Z) const;
+	
 	// Stellar metallicity
 	double mu_FeH_disk(double Z) const;
 	double log_p_FeH(double FeH, double R, double Z) const;
@@ -240,6 +243,7 @@ protected:
 	double L_epsilon;				// Smoothing of disk near Galactic center
 	double fh, qh, nh, R_br, nh_outer, R_epsilon2;	// Halo (broken power law)
 	double fh_outer;
+	double h_ISM, L_ISM;
 	
 	// Metallicity parameters
 	double mu_FeH_inf;
@@ -303,6 +307,7 @@ public:
 	// Densities
 	double rho_disk_los(double DM) const;
 	double rho_halo_los(double DM) const;
+	double rho_ISM_los(double DM) const;
 	
 	// Direction of l.o.s.
 	void get_lb(double &l, double &b) const;

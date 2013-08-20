@@ -65,6 +65,10 @@ TGalacticModel::TGalacticModel() {
 	fh_outer = fh * pow(R_br/R0, nh - nh_outer);
 	R_epsilon2 = 500. * 500.;
 	
+	// ISM disk (from Besancon model)
+	L_ISM = 4500;
+	h_ISM = 140;
+	
 	// Metallicity
 	mu_FeH_inf = -0.82;
 	delta_mu_FeH = 0.55;
@@ -87,6 +91,10 @@ TGalacticModel::TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
 {
 	fh_outer = fh * pow(R_br/R0, nh - nh_outer);
 	L_epsilon = 0.;
+	
+	// ISM disk (from Besancon model)
+	L_ISM = 4500;
+	h_ISM = 140;
 	
 	disk_abundance = new TStellarAbundance(0);
 	halo_abundance = new TStellarAbundance(1);
@@ -111,6 +119,10 @@ double TGalacticModel::rho_disk(double R, double Z) const {
 	double rho_thin = exp(-(fabs(Z+Z0) - fabs(Z0))/H1 - sqrt((R-R0)*(R-R0)+L_epsilon*L_epsilon)/L1);
 	double rho_thick = f_thick * exp(-(fabs(Z+Z0) - fabs(Z0))/H2 - sqrt((R-R0)*(R-R0)+L_epsilon*L_epsilon)/L2);
 	return rho_thin + rho_thick;
+}
+
+double TGalacticModel::rho_ISM(double R, double Z) const {
+	return exp(-(fabs(Z+Z0) - fabs(Z0)) / h_ISM - sqrt((R-R0)*(R-R0)+L_epsilon*L_epsilon) / L_ISM);
 }
 
 // Mean disk metallicity at given position in space
@@ -272,6 +284,13 @@ double TGalacticLOSModel::rho_halo_los(double DM) const {
 	return rho_halo(R, Z);
 }
 
+double TGalacticLOSModel::rho_ISM_los(double DM) const {
+	double R, Z;
+	DM_to_RZ(DM, R, Z);
+	
+	return rho_ISM(R, Z);
+}
+
 double TGalacticLOSModel::log_dNdmu_full(double DM) const {
 	double R, Z;
 	DM_to_RZ(DM, R, Z);
@@ -383,7 +402,7 @@ double TGalacticLOSModel::log_prior_emp(const double *x) const {
 double TGalacticLOSModel::get_log_dNdmu_norm() const { return log_dNdmu_norm; }
 
 double TGalacticLOSModel::dA_dmu(double DM) const {
-	return rho_disk_los(DM) * pow10(DM / 5.);
+	return rho_ISM_los(DM) * pow10(DM / 5.);
 }
 
 

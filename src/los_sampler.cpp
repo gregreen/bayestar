@@ -1118,9 +1118,16 @@ double mix_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, g
 	for(int i=0; i<_N; i++) { _Y[i] = _X[i]; }
 	
 	// Choose two Deltas to mix
-	int j = gsl_rng_uniform_int(r, _N);
-	int k = gsl_rng_uniform_int(r, _N-1);
-	if(k >= j) { k++; }
+	int j = gsl_rng_uniform_int(r, _N-1);
+	int k;
+	if(gsl_rng_uniform(r) < 0.5) {
+		k = j;
+		j += 1;
+	} else {
+		k = j+1;
+	}
+	//int k = gsl_rng_uniform_int(r, _N-1);
+	//if(k >= j) { k++; }
 	double pct = gsl_rng_uniform(r);
 	
 	_Y[j] = log(1. - pct) + _X[j];
@@ -1273,8 +1280,8 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	double norm = -1.;
 	double log_norm;
 	double dist = 0.;
-	double dist_norm = 1.;	// kpc
-	double dEBV_ds = 0.2;	// mag kpc^{-1}
+	double dist_norm = 0.01;	// kpc
+	double dEBV_ds = 0.0025;	// mag kpc^{-1}
 	double EBV_sum = 0.;
 	
 	for(int i=0; i<N_regions+1; i++) {
@@ -1323,9 +1330,9 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		log_Delta_EBV_prior[i] += log_norm;
 		
 		// Cap log(Delta E(B-V)) at some maximum value
-		if(log_Delta_EBV_prior[i] > -1.) {
-			log_Delta_EBV_prior[i] = tanh((log_Delta_EBV_prior[i]+1.)) - 1.;
-		}
+		//if(log_Delta_EBV_prior[i] > -1.) {
+		//	log_Delta_EBV_prior[i] = tanh((log_Delta_EBV_prior[i]+1.)) - 1.;
+		//}
 		
 		Delta_EBV_prior[i] = exp(log_Delta_EBV_prior[i]);
 		
