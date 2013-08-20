@@ -188,7 +188,13 @@ void TStats::print() const {
 	std::cout << std::endl;
 	std::cout << "Covariance:" << std::endl;
 	for(unsigned int i=0; i<N; i++) {
-		for(unsigned int j=0; j<N; j++) { std::cout << "\t" << cov(i, j); }
+		for(unsigned int j=0; j<N; j++) {
+			if(i != j) {
+				std::cout << "\t" << cov(i, j) / sqrt(cov(i, i) * cov(j, j));
+			} else {
+				std::cout << "\t" << sqrt(cov(i, j));
+			}
+		}
 		std::cout << std::endl;
 	}
 }

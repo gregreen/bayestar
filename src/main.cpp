@@ -105,6 +105,9 @@ void mock_test() {
 }
 
 int main(int argc, char **argv) {
+	gsl_set_error_handler_off();
+	
+	
 	/*
 	 *  Default commandline arguments
 	 */
@@ -117,19 +120,19 @@ int main(int argc, char **argv) {
 	double err_floor = 20;
 	
 	bool synthetic = false;
-	unsigned int star_steps = 250;
-	unsigned int star_samplers = 30;
+	unsigned int star_steps = 1000;
+	unsigned int star_samplers = 5;
 	double star_p_replacement = 0.2;
 	double sigma_RV = -1.;
 	double minEBV = 0.;
 	
 	unsigned int N_regions = 20;
-	unsigned int los_steps = 300;
-	unsigned int los_samplers = 20;
+	unsigned int los_steps = 3000;
+	unsigned int los_samplers = 2;
 	double los_p_replacement = 0.0;
 	
 	unsigned int N_clouds = 1;
-	unsigned int cloud_steps = 200;
+	unsigned int cloud_steps = 1000;
 	unsigned int cloud_samplers = 80;
 	double cloud_p_replacement = 0.2;
 	
@@ -312,7 +315,7 @@ int main(int argc, char **argv) {
 		size_t nFiltered = 0;
 		std::vector<double> subpixel;
 		for(size_t n=0; n<conv.size(); n++) {
-			tmpFilter = conv[n] && (lnZmax - lnZ[n] < evCut);
+			tmpFilter = conv[n] && (lnZ[n] > lnZmax - evCut) && !isnan(lnZ[n]) && !is_inf_replacement(lnZ[n]);
 			keep.push_back(tmpFilter);
 			if(tmpFilter) {
 				subpixel.push_back(stellar_data.star[n].EBV);
@@ -342,8 +345,9 @@ int main(int argc, char **argv) {
 				sample_los_extinction_clouds(output_fname, cloud_options, params, N_clouds, *it, verbosity);
 			}
 			if(N_regions != 0) {
+				params.gen_guess_covariance(N_regions, 1.);	// Covariance matrix for guess has (anti-)correlation length of 1 distance bin
 				if(disk_prior) {
-					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, N_regions);
+					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, N_regions, verbosity);
 				}
 				sample_los_extinction(output_fname, los_options, params, N_regions, *it, verbosity);
 			}

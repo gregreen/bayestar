@@ -89,6 +89,7 @@ struct TLOSMCMCParams {
 	double EBV_max;
 	double EBV_guess_max;
 	std::vector<double> EBV_prof_guess;
+	gsl_matrix *guess_cov, *guess_sqrt_cov;
 	
 	std::vector<double> subpixel;
 	double subpixel_min, subpixel_max;
@@ -107,7 +108,10 @@ struct TLOSMCMCParams {
 	void set_subpixel_mask(std::vector<double>& new_mask);
 	
 	void calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model,
-	                          double EBV_tot, unsigned int N_regions);
+	                          double EBV_tot, unsigned int N_regions,
+	                          int verbosity=1);
+	
+	void gen_guess_covariance(unsigned int N_regions, double scale_length);
 	
 	double* get_line_int(unsigned int thread_num);
 };
@@ -156,6 +160,12 @@ double guess_EBV_max(TImgStack &img_stack);
 void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned int N_regions);
 
 void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<double>& Delta_EBV, TMCMCOptions& options);
+
+double switch_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params);
+
+double mix_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params);
+
+double step_one_Delta_EBV(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params);
 
 
 // Sample cloud model
