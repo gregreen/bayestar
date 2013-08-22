@@ -243,7 +243,7 @@ protected:
 	double L_epsilon;				// Smoothing of disk near Galactic center
 	double fh, qh, nh, R_br, nh_outer, R_epsilon2;	// Halo (broken power law)
 	double fh_outer;
-	double h_ISM, L_ISM;
+	double H_ISM, L_ISM, dH_dR_ISM, R_flair_ISM;
 	
 	// Metallicity parameters
 	double mu_FeH_inf;

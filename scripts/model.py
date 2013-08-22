@@ -64,8 +64,11 @@ class TGalacticModel:
         self.fh_outer = self.fh * (self.Rbr/self.R0)**(self.nh-self.nh_outer)
         self.L_epsilon = 0.
         
-        self.H_ISM = 150.
-        self.L_ISM = 4500.
+        # Drimmel & Spergel (2001)
+        self.H_ISM = 134.4
+        self.L_ISM = 2260.
+        self.dH_dR_ISM = 0.0148
+        self.R_flair_ISM = 4400.
         
         self.data = np.loadtxt(abspath(LF_fname),
                                usecols=(0,1),
@@ -104,18 +107,22 @@ class TGalacticModel:
         return self.Cartesian_2_cylindrical(x, y, z)
     
     def rho_thin(self, r, z):
+        r_eff = np.sqrt(r*r + self.L_epsilon*self.L_epsilon)
+        
         return (
                 self.rho_0
                 * np.exp( - (np.abs(z+self.Z0) - np.abs(self.Z0)) / self.H1
-                          - np.sqrt((r-self.R0)*(r-self.R0)+self.L_epsilon*self.L_epsilon) / self.L1 )
+                          - (r_eff-self.R0) / self.L1 )
                )
     
     
     def rho_thick(self, r, z):
+        r_eff = np.sqrt(r*r + self.L_epsilon*self.L_epsilon)
+        
         return (
                 self.rho_0 * self.f
                 * np.exp( - (np.abs(z+self.Z0) - np.abs(self.Z0)) / self.H2
-                          - np.sqrt((r-self.R0)*(r-self.R0)+self.L_epsilon*self.L_epsilon) / self.L2 )
+                          - (r_eff-self.R0) / self.L2 )
                )
     
     def rho_halo(self, r, z):
@@ -136,9 +143,17 @@ class TGalacticModel:
             else:
                 return self.rho_0 * self.fh_outer * (r_eff2/self.R0/self.R0)**(self.nh_outer/2.)
     
+    def H_ISM_of_R(self, r):
+        return self.H_ISM + self.dH_dR_ISM * np.where(r > self.R_flair_ISM, r - self.R_flair_ISM, 0.)
+    
     def rho_ISM(self, r, z):
-        return np.exp( - (np.abs(z+self.Z0) - np.abs(self.Z0)) / self.H_ISM
-                          - np.sqrt((r-self.R0)*(r-self.R0)+self.L_epsilon*self.L_epsilon) / self.L_ISM )
+        r_eff = np.sqrt(r*r + self.L_epsilon*self.L_epsilon)
+        H = self.H_ISM_of_R(r)
+        
+        rad_term = np.exp(- r_eff / self.L_ISM)
+        h_term = 1. / np.power(np.cosh((z+self.Z0) / H), 2.)
+        
+        return rad_term * h_term
     
     def f_halo(self, DM, cos_l, sin_l, cos_b, sin_b):
         x,y,z = self.Cartesian_coords(DM, cos_l, sin_l, cos_b, sin_b)
@@ -229,7 +244,7 @@ class TGalacticModel:
         
         return self.rho_ISM(r, z) * np.power(10., DM / 5.)
     
-    def EBV_prior(self, l, b, n_regions=20, EBV_per_kpc=0.0025, norm_dist=1.):
+    def EBV_prior(self, l, b, n_regions=20, EBV_per_kpc=0.04, norm_dist=1.):
         mu_0, mu_1 = 4., 19.
         
         DM = np.linspace(mu_0, mu_1, n_regions+1)
@@ -246,12 +261,12 @@ class TGalacticModel:
         Delta_EBV[1:] = downsample_by_four(downsample_by_four(downsample_by_four(Delta_EBV_tmp))) * Delta_DM
         
         # 1.5 orders of magnitude variance
-        std_dev_coeff = np.array([3.6506, -0.047222, -0.021878, 0.0010066, -7.6386e-06])
-        mean_bias_coeff = np.array([0.57694, 0.037259, -0.001347, -4.6156e-06])
+        #std_dev_coeff = np.array([3.6506, -0.047222, -0.021878, 0.0010066, -7.6386e-06])
+        #mean_bias_coeff = np.array([0.57694, 0.037259, -0.001347, -4.6156e-06])
         
         # 1 order of magnitude variance
-        #std_dev_coeff = np.array([2.4022, -0.040931, -0.012309, 0.00039482, 3.1342e-06])
-        #mean_bias_coeff = np.array([0.52751, 0.022036, -0.0010742, 7.0748e-06])
+        std_dev_coeff = np.array([2.4022, -0.040931, -0.012309, 0.00039482, 3.1342e-06])
+        mean_bias_coeff = np.array([0.52751, 0.022036, -0.0010742, 7.0748e-06])
         
         # Calculate bias and std. dev. of reddening in each bin
         dist = np.power(10., DM / 5. + 1.) # in pc
@@ -268,6 +283,9 @@ class TGalacticModel:
                + std_dev_coeff[2] * DM_equiv * DM_equiv
                + std_dev_coeff[3] * DM_equiv * DM_equiv * DM_equiv
                + std_dev_coeff[4] * DM_equiv * DM_equiv * DM_equiv * DM_equiv)
+        
+        sigma = 2. * np.ones(DM_equiv.size)
+        bias = 0.
         
         log_Delta_EBV = np.log(Delta_EBV) + bias
         
@@ -496,10 +514,13 @@ def get_SFD_map(fname='~/projects/bayestar/data/SFD_Ebv_512.fits', nside=64):
         EBV_nest = downsample_by_four(EBV_nest)
         nside2_map = EBV_nest.size / 12
     
-    hp.mollview(EBV_nest, nest=True)
+    #hp.mollview(np.log10(EBV_nest), nest=True)
     #plt.show()
     
     return EBV_nest
+
+def min_max(x):
+    return np.min(x), np.max(x)
 
 def plot_EBV_prior(model, nside=64):
     import healpy as hp
@@ -521,19 +542,36 @@ def plot_EBV_prior(model, nside=64):
         #print '(%.3f, %.3f): %.3f' % (l, b, EBV[i])
     
     print ''
-    print np.percentile(norm, [1., 10., 33., 50., 67., 90., 99.])
     print np.mean(norm), np.std(norm)
     
     # Compare to SFD
-    EBV_SFD = get_SFD_map()
+    EBV_SFD = get_SFD_map(nside=nside)
     
-    print np.mean(EBV_SFD / EBV)
-    print np.mean(EBV_SFD) / np.mean(EBV)
-    print np.std(EBV_SFD), np.std(EBV)
+    #print np.mean(EBV_SFD / EBV)
+    #print np.mean(EBV_SFD) / np.mean(EBV)
+    #print np.std(EBV_SFD), np.std(EBV)
+    
+    # Normalize for b < 10, l > 10
+    t, p = hp.pixelfunc.pix2ang(nside, n, nest=True)
+    l = 180./np.pi * p
+    b = 90. - 180./np.pi * t
+    
+    idx = (b < 15.) & (l > 10.)
+    norm = np.median(EBV_SFD[idx]) / np.median(EBV[idx])
+    EBV *= norm
+    
+    print 'Normalization = %.4g' % norm
+    
+    vmin, vmax = min_max(np.log10(EBV_SFD))
     
     mplib.rc('text', usetex=True)
-    hp.visufunc.mollview(np.log10(EBV), nest=True, title=r'$\log_{10} \Delta \mathrm{E} \left( B - V \right)$')
-    hp.visufunc.mollview(EBV, nest=True, max=1.)
+    hp.visufunc.mollview(np.log10(EBV), nest=True,
+            title=r'$\log_{10} \mathrm{E} \left( B - V \right)$',
+            min=vmin, max=vmax)
+    hp.visufunc.mollview(np.log10(EBV_SFD), nest=True,
+            title=r'$\log_{10} \mathrm{E} \left( B - V \right)_{\mathrm{SFD}}$',
+            min=vmin, max=vmax)
+    #hp.visufunc.mollview(EBV, nest=True, max=10.)
     hp.visufunc.mollview(np.log10(EBV) - np.log10(EBV_SFD), nest=True)
     
     plt.show()
@@ -564,8 +602,26 @@ def test_EBV_prior():
     
     plot_EBV_prior(model)
 
+def plot_EBV_prior_profile():
+    model = TGalacticModel()
+    
+    l, b = 0., 0.
+    s = np.linspace(0., 16000., 1000)
+    
+    DM = 5. * np.log10(s/10.)
+    r, z = model.gal_2_cylindrical(l, b, DM)
+    
+    dA_ds = model.rho_ISM(r, z)
+    A = np.cumsum(dA_ds)
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
+    ax.plot(s, A)
+    ax.plot(s, dA_ds * np.max(A) / np.max(dA_ds))
+    plt.show()
 
 def main():
+    plot_EBV_prior_profile()
     test_EBV_prior()
     
     return 0

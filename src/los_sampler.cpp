@@ -1292,14 +1292,14 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	double log_norm;
 	double dist = 0.;
 	double dist_norm = 0.01;	// kpc
-	double dEBV_ds = 0.0025;	// mag kpc^{-1}
+	double dEBV_ds = 0.04;		// mag kpc^{-1}
 	double EBV_sum = 0.;
 	
 	for(int i=0; i<N_regions+1; i++) {
 		Delta_dist = pow10(mu_end/5. + 1.) - pow10(mu_start/5. + 1.);
 		mu_equiv = 5. * (log10(Delta_dist) - 1.);
 		
-		sigma_log_Delta_EBV[i] = std_dev_coeff[0];
+		/*sigma_log_Delta_EBV[i] = std_dev_coeff[0];
 		sigma_log_Delta_EBV[i] += std_dev_coeff[1] * mu_equiv;
 		sigma_log_Delta_EBV[i] += std_dev_coeff[2] * mu_equiv * mu_equiv;
 		sigma_log_Delta_EBV[i] += std_dev_coeff[3] * mu_equiv * mu_equiv * mu_equiv;
@@ -1308,7 +1308,10 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		log_Delta_EBV_bias[i] = mean_bias_coeff[0] * mu_equiv;
 		log_Delta_EBV_bias[i] += mean_bias_coeff[1] * mu_equiv * mu_equiv;
 		log_Delta_EBV_bias[i] += mean_bias_coeff[2] * mu_equiv * mu_equiv * mu_equiv;
-		log_Delta_EBV_bias[i] += mean_bias_coeff[3] * mu_equiv * mu_equiv * mu_equiv * mu_equiv;
+		log_Delta_EBV_bias[i] += mean_bias_coeff[3] * mu_equiv * mu_equiv * mu_equiv * mu_equiv;*/
+		
+		sigma_log_Delta_EBV[i] = 2.;
+		log_Delta_EBV_bias[i] = 0.;
 		
 		log_Delta_EBV_prior[i] = log(Delta_EBV_prior[i]) + log_Delta_EBV_bias[i];
 		

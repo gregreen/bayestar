@@ -66,9 +66,15 @@ TGalacticModel::TGalacticModel() {
 	R_epsilon2 = 500. * 500.;
 	
 	// ISM disk (from Besancon model)
-	L_ISM = 4500;
-	h_ISM = 140;
+	//L_ISM = 4500;
+	//h_ISM = 140;
 	
+	// Drimmel & Spergel (2001)
+        H_ISM = 134.4;
+        L_ISM = 2260.;
+        dH_dR_ISM = 0.0148;
+        R_flair_ISM = 4400.;
+        
 	// Metallicity
 	mu_FeH_inf = -0.82;
 	delta_mu_FeH = 0.55;
@@ -93,8 +99,14 @@ TGalacticModel::TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
 	L_epsilon = 0.;
 	
 	// ISM disk (from Besancon model)
-	L_ISM = 4500;
-	h_ISM = 140;
+	//L_ISM = 4500;
+	//h_ISM = 140;
+	
+	// Drimmel & Spergel (2001)
+        H_ISM = 134.4;
+        L_ISM = 2260.;
+        dH_dR_ISM = 0.0148;
+        R_flair_ISM = 4400.;
 	
 	disk_abundance = new TStellarAbundance(0);
 	halo_abundance = new TStellarAbundance(1);
@@ -116,13 +128,21 @@ double TGalacticModel::rho_halo(double R, double Z) const {
 }
 
 double TGalacticModel::rho_disk(double R, double Z) const {
-	double rho_thin = exp(-(fabs(Z+Z0) - fabs(Z0))/H1 - sqrt((R-R0)*(R-R0)+L_epsilon*L_epsilon)/L1);
-	double rho_thick = f_thick * exp(-(fabs(Z+Z0) - fabs(Z0))/H2 - sqrt((R-R0)*(R-R0)+L_epsilon*L_epsilon)/L2);
+	double R_eff = sqrt(R*R + L_epsilon*L_epsilon);
+	
+	double rho_thin = exp(-(fabs(Z+Z0) - fabs(Z0))/H1 - (R_eff-R0)/L1);
+	double rho_thick = f_thick * exp(-(fabs(Z+Z0) - fabs(Z0))/H2 - (R_eff-R0)/L2);
 	return rho_thin + rho_thick;
 }
 
 double TGalacticModel::rho_ISM(double R, double Z) const {
-	return exp(-(fabs(Z+Z0) - fabs(Z0)) / h_ISM - sqrt((R-R0)*(R-R0)+L_epsilon*L_epsilon) / L_ISM);
+	double H = H_ISM;
+	if(R > R_flair_ISM) { H += (R - R_flair_ISM) * dH_dR_ISM; }
+	
+	double L_term = exp(-R / L_ISM);
+	double sqrt_H_term = cosh((Z+Z0) / H);
+	
+	return L_term / (sqrt_H_term * sqrt_H_term);
 }
 
 // Mean disk metallicity at given position in space
