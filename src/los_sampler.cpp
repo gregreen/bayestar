@@ -659,6 +659,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 }
 
 
+// TODO: subsample each DM pixel
 void los_integral(TImgStack &img_stack, const double *const subpixel, double *const ret,
                                         const double *const logEBV, unsigned int N_regions) {
 	assert(img_stack.rect->N_bins[1] % N_regions == 0);
@@ -1304,7 +1305,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		log_Delta_EBV_prior[i] += log_norm;
 		
 		// FLoor on log(Delta EBV) prior
-		if(log_Delta_EBV_prior[i] < -8.) { log_Delta_EBV_prior[i] = -8.; }
+		if(log_Delta_EBV_prior[i] < -6.) { log_Delta_EBV_prior[i] = -6.; }
 		
 		Delta_EBV_prior[i] = exp(log_Delta_EBV_prior[i]);
 		
