@@ -47,7 +47,7 @@ include_directories("${PROJECT_BINARY_DIR}/src")
 IF(NOT CMAKE_COMPILER_IS_GNUCXX)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ipo -axHOST -no-prec-div ")
 ELSE(NOT CMAKE_COMPILER_IS_GNUCXX)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ffast-math ") #-fno-math-errno -funsafe-math-optimizations ")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ffast-math ")
 ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
 
 #
@@ -82,6 +82,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DHAVE_INLINE=1 -DGSL_RANGE_CHECK=0")
 ### Boost
 find_package(Boost REQUIRED COMPONENTS program_options)
 include_directories(${Boost_INCLUDE_DIRS})
+MESSAGE( STATUS "Boost_INCLUDE_DIRS: ${Boost_INCLUDE_DIRS}" )
+MESSAGE( STATUS "Boost_LIBRARIES: ${Boost_LIBRARIES}" )
+
 
 ### OpenMP support
 #find_package(OpenMP REQUIRED)
