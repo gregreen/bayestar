@@ -830,21 +830,23 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned i
 	sampler.set_scale(1.05);
 	sampler.set_replacement_bandwidth(0.75);
 	
-	sampler.step_MH(int(N_steps*10./100.), false);
-	sampler.step(int(N_steps*20./100.), true, 0., 0.);
-	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, false);
+	sampler.step_MH(int(N_steps*20./100.), true);
+	//sampler.step(int(N_steps*10./100.), true, 0., 0.);
+	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, true);
 	
-	sampler.step(int(N_steps*10./100), true, 0., 1., true);
+	//sampler.step(int(N_steps*10./100), true, 0., 1., true);
 	sampler.step_MH(int(N_steps*10./100.), true);
-	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, false);
+	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, true);
+	sampler.step_custom_reversible(int(N_steps*10./100.), move_one_step, true);
 	
-	sampler.step(int(N_steps*20./100.), true, 0., 0.5, true);
-	sampler.step(int(N_steps*20./100), true, 0., 1., true);
-	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, false);
+	sampler.step(int(N_steps*10./100.), true, 0., 0.5, true);
+	//sampler.step(int(N_steps*10./100), true, 0., 1., true);
+	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, true);
+	sampler.step_custom_reversible(int(N_steps*10./100.), move_one_step, true);
 	
-	sampler.step_MH(int(N_steps*10./100.), false);
+	sampler.step_MH(int(N_steps*10./100.), true);
 	
-	
+	sampler.print_diagnostics();
 	
 	//if(verbosity >= 2) {
 	//	sampler.print_stats();

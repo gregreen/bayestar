@@ -683,7 +683,7 @@ def test_EBV_prior(l, b, nside=64):
 def plot_EBV_prior_profile(l, b):
     model = TGalacticModel()
     
-    s = np.linspace(0., 16000., 1000)
+    s = np.linspace(0., 25000., 1000)
     
     #print l, b
     DM = 5. * np.log10(s/10.)
@@ -705,7 +705,7 @@ def print_rho(l, b):
         print 'rho(DM = %.1f) = %.5f' % (DM, model.dA_dmu(l, b, DM) / np.power(10., DM / 5.))
 
 def main():
-    l, b = 10., 70.
+    l, b = 0., 1.
     
     print_rho(l, b)
     plot_EBV_prior_profile(l, b)
@@ -719,7 +719,7 @@ def main():
     test_EBV_prior(-10., 70., nside=32)
     test_EBV_prior(-10., 20., nside=32)'''
     
-    #plot_EBV_prior(nside=32)
+    #plot_EBV_prior(nside=16)
     
     '''
     for n_regions in [10, 20, 30, 40]:
