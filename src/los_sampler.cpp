@@ -768,9 +768,9 @@ void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, T
 	double mu = log(1.5 * params.EBV_guess_max / params.subpixel_max / (double)N);
 	double EBV_sum = 0.;
 	
-	if(params.log_Delta_EBV_prior != NULL) {
+	if((params.log_Delta_EBV_prior != NULL) && (gsl_rng_uniform(r) < 0.8)) {
 		for(size_t i=0; i<N; i++) {
-			logEBV[i] = params.log_Delta_EBV_prior[i] + gsl_ran_gaussian_ziggurat(r, 0.5 * params.sigma_log_Delta_EBV[i]);
+			logEBV[i] = params.log_Delta_EBV_prior[i] + gsl_ran_gaussian_ziggurat(r, params.sigma_log_Delta_EBV[i]);
 			EBV_sum += exp(logEBV[i]);
 		}
 	} else {
@@ -1234,11 +1234,10 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	double mu_1 = img_stack->rect->max[1];
 	assert(mu_1 > mu_0);
 	
-	int subsampling = 10;
+	int subsampling = 100;
 	double Delta_mu = (mu_1 - mu_0) / (double)(N_regions * subsampling);
 	
 	// Allocate space for information on priors
-	
 	if(Delta_EBV_prior != NULL) { delete[] Delta_EBV_prior; }
 	Delta_EBV_prior = new double[N_regions+1];
 	
@@ -1248,23 +1247,19 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	if(sigma_log_Delta_EBV != NULL) { delete[] sigma_log_Delta_EBV; }
 	sigma_log_Delta_EBV = new double[N_regions+1];
 	
-	// Calculate std. dev. in each region
+	/*for(double x = 0.; x < 20.5; x += 1.) {
+		std::cout << "rho(DM = " << x << ") = " << std::setprecision(5) << gal_los_model.dA_dmu(x) / pow10(x/5.) << std::endl;
+	}*/
 	
-	// 1 order of magnitude variance
-	//double std_dev_coeff[] = {2.4022, -0.040931, -0.012309, 0.00039482, 3.1342e-06};
-	//double mean_bias_coeff[] = {0.52751, 0.022036, -0.0010742, 7.0748e-06};
+	// Normalization information
+	double sigma = 1.5;
+	double dEBV_ds = 0.2;		// mag kpc^{-1}
 	
-	// 1.5 orders of magnitude variance
-	double std_dev_coeff[] = {3.6506, -0.047222, -0.021878, 0.0010066, -7.6386e-06};
-	double mean_bias_coeff[] = {0.57694, 0.037259, -0.001347, -4.6156e-06};
-	
-	// 2 orders of magnitude variance
-	//double std_dev_coeff[] = {4.7929, -0.072241, -0.025626, 0.0012105, -9.4409e-06};
-	//double mean_bias_coeff[] = {0.65954, 0.05409, -0.0019467, -4.6856e-06};
-	
-	double mu_start = -999.;
-	double mu_end = mu_0;
-	double Delta_dist, mu_equiv;
+	// Determine normalization
+	double ds_dmu = 10. * log(10.) / 5. * pow10(-10./5.);
+	double dEBV_ds_local = gal_los_model.dA_dmu(-10.) / ds_dmu * exp(0.5 * sigma * sigma);
+	double norm = 0.001 * dEBV_ds / dEBV_ds_local;
+	double log_norm = log(norm);
 	
 	// Integrate Delta E(B-V) from close distance to mu_0
 	double mu = mu_0 - 5 * Delta_mu * (double)subsampling;
@@ -1272,7 +1267,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	for(int k=0; k<5*subsampling; k++, mu += Delta_mu) {
 		Delta_EBV_prior[0] += gal_los_model.dA_dmu(mu);
 	}
-	Delta_EBV_prior[0] /= 5.;
+	Delta_EBV_prior[0] *= Delta_mu;
 	
 	// Integrate Delta E(B-V) in each region
 	for(int i=1; i<N_regions+1; i++) {
@@ -1282,92 +1277,48 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 			Delta_EBV_prior[i] += gal_los_model.dA_dmu(mu);
 		}
 		
-		//EBV_sum += Delta_EBV_prior[i] * exp(0.5 * sigma_log_Delta_EBV[i] * sigma_log_Delta_EBV[i]);
+		Delta_EBV_prior[i] *= Delta_mu;
 	}
 	
+	// Determine std. dev. of reddening in each distance bin
 	double * log_Delta_EBV_bias = new double[N_regions+1];
 	
-	// Normalization information
-	double norm = -1.;
-	double log_norm;
-	double dist = 0.;
-	double dist_norm = 0.01;	// kpc
-	double dEBV_ds = 0.04;		// mag kpc^{-1}
-	double EBV_sum = 0.;
-	
 	for(int i=0; i<N_regions+1; i++) {
-		Delta_dist = pow10(mu_end/5. + 1.) - pow10(mu_start/5. + 1.);
-		mu_equiv = 5. * (log10(Delta_dist) - 1.);
-		
-		/*sigma_log_Delta_EBV[i] = std_dev_coeff[0];
-		sigma_log_Delta_EBV[i] += std_dev_coeff[1] * mu_equiv;
-		sigma_log_Delta_EBV[i] += std_dev_coeff[2] * mu_equiv * mu_equiv;
-		sigma_log_Delta_EBV[i] += std_dev_coeff[3] * mu_equiv * mu_equiv * mu_equiv;
-		sigma_log_Delta_EBV[i] += std_dev_coeff[4] * mu_equiv * mu_equiv * mu_equiv * mu_equiv;
-		
-		log_Delta_EBV_bias[i] = mean_bias_coeff[0] * mu_equiv;
-		log_Delta_EBV_bias[i] += mean_bias_coeff[1] * mu_equiv * mu_equiv;
-		log_Delta_EBV_bias[i] += mean_bias_coeff[2] * mu_equiv * mu_equiv * mu_equiv;
-		log_Delta_EBV_bias[i] += mean_bias_coeff[3] * mu_equiv * mu_equiv * mu_equiv * mu_equiv;*/
-		
-		sigma_log_Delta_EBV[i] = 2.;
+		sigma_log_Delta_EBV[i] = 1.5;
 		log_Delta_EBV_bias[i] = 0.;
 		
 		log_Delta_EBV_prior[i] = log(Delta_EBV_prior[i]) + log_Delta_EBV_bias[i];
-		
-		//std::cout << log_Delta_EBV_bias[i] << std::endl;
-		
-		EBV_sum += exp(log_Delta_EBV_prior[i] + 0.5 * sigma_log_Delta_EBV[i] * sigma_log_Delta_EBV[i]);
-		
-		// Calculate normalization at desired distance
-		dist = 0.01 * pow10(mu_end / 5.);
-		if((dist >= dist_norm) && (norm < 0.)) {
-			//std::cout << "E(B-V)_sum = " << EBV_sum << std::endl;
-			norm = dEBV_ds * dist / EBV_sum;
-			log_norm = log(norm);
-		}
-		
-		mu_start = mu_end;
-		mu_end += Delta_mu * subsampling;
 	}
-	
 	
 	// Normalize Delta E(B-V)
 	if(verbosity >= 2) {
 		std::cout << "Delta_EBV_prior:" << std::endl;
 	}
 	
-	EBV_sum = 0.;
+	double EBV_sum = 0.;
+	mu = mu_0;
 	
 	for(int i=0; i<N_regions+1; i++) {
-		//Delta_EBV_prior[i] *= norm;	//EBV_tot / EBV_sum;
 		log_Delta_EBV_prior[i] += log_norm;
 		
-		// Cap log(Delta E(B-V)) at some maximum value
-		//if(log_Delta_EBV_prior[i] > -1.) {
-		//	log_Delta_EBV_prior[i] = tanh((log_Delta_EBV_prior[i]+1.)) - 1.;
-		//}
+		// FLoor on log(Delta EBV) prior
+		if(log_Delta_EBV_prior[i] < -8.) { log_Delta_EBV_prior[i] = -8.; }
 		
 		Delta_EBV_prior[i] = exp(log_Delta_EBV_prior[i]);
-		
-		// Add a little bit in in quadrature
-		//Delta_EBV_prior[i] = sqrt(Delta_EBV_prior[i]*Delta_EBV_prior[i] + Delta_EBV_quadrature*Delta_EBV_quadrature);
-		//sigma_log_Delta_EBV[i] = sqrt(sigma_log_Delta_EBV[i]*sigma_log_Delta_EBV[i] + 1.*1.);
-		
-		//log_Delta_EBV_prior[i] = log(Delta_EBV_prior[i]);
-		//log_Delta_EBV_prior[i] += 0.5 * (log_Delta_EBV_bias[i] - log_Delta_EBV_bias[0]);
-		//Delta_EBV_prior[i] = exp(log_Delta_EBV_prior[i]);
 		
 		EBV_sum += Delta_EBV_prior[i] * exp(0.5 * sigma_log_Delta_EBV[i] * sigma_log_Delta_EBV[i]);
 		
 		if(verbosity >= 2) {
-			std::cout << std::setprecision(6)
-			          << Delta_EBV_prior[i]
+			std::cout << std::setprecision(5)
+			          << pow10(mu / 5. - 2.)
+				  << "\t" << mu
 			          << "\t" << log_Delta_EBV_prior[i]
 			          << " +- " << sigma_log_Delta_EBV[i]
 			          << " -> " << Delta_EBV_prior[i] * exp(0.5 * sigma_log_Delta_EBV[i] * sigma_log_Delta_EBV[i])
 			          << std::endl;
 		}
+		
+		mu += (mu_1 - mu_0) / (double)N_regions;
 	}
 	
 	if(verbosity >= 2) {

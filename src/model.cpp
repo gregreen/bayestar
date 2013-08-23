@@ -120,6 +120,7 @@ TGalacticModel::~TGalacticModel() {
 
 double TGalacticModel::rho_halo(double R, double Z) const {
 	double r_eff2 = R*R + (Z/qh)*(Z/qh) + R_epsilon2;
+	
 	if(r_eff2 <= R_br*R_br) {
 		return fh*pow(r_eff2/(R0*R0), nh/2.);
 	} else {
@@ -139,7 +140,13 @@ double TGalacticModel::rho_ISM(double R, double Z) const {
 	double H = H_ISM;
 	if(R > R_flair_ISM) { H += (R - R_flair_ISM) * dH_dR_ISM; }
 	
-	double L_term = exp(-R / L_ISM);
+	double L_term;
+	if(R > 0.5 * R0) {
+		L_term = exp(-R / L_ISM);
+	} else {
+		L_term = exp(-0.5*R0 / L_ISM - (R - 0.5*R0)*(R - 0.5*R0)/(0.25 * R0*R0));
+	}
+	
 	double sqrt_H_term = cosh((Z+Z0) / H);
 	
 	return L_term / (sqrt_H_term * sqrt_H_term);
