@@ -346,7 +346,7 @@ void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r,
  */
 
 void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
-                           unsigned int N_regions, uint64_t healpix_index, int verbosity) {
+                           uint64_t healpix_index, int verbosity) {
 	timespec t_start, t_write, t_end;
 	clock_gettime(CLOCK_MONOTONIC, &t_start);
 	
@@ -363,7 +363,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	if(verbosity >= 1) {
 		std::cout << "# Generating Guess ..." << std::endl;
 	}
-	guess_EBV_profile(options, params, N_regions);
+	guess_EBV_profile(options, params);
 	//monotonic_guess(img_stack, N_regions, params.EBV_prof_guess, options);
 	if(verbosity >= 2) {
 		for(size_t i=0; i<params.EBV_prof_guess.size(); i++) {
@@ -378,12 +378,12 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	unsigned int N_steps = options.steps;
 	unsigned int N_samplers = options.samplers;
 	unsigned int N_threads = options.N_threads;
-	unsigned int ndim = N_regions + 1;
+	unsigned int ndim = params.N_regions + 1;
 	
 	double max_conv_mu = 15.;
 	double DM_max = params.img_stack->rect->max[1];
 	double DM_min = params.img_stack->rect->min[1];
-	double Delta_DM = (DM_max - DM_min) / (double)N_regions;
+	double Delta_DM = (DM_max - DM_min) / (double)(params.N_regions);
 	unsigned int max_conv_idx = ceil((max_conv_mu - DM_min) / Delta_DM);
 	//std::cout << "max_conv_idx = " << max_conv_idx << std::endl;
 	
@@ -658,52 +658,88 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	}
 }
 
-
-// TODO: subsample each DM pixel
 void los_integral(TImgStack &img_stack, const double *const subpixel, double *const ret,
-                                        const double *const logEBV, unsigned int N_regions) {
+                                        const float *const Delta_EBV, unsigned int N_regions) {
 	assert(img_stack.rect->N_bins[1] % N_regions == 0);
 	
-	unsigned int N_samples = img_stack.rect->N_bins[1] / N_regions;
-	int y_max = img_stack.rect->N_bins[0];
+	const float subsampling = 1;
+	const int N_pix_per_bin = img_stack.rect->N_bins[1] / N_regions;
+	const float N_samples = subsampling * N_pix_per_bin;
+	const int y_max = img_stack.rect->N_bins[0];
 	
-	int x_start = 0;
 	int x;
-	float y_start = exp(logEBV[0]) / img_stack.rect->dx[0];
-	float y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
-	float y_ceil, y_floor, y, dy, y_scaled;
+	
+	float Delta_y_0 = Delta_EBV[0] / img_stack.rect->dx[0];
+	const float y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
+	float y, dy;
+	float y_ceil, y_floor;
 	int y_floor_int, y_ceil_int;
 	
-	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
+	float tmp_ret, tmp_subpixel;
+	cv::Mat *img;
 	
-	for(int i=1; i<N_regions+1; i++) {
-		dy = (float)(exp(logEBV[i])) / (float)(N_samples) / img_stack.rect->dx[0];
+	// For each image
+	for(int k=0; k<img_stack.N_images; k++) {
+		tmp_ret = 0.;
+		img = img_stack.img[k];
+		tmp_subpixel = subpixel[k];
 		
-		for(int k=0; k<img_stack.N_images; k++) {
-			y = y_start;
-			x = x_start;
+		x = 0;
+		y = y_0 + tmp_subpixel * Delta_y_0;
+		
+		for(int i=1; i<N_regions+1; i++) {
+			// Determine y increment in region (slope)
+			dy = tmp_subpixel * Delta_EBV[i] / N_samples / img_stack.rect->dx[0];
 			
-			for(int j=0; j<N_samples; j++, x++, y+=dy) {
-				y_scaled = y_0 + y * subpixel[k];
-				y_floor = floor(y_scaled);
+			// For each DM pixel
+			for(int j=0; j<N_pix_per_bin; j++, x++, y+=dy) {
+				
+				// Manual loop unrolling. It's ugly, but it works!
+				
+				// 0
+				y_floor = floor(y);
 				y_ceil = y_floor + 1.;
 				y_floor_int = (int)y_floor;
 				y_ceil_int = y_floor + 1;
 				
-				//if((y_floor_int < 0) || (y_ceil_int >= y_max)) {
-				//	#pragma omp critical
-				//	std::cout << "! BOUNDS OVERRUN !" << std::endl;
-				//	
-				//	break;
-				//}
+				tmp_ret += (y_ceil - y) * img->at<float>(y_floor_int, x)
+				        + (y - y_floor) * img->at<float>(y_ceil_int, x);
 				
-				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<float>(y_floor_int, x)
-				           + (y_scaled - y_floor) * img_stack.img[k]->at<float>(y_ceil_int, x);
+				/*
+				// 1
+				y += dy;
+				y_floor = floor(y);
+				y_ceil = y_floor + 1.;
+				y_floor_int = (int)y_floor;
+				y_ceil_int = y_floor + 1;
+				
+				tmp_ret += (y_ceil - y) * img->at<float>(y_floor_int, x)
+				        + (y - y_floor) * img->at<float>(y_ceil_int, x);
+				
+				// 2
+				y += dy;
+				y_floor = floor(y);
+				y_ceil = y_floor + 1.;
+				y_floor_int = (int)y_floor;
+				y_ceil_int = y_floor + 1;
+				
+				tmp_ret += (y_ceil - y) * img->at<float>(y_floor_int, x)
+				        + (y - y_floor) * img->at<float>(y_ceil_int, x);
+				
+				// 3
+				y += dy;
+				y_floor = floor(y);
+				y_ceil = y_floor + 1.;
+				y_floor_int = (int)y_floor;
+				y_ceil_int = y_floor + 1;
+				
+				tmp_ret += (y_ceil - y) * img->at<float>(y_floor_int, x)
+				        + (y - y_floor) * img->at<float>(y_ceil_int, x);
+				*/
 			}
 		}
 		
-		y_start += (float)N_samples * dy;
-		x_start += N_samples;
+		ret[k] = tmp_ret / subsampling;
 	}
 }
 
@@ -714,12 +750,20 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	double EBV_tmp;
 	double diff_scaled;
 	
+	int thread_num = omp_get_thread_num();
+	
+	// Calculate Delta E(B-V) from log(Delta E(B-V))
+	float *Delta_EBV = params.get_Delta_EBV(thread_num);
+	
+	for(int i=0; i<N; i++) {
+		Delta_EBV[i] = exp(logEBV[i]);
+	}
+	
 	if(params.log_Delta_EBV_prior != NULL) {
 		//const double sigma = 2.5;
 		
 		for(size_t i=0; i<N; i++) {
-			EBV_tmp = exp(logEBV[i]);
-			EBV_tot += EBV_tmp;
+			EBV_tot += Delta_EBV[i];
 			
 			// Prior that reddening traces stellar disk
 			diff_scaled = (logEBV[i] - params.log_Delta_EBV_prior[i]) / params.sigma_log_Delta_EBV[i];
@@ -731,8 +775,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		const double sigma = 2.;
 		
 		for(size_t i=0; i<N; i++) {
-			EBV_tmp = exp(logEBV[i]);
-			EBV_tot += EBV_tmp;
+			EBV_tot += Delta_EBV[i];
 			
 			// Wide Gaussian prior on logEBV to prevent fit from straying drastically
 			lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
@@ -750,8 +793,8 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	}
 	
 	// Compute line integrals through probability surfaces
-	double *line_int = params.get_line_int(omp_get_thread_num());
-	los_integral(*(params.img_stack), params.subpixel.data(), line_int, logEBV, N-1);
+	double *line_int = params.get_line_int(thread_num);
+	los_integral(*(params.img_stack), params.subpixel.data(), line_int, Delta_EBV, N-1);
 	
 	// Soften and multiply line integrals
 	for(size_t i=0; i<params.img_stack->N_images; i++) {
@@ -812,14 +855,14 @@ double guess_EBV_max(TImgStack &img_stack) {
 	return max * img_stack.rect->dx[0] + img_stack.rect->min[0];
 }
 
-void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned int N_regions) {
+void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params) {
 	TNullLogger logger;
 	
 	unsigned int N_steps = options.steps / 8;
 	if(N_steps < 40) { N_steps = 40; }
 	unsigned int N_samplers = options.samplers;
 	unsigned int N_threads = options.N_threads;
-	unsigned int ndim = N_regions + 1;
+	unsigned int ndim = params.N_regions + 1;
 	
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction;
@@ -1174,13 +1217,15 @@ double step_one_Delta_EBV(double *const _X, double *const _Y, unsigned int _N, g
  ****************************************************************************************************************************/
 
 TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
-                               unsigned int _N_threads, double _EBV_max)
-	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.), N_threads(_N_threads),
+                               unsigned int _N_threads, unsigned int _N_regions, double _EBV_max)
+	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.),
+	  N_threads(_N_threads), N_regions(_N_regions),
 	  line_int(NULL), Delta_EBV_prior(NULL),
 	  log_Delta_EBV_prior(NULL), sigma_log_Delta_EBV(NULL),
 	  guess_cov(NULL), guess_sqrt_cov(NULL)
 {
 	line_int = new double[_img_stack->N_images * N_threads];
+	Delta_EBV = new float[(N_regions+1) * N_threads];
 	//std::cout << "Allocated line_int[" << _img_stack->N_images * N_threads << "] (" << _img_stack->N_images << " images, " << N_threads << " threads)" << std::endl;
 	p0 = _p0;
 	lnp0 = log(p0);
@@ -1193,6 +1238,7 @@ TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
 
 TLOSMCMCParams::~TLOSMCMCParams() {
 	if(line_int != NULL) { delete[] line_int; }
+	if(Delta_EBV != NULL) { delete[] Delta_EBV; }
 	if(Delta_EBV_prior != NULL) { delete[] Delta_EBV_prior; }
 	if(log_Delta_EBV_prior != NULL) { delete[] log_Delta_EBV_prior; }
 	if(sigma_log_Delta_EBV != NULL) { delete[] sigma_log_Delta_EBV; }
@@ -1232,7 +1278,7 @@ void TLOSMCMCParams::set_subpixel_mask(std::vector<double>& new_mask) {
 }
 
 // Calculate the mean and std. dev. of log(delta_EBV)
-void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, double EBV_tot, unsigned int N_regions, int verbosity) {
+void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, double EBV_tot, int verbosity) {
 	double mu_0 = img_stack->rect->min[1];
 	double mu_1 = img_stack->rect->max[1];
 	assert(mu_1 > mu_0);
@@ -1305,7 +1351,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		log_Delta_EBV_prior[i] += log_norm;
 		
 		// FLoor on log(Delta EBV) prior
-		if(log_Delta_EBV_prior[i] < -6.) { log_Delta_EBV_prior[i] = -6.; }
+		if(log_Delta_EBV_prior[i] < -8.) { log_Delta_EBV_prior[i] = -8.; }
 		
 		Delta_EBV_prior[i] = exp(log_Delta_EBV_prior[i]);
 		
@@ -1356,7 +1402,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 }
 
 
-void TLOSMCMCParams::gen_guess_covariance(unsigned int N_regions, double scale_length) {
+void TLOSMCMCParams::gen_guess_covariance(double scale_length) {
 	if(guess_cov != NULL) { gsl_matrix_free(guess_cov); }
 	if(guess_sqrt_cov != NULL) { gsl_matrix_free(guess_sqrt_cov); }
 	
@@ -1400,6 +1446,10 @@ double* TLOSMCMCParams::get_line_int(unsigned int thread_num) {
 	return line_int + img_stack->N_images * thread_num;
 }
 
+float* TLOSMCMCParams::get_Delta_EBV(unsigned int thread_num) {
+	assert(thread_num < N_threads);
+	return Delta_EBV + (N_regions+1) * thread_num;
+}
 
 
 

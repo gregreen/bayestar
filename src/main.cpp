@@ -339,17 +339,17 @@ int main(int argc, char **argv) {
 					EBV_max = stellar_data.EBV;
 				}
 			}
-			TLOSMCMCParams params(&img_stack, p0, N_threads, EBV_max);
+			TLOSMCMCParams params(&img_stack, p0, N_threads, N_regions, EBV_max);
 			if(SFDsubpixel) { params.set_subpixel_mask(subpixel); }
 			if(N_clouds != 0) {
 				sample_los_extinction_clouds(output_fname, cloud_options, params, N_clouds, *it, verbosity);
 			}
 			if(N_regions != 0) {
-				params.gen_guess_covariance(N_regions, 1.);	// Covariance matrix for guess has (anti-)correlation length of 1 distance bin
+				params.gen_guess_covariance(1.);	// Covariance matrix for guess has (anti-)correlation length of 1 distance bin
 				if(disk_prior) {
-					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, N_regions, verbosity);
+					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, verbosity);
 				}
-				sample_los_extinction(output_fname, los_options, params, N_regions, *it, verbosity);
+				sample_los_extinction(output_fname, los_options, params, *it, verbosity);
 			}
 		}
 		
