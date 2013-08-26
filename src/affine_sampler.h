@@ -444,6 +444,8 @@ TAffineSampler<TParams, TLogger>::TAffineSampler(pdf_t _pdf, rand_state_t _rand_
 	N_replacements_rejected = 0;
 	N_MH_accepted = 0;
 	N_MH_rejected = 0;
+	N_custom_accepted = 0;
+	N_custom_rejected = 0;
 }
 
 // Destructor
