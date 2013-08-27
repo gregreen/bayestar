@@ -672,8 +672,14 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 	float Delta_y_0 = Delta_EBV[0] / img_stack.rect->dx[0];
 	const float y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
 	float y, dy;
-	float y_ceil, y_floor;
-	int y_floor_int, y_ceil_int;
+	
+	// Integer arithmetic is the poor man's fixed-point math
+	const int base_2_prec = 18;
+	const uint32_t prec_factor_int = (1 << base_2_prec);
+	const float prec_factor = (float)prec_factor_int;
+	uint32_t y_int, dy_int;
+	uint32_t y_ceil, y_floor;
+	uint32_t diff;
 	
 	float tmp_ret, tmp_subpixel;
 	cv::Mat *img;
@@ -686,60 +692,36 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 		
 		x = 0;
 		y = y_0 + tmp_subpixel * Delta_y_0;
+		y_int = (uint32_t)(prec_factor * y);
 		
 		for(int i=1; i<N_regions+1; i++) {
 			// Determine y increment in region (slope)
 			dy = tmp_subpixel * Delta_EBV[i] / N_samples / img_stack.rect->dx[0];
+			dy_int = (uint32_t)(prec_factor * dy);
 			
 			// For each DM pixel
-			for(int j=0; j<N_pix_per_bin; j++, x++, y+=dy) {
+			for(int j=0; j<N_pix_per_bin; j++, x++, y_int+=dy_int) {
 				
 				// Manual loop unrolling. It's ugly, but it works!
 				
 				// 0
-				y_floor = floor(y);
-				y_ceil = y_floor + 1.;
-				y_floor_int = (int)y_floor;
-				y_ceil_int = y_floor + 1;
+				y_floor = (y_int >> base_2_prec);
+				diff = y_int - (y_floor << base_2_prec);
 				
-				tmp_ret += (y_ceil - y) * img->at<float>(y_floor_int, x)
-				        + (y - y_floor) * img->at<float>(y_ceil_int, x);
+				tmp_ret += diff * img->at<float>(y_floor, x)
+				        + (prec_factor_int - diff) * img->at<float>(y_floor+1, x);
 				
-				/*
 				// 1
-				y += dy;
-				y_floor = floor(y);
-				y_ceil = y_floor + 1.;
-				y_floor_int = (int)y_floor;
-				y_ceil_int = y_floor + 1;
+				/*y_int += dy_int;
+				y_floor = (y_int >> base_2_prec);
+				diff = y_int - (y_floor << base_2_prec);
 				
-				tmp_ret += (y_ceil - y) * img->at<float>(y_floor_int, x)
-				        + (y - y_floor) * img->at<float>(y_ceil_int, x);
-				
-				// 2
-				y += dy;
-				y_floor = floor(y);
-				y_ceil = y_floor + 1.;
-				y_floor_int = (int)y_floor;
-				y_ceil_int = y_floor + 1;
-				
-				tmp_ret += (y_ceil - y) * img->at<float>(y_floor_int, x)
-				        + (y - y_floor) * img->at<float>(y_ceil_int, x);
-				
-				// 3
-				y += dy;
-				y_floor = floor(y);
-				y_ceil = y_floor + 1.;
-				y_floor_int = (int)y_floor;
-				y_ceil_int = y_floor + 1;
-				
-				tmp_ret += (y_ceil - y) * img->at<float>(y_floor_int, x)
-				        + (y - y_floor) * img->at<float>(y_ceil_int, x);
-				*/
+				tmp_ret += diff * img->at<float>(y_floor, x)
+				        + (prec_factor_int - diff) * img->at<float>(y_floor+1, x);*/
 			}
 		}
 		
-		ret[k] = tmp_ret / subsampling;
+		ret[k] = tmp_ret / subsampling / prec_factor;
 	}
 }
 
