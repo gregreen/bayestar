@@ -119,7 +119,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	R = np.array([3.172, 2.271, 1.682, 1.322, 1.087])
 	
 	mu_max = mag_lim[1] - gal_model.Mr_min + 3.
-	mu_min = min(0., mu_max-15.)
+	mu_min = min(0., mu_max-25.)
 	Mr_max = min(mag_lim[1], gal_model.Mr_max)
 	
 	dN_dDM = lambda mu: gal_model.dn_dDM(mu, cos_l, sin_l, cos_b, sin_b)

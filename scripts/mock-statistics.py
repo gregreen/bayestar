@@ -130,8 +130,8 @@ def main():
     samples_centered = samples - truth_expanded
     
     # Determine spread of DM and E(B-V) for each population
-    Mr_bin_min = np.linspace(-1., 9., 6)
-    Mr_bin_max = np.linspace(1., 11., 6)
+    Mr_bin_min = np.array([-1., 4.])
+    Mr_bin_max = np.array([4., 12.])
     
     Mr_bin_min = np.append(Mr_bin_min, -np.inf)
     Mr_bin_max = np.append(Mr_bin_max, np.inf)
@@ -144,10 +144,15 @@ def main():
         DM_pctiles = np.percentile(samples_bin[:,:,0], [2.28, 15.87, 50., 84.13, 97.72])
         EBV_pctiles = np.percentile(samples_bin[:,:,1], [2.28, 15.87, 50., 84.13, 97.72])
         
+        DM_mean, DM_std = np.mean(samples_bin[:,:,0]), np.std(samples_bin[:,:,0])
+        EBV_mean, EBV_std = np.mean(samples_bin[:,:,1]), np.std(samples_bin[:,:,1])
+        
         print '%.1f < M_r < %.1f:' % (Mr_min, Mr_max)
         print '    # of stars: %d' % (np.sum(idx))
         print '    Delta DM %%iles: %.3f %.3f %.3f %.3f %.3f' % (DM_pctiles[0], DM_pctiles[1], DM_pctiles[2], DM_pctiles[3], DM_pctiles[4])
         print '    Delta E(B-V) %%iles: %.3f %.3f %.3f %.3f %.3f' % (EBV_pctiles[0], EBV_pctiles[1], EBV_pctiles[2], EBV_pctiles[3], EBV_pctiles[4])
+        print '    Delta DM = %.3f +- %.3f' % (DM_mean, DM_std)
+        print '    Delta E(B-V) = %.3f +- %.3f' % (EBV_mean, EBV_std)
         print ''
     
     return 0
