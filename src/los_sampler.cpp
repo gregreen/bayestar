@@ -403,16 +403,17 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	if(verbosity >= 1) { std::cout << "# Burn-in ..." << std::endl; }
 	
 	// Round 1 (5/20)
+	unsigned int base_N_steps = ceil((double)N_steps * 1./20.);
 	
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.10);
 	sampler.set_MH_bandwidth(0.15);
 	
 	sampler.tune_MH(8, 0.25);
-	sampler.step_MH(int(N_steps*1./20.), false);
+	sampler.step_MH(base_N_steps, false);
 	
 	sampler.tune_MH(8, 0.25);
-	sampler.step_MH(int(N_steps*1./20.), false);
+	sampler.step_MH(base_N_steps, false);
 	
 	if(verbosity >= 2) {
 		std::cout << "scale: (";
@@ -429,8 +430,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 		std::cout << ")" << std::endl;
 	}
 	
-	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
-	sampler.step(int(N_steps*1./20.), false, 0., 1., true, true);
+	sampler.step(2*base_N_steps, false, 0., options.p_replacement);
+	sampler.step(base_N_steps, false, 0., 1., true, true);
 	
 	if(verbosity >= 2) {
 		std::cout << "Round 1 diagnostics:" << std::endl;
@@ -459,9 +460,9 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(int(N_steps*1./20.), switch_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), move_one_step, false);
+	sampler.step_custom_reversible(base_N_steps, switch_step, false);
+	sampler.step_custom_reversible(base_N_steps, mix_step, false);
+	sampler.step_custom_reversible(base_N_steps, move_one_step, false);
 	
 	if(verbosity >= 2) {
 		std::cout << "Round 2 diagnostics:" << std::endl;
@@ -487,11 +488,11 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	}
 	
 	//sampler.step_MH(int(N_steps*1./20.), false);
-	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
+	sampler.step(2*base_N_steps, false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(int(N_steps*1./20.), switch_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), move_one_step, false);
+	sampler.step_custom_reversible(base_N_steps, switch_step, false);
+	sampler.step_custom_reversible(base_N_steps, mix_step, false);
+	sampler.step_custom_reversible(base_N_steps, move_one_step, false);
 	
 	if(verbosity >= 2) {
 		std::cout << "Round 3 diagnostics:" << std::endl;
@@ -519,11 +520,11 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	}
 	
 	//sampler.step_MH(int(N_steps*2./15.), false);
-	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
+	sampler.step(2*base_N_steps, false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(int(N_steps*1./20.), switch_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), move_one_step, false);
+	sampler.step_custom_reversible(base_N_steps, switch_step, false);
+	sampler.step_custom_reversible(base_N_steps, mix_step, false);
+	sampler.step_custom_reversible(base_N_steps, move_one_step, false);
 	
 	if(verbosity >= 2) {
 		std::cout << "Round 4 diagnostics:" << std::endl;
@@ -561,7 +562,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
 			}
 		}
-		sampler.tune_stretch(8, 0.30);
+		//sampler.tune_stretch(8, 0.30);
 		if(verbosity >= 2) {
 			std::cout << ") -> (";
 			for(int k=0; k<sampler.get_N_samplers(); k++) {
@@ -570,25 +571,27 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 			std::cout << ")" << std::endl;
 		}
 		
+		base_N_steps = ceil((double)((1<<attempt)*N_steps)*1./15.);
+		
 		// Round 1 (5/15)
-		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., switch_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
+		sampler.step(2*base_N_steps, true, 0., options.p_replacement);
+		sampler.step_custom_reversible(base_N_steps, switch_step, true);
+		sampler.step_custom_reversible(base_N_steps, mix_step, true);
+		sampler.step_custom_reversible(base_N_steps, move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		// Round 2 (5/15)
-		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., switch_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
+		sampler.step(2*base_N_steps, true, 0., options.p_replacement);
+		sampler.step_custom_reversible(base_N_steps, switch_step, true);
+		sampler.step_custom_reversible(base_N_steps, mix_step, true);
+		sampler.step_custom_reversible(base_N_steps, move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		// Round 3 (5/15)
-		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., switch_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
+		sampler.step(2*base_N_steps, true, 0., options.p_replacement);
+		sampler.step_custom_reversible(base_N_steps, switch_step, true);
+		sampler.step_custom_reversible(base_N_steps, mix_step, true);
+		sampler.step_custom_reversible(base_N_steps, move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		sampler.calc_GR_transformed(GR_transf, &transf);
@@ -614,8 +617,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 						std::cout << "# Extending run ..." << std::endl;
 					}
 					
-					sampler.step(int(N_steps*1./5.), false, 0., 1.);
-					sampler.step_custom_reversible(int(N_steps*1./10.), switch_step, true);
+					sampler.step(3*base_N_steps, false, 0., 1.);
+					sampler.step_custom_reversible(base_N_steps, switch_step, true);
 					
 					sampler.clear();
 					//logger.clear();
@@ -806,7 +809,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 
 void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
 	double EBV_ceil = params.img_stack->rect->max[0] / params.subpixel_max;
-	double mu = log(1.5 * params.EBV_guess_max / params.subpixel_max / (double)N);
+	double mu = 1.5 * params.EBV_guess_max / params.subpixel_max / (double)N;
 	double EBV_sum = 0.;
 	
 	if((params.log_Delta_EBV_prior != NULL) && (gsl_rng_uniform(r) < 0.8)) {
@@ -815,9 +818,37 @@ void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, T
 			EBV_sum += exp(logEBV[i]);
 		}
 	} else {
+		double log_scaling = gsl_ran_gaussian_ziggurat(r, 0.25);
 		for(size_t i=0; i<N; i++) {
-			logEBV[i] = mu + gsl_ran_gaussian_ziggurat(r, 2.5);
+			logEBV[i] = log(mu * gsl_rng_uniform(r)) + log_scaling; //mu + gsl_ran_gaussian_ziggurat(r, 2.5);
 			EBV_sum += exp(logEBV[i]);
+		}
+		/*#pragma omp critical (cout)
+		{
+		std::cerr << EBV_sum << ": ";
+		for(size_t i=0; i<N; i++) {
+			std::cerr << logEBV[i] << " ";
+		}
+		std::cerr << std::endl;
+		}*/
+	}
+	
+	// Add in cloud to bring total reddening up to guess value (with some scatter)
+	if(gsl_rng_uniform(r) < 0.25) {
+		const double sigma_tmp = 0.5;
+		double EBV_target_tmp = params.EBV_guess_max * exp(gsl_ran_gaussian_ziggurat(r, sigma_tmp) - 0.5*sigma_tmp*sigma_tmp - 0.5);
+		if(EBV_sum < EBV_target_tmp) {
+			size_t k = gsl_rng_uniform_int(r, N);
+			logEBV[k] = log(exp(logEBV[k]) + EBV_target_tmp - EBV_sum);
+			/*#pragma omp critical (cout)
+			{
+			std::cerr << EBV_sum << ": " << EBV_target_tmp << ": ";
+			for(size_t j=0; j<N; j++) {
+				std::cerr << logEBV[j] << " ";
+			}
+			std::cerr << std::endl;
+			}*/
+			EBV_sum = EBV_target_tmp;
 		}
 	}
 	
@@ -858,6 +889,7 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params) {
 	unsigned int N_steps = options.steps / 8;
 	if(N_steps < 40) { N_steps = 40; }
 	unsigned int N_samplers = options.samplers;
+	//if(N_samplers < 10) { N_samplers = 10; }
 	unsigned int N_threads = options.N_threads;
 	unsigned int ndim = params.N_regions + 1;
 	
@@ -880,8 +912,9 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params) {
 	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, true);
 	sampler.step_custom_reversible(int(N_steps*10./100.), move_one_step, true);
 	
-	sampler.step(int(N_steps*10./100.), true, 0., 0.5, true);
+	//sampler.step(int(N_steps*10./100.), true, 0., 0.5, true);
 	//sampler.step(int(N_steps*10./100), true, 0., 1., true);
+	sampler.step_MH(int(N_steps*10./100.), true);
 	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, true);
 	sampler.step_custom_reversible(int(N_steps*10./100.), move_one_step, true);
 	
@@ -1080,7 +1113,7 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	//}
 	//}
 	
-	double sigma = 0.05;
+	const double sigma = 0.05;
 	
 	if(params.guess_cov == NULL) {
 		for(size_t i=0; i<N; i++) {
@@ -1090,6 +1123,14 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	} else {
 		// Redistribute reddening among distance bins
 		draw_from_cov(logEBV, params.guess_sqrt_cov, N, r);
+		
+		/*#pragma omp critical (cout)
+		{
+		for(int i=0; i<N; i++) {
+			std::cout << std::setw(6) << std::setprecision(2) << logEBV[i] << " ";
+		}
+		std::cout << std::endl;
+		}*/
 		
 		for(size_t i=0; i<N; i++) {
 			logEBV[i] *= sigma;
@@ -1102,14 +1143,6 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 		//double norm = exp(gsl_ran_gaussian_ziggurat(r, 0.05));
 		//factor = log(norm * guess_sum / EBV_sum);
 		//for(size_t i=0; i<N; i++) { logEBV[i] += factor; }
-		
-		/*#pragma omp critical (cout)
-		{
-		for(int i=0; i<N; i++) {
-			std::cout << std::setw(6) << std::setprecision(2) << logEBV[i] << " ";
-		}
-		std::cout << std::endl;
-		}*/
 	}
 	
 	// Switch adjacent reddenings
