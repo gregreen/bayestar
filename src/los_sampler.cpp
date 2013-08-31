@@ -665,7 +665,7 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
                                         const float *const Delta_EBV, unsigned int N_regions) {
 	assert(img_stack.rect->N_bins[1] % N_regions == 0);
 	
-	const int subsampling = 3;
+	const int subsampling = 1;
 	const int N_pix_per_bin = img_stack.rect->N_bins[1] / N_regions;
 	const float N_samples = subsampling * N_pix_per_bin;
 	const int y_max = img_stack.rect->N_bins[0];
@@ -721,6 +721,7 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 				tmp_ret += diff * img->at<float>(y_floor, x)
 				        + (prec_factor_int - diff) * img->at<float>(y_floor+1, x);
 				
+				/*
 				// 1
 				y_int += dy_int;
 				y_floor = (y_int >> base_2_prec);
@@ -736,6 +737,7 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 				
 				tmp_ret += diff * img->at<float>(y_floor, x)
 				        + (prec_factor_int - diff) * img->at<float>(y_floor+1, x);
+				*/
 			}
 		}
 		
