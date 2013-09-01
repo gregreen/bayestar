@@ -167,7 +167,7 @@ def multinomial_confidence_interval(confidence, n_bins,
 
 def main():
 	parser = argparse.ArgumentParser(
-	              prog='mock-comparison.py',
+	              prog='pctile-test.py',
 	              description='Compares results from Bayestar for mock data '
 	                          'with true stellar parameters.',
 	              add_help=True)
