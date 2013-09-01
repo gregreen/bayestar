@@ -330,7 +330,7 @@ int main(int argc, char **argv) {
 			cout << "# of stars filtered: " << nFiltered << " of " << conv.size();
 			cout << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
 			
-			double p0 = 1.e-8;
+			double p0 = 1.e-6;
 			double EBV_max = -1.;
 			if(SFDPrior) {
 				if(SFDsubpixel) {
