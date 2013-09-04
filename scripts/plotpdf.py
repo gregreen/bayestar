@@ -49,7 +49,7 @@ def los2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	lnp = (lnp - lnp_min) / (lnp_max - lnp_min)
 	lnp[lnp > 1.] = 1.
 	lnp[lnp < 0.] = 0.
-	print lnp
+	
 	for i,EBV in enumerate(EBV_all[1:]):
 		c = (1.-lnp[i], 0., lnp[i])
 		kwargs['c'] = c
@@ -99,10 +99,19 @@ def clouds2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	EBV_all[:,2:-1:2] = EBV_tmp
 	EBV_all[:,3::2] = EBV_tmp
 	#EBV_all[:,-1] = EBV_tmp[:,-1]
-	for mu,EBV in zip(mu_all[1:], EBV_all[1:]):
+	
+	lnp = chain.get_lnp()[0, 1:]
+	lnp_min, lnp_max = np.percentile(lnp, [10., 90.])
+	lnp = (lnp - lnp_min) / (lnp_max - lnp_min)
+	lnp[lnp > 1.] = 1.
+	lnp[lnp < 0.] = 0.
+	
+	for i,(mu,EBV) in enumerate(zip(mu_all[1:], EBV_all[1:])):
+		c = (1.-lnp[i], 0., lnp[i])
+		kwargs['c'] = c
 		ax.plot(mu, EBV, *args, **kwargs)
 	
-	kwargs['c'] = 'r'
+	kwargs['c'] = 'g'
 	kwargs['alpha'] = 0.5
 	ax.plot(mu_all[0], EBV_all[0], *args, **kwargs)
 	
@@ -258,7 +267,7 @@ def main():
 	
 	if args.show_clouds:
 		try:
-			clouds2ax(ax, fname, group, DM_lim, c='k', alpha=0.05, lw=1.5)
+			clouds2ax(ax, fname, group, DM_lim, c='k', alpha=0.08, lw=1.5)
 			for sub_ax in ax_indiv:
 				clouds2ax(sub_ax, fname, group, DM_lim, c='k')
 		except:
