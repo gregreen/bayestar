@@ -26,6 +26,7 @@ import sys, argparse
 from os.path import abspath, expanduser
 
 import numpy as np
+import scipy.optimize as opt
 
 import matplotlib as mplib
 import matplotlib.pyplot as plt
@@ -132,6 +133,19 @@ def clouds2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	#	alpha *= 0.85
 	
 	ax.set_xlim(DM_lim[0], DM_lim[1]) 
+
+def find_contour_levels(pdf, pctiles):
+	norm = np.sum(pdf)
+	pctile_diff = lambda pixval, target: np.sum(pdf[pdf < pixval]) / norm - target
+	
+	levels = []
+	
+	for P in pctiles:
+		l = opt.brentq(pctile_diff, np.min(pdf), np.max(pdf),
+		               args=P/100., xtol=1.e-5, maxiter=25)
+		levels.append(l)
+	
+	return np.array(levels)
 
 def main():
 	# Parse commandline arguments
@@ -248,6 +262,13 @@ def main():
 			if args.show_pdfs:
 				ax_tmp.imshow(np.sqrt(pdf_indiv[i].T), extent=bounds, origin='lower',
 				              aspect='auto', cmap='Blues', interpolation='nearest')
+				
+				#levels = find_contour_levels(pdf_indiv[i], [50., 95.])
+				
+				#X = np.linspace(bounds[0], bounds[1], pdf_indiv[i].shape[0])
+				#Y = np.linspace(bounds[2], bounds[3], pdf_indiv[i].shape[1])
+				
+				#ax_tmp.contour(X.flatten(), Y.flatten(), pdf_indiv[i].T, levels)
 			
 			ax_tmp.set_xticks([])
 			ax_tmp.set_yticks([])
