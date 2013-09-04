@@ -27,6 +27,7 @@ import numpy as np
 from scipy.interpolate import interp2d, RectBivariateSpline
 import scipy.ndimage.interpolation as interp
 import scipy.stats
+import scipy.optimize as opt
 
 import matplotlib.pyplot as plt
 import matplotlib as mplib
@@ -167,7 +168,7 @@ def multinomial_confidence_interval(confidence, n_bins,
 
 def find_contour_levels(pdf, pctiles):
 	norm = np.sum(pdf)
-	pctile_diff = lambda pixval, target: np.sum(pdf[pdf < pixval]) / norm - target
+	pctile_diff = lambda pixval, target: np.sum(pdf[pdf > pixval]) / norm - target
 	
 	levels = []
 	
@@ -553,10 +554,10 @@ def main():
 			X = np.linspace(bounds[0], bounds[1], p[idx].shape[0])
 			Y = np.linspace(bounds[2], bounds[3], p[idx].shape[1])
 			
-			ax_tmp.contour(X.flatten(), Y.flatten(), p[idx].T, levels)
+			ax[i].contour(X.flatten(), Y.flatten(), p[idx].T, levels)
 			
 			# True value
-			ax[i].scatter([truth[idx]['DM']], [truth[idx]['EBV']], s=5., c='g', alpha=0.8)
+			ax[i].scatter([truth[idx]['DM']], [truth[idx]['EBV']], s=8., c='g', alpha=0.8)
 			
 			# Formatting
 			ax[i].xaxis.set_major_locator(MaxNLocator(nbins=4))
