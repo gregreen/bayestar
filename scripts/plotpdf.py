@@ -136,7 +136,7 @@ def clouds2ax(ax, fname, group, DM_lim, *args, **kwargs):
 
 def find_contour_levels(pdf, pctiles):
 	norm = np.sum(pdf)
-	pctile_diff = lambda pixval, target: np.sum(pdf[pdf < pixval]) / norm - target
+	pctile_diff = lambda pixval, target: np.sum(pdf[pdf > pixval]) / norm - target
 	
 	levels = []
 	
