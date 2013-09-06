@@ -962,7 +962,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		//std::cerr << "# Setting up sampler" << std::endl;
 		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
 		sampler.set_scale(1.5);
-		sampler.set_replacement_bandwidth(0.40);
+		sampler.set_replacement_bandwidth(0.30);
 		sampler.set_replacement_accept_bias(1.e-5);
 		sampler.set_sigma_min(0.02);
 		

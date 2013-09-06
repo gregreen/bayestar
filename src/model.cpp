@@ -57,7 +57,7 @@ TGalacticModel::TGalacticModel() {
 	L_epsilon = 500;
 	
 	// Halo
-	fh = 0.0051;
+	fh = 0.0030; //0.0051;	// TODO: Remember to note this.
 	qh = 0.70;
 	nh = -2.62;
 	R_br = 27800;

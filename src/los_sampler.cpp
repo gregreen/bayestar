@@ -287,12 +287,19 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	los_integral_clouds(*(params.img_stack), params.subpixel.data(), line_int, Delta_mu, logDelta_EBV, N_clouds);
 	
 	// Soften and multiply line integrals
+	double lnp_indiv;
 	for(size_t i=0; i<params.img_stack->N_images; i++) {
-		if(line_int[i] < 1.e5*params.p0) {
+		/*if(line_int[i] < 1.e5*params.p0) {
 			line_int[i] += params.p0 * exp(-line_int[i]/params.p0);
 		}
-		lnp += log(line_int[i]);
-		//std::cerr << line_int[i] << std::endl;
+		lnp += log(line_int[i]);*/
+		if(line_int[i] > params.p0_over_Z[i]) {
+			lnp_indiv = log(line_int[i]) + log(1. + params.p0_over_Z[i] / line_int[i]);
+		} else {
+			lnp_indiv = params.ln_p0_over_Z[i] + log(1. + line_int[i] * params.inv_p0_over_Z[i]);
+		}
+		
+		lnp += lnp_indiv;
 	}
 	
 	return lnp;
@@ -799,11 +806,23 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	los_integral(*(params.img_stack), params.subpixel.data(), line_int, Delta_EBV, N-1);
 	
 	// Soften and multiply line integrals
+	double lnp_indiv;
 	for(size_t i=0; i<params.img_stack->N_images; i++) {
-		if(line_int[i] < 1.e5*params.p0) {
-			line_int[i] += params.p0 * exp(-line_int[i]/params.p0);
+		//if(line_int[i] < 1.e5*params.p0) {
+		//	line_int[i] += params.p0 * exp(-line_int[i]/params.p0);
+		//}
+		if(line_int[i] > params.p0_over_Z[i]) {
+			lnp_indiv = log(line_int[i]) + log(1. + params.p0_over_Z[i] / line_int[i]);
+		} else {
+			lnp_indiv = params.ln_p0_over_Z[i] + log(1. + line_int[i] * params.inv_p0_over_Z[i]);
 		}
-		lnp += log(line_int[i]);
+		
+		lnp += lnp_indiv;
+		
+		/*#pragma omp critical (cout)
+		{
+		std::cerr << i << "(" << params.ln_p0_over_Z[i] <<"): " << log(line_int[i]) << " --> " << lnp_indiv << std::endl;
+		}*/
 	}
 	
 	return lnp;
@@ -1248,7 +1267,7 @@ double step_one_Delta_EBV(double *const _X, double *const _Y, unsigned int _N, g
  * 
  ****************************************************************************************************************************/
 
-TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
+TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, const std::vector<double>& _lnZ, double _p0,
                                unsigned int _N_threads, unsigned int _N_regions, double _EBV_max)
 	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.),
 	  N_threads(_N_threads), N_regions(_N_regions),
@@ -1258,9 +1277,21 @@ TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
 {
 	line_int = new double[_img_stack->N_images * N_threads];
 	Delta_EBV = new float[(N_regions+1) * N_threads];
+	
 	//std::cout << "Allocated line_int[" << _img_stack->N_images * N_threads << "] (" << _img_stack->N_images << " images, " << N_threads << " threads)" << std::endl;
 	p0 = _p0;
 	lnp0 = log(p0);
+	
+	p0_over_Z.reserve(_lnZ.size());
+	inv_p0_over_Z.reserve(_lnZ.size());
+	ln_p0_over_Z.reserve(_lnZ.size());
+	
+	for(std::vector<double>::const_iterator it=_lnZ.begin(); it != _lnZ.end(); ++it) {
+		ln_p0_over_Z.push_back(lnp0 - *it);
+		p0_over_Z.push_back(exp(lnp0 - *it));
+		inv_p0_over_Z.push_back(exp(*it - lnp0));
+	}
+	
 	EBV_max = _EBV_max;
 	EBV_guess_max = guess_EBV_max(*img_stack);
 	subpixel_max = 1.;

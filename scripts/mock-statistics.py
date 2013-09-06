@@ -130,11 +130,14 @@ def main():
     samples_centered = samples - truth_expanded
     
     # Determine spread of DM and E(B-V) for each population
-    Mr_bin_min = np.array([-1., 4.])
-    Mr_bin_max = np.array([4., 12.])
+    Mr_bin_min = np.array([-1., 4., 4., 6., 8., 10.])
+    Mr_bin_max = np.array([4., 12., 6., 8., 10., 12.])
     
     Mr_bin_min = np.append(Mr_bin_min, -np.inf)
     Mr_bin_max = np.append(Mr_bin_max, np.inf)
+    
+    latex_table = ''
+    latex_table_2 = ''
     
     for Mr_min, Mr_max in zip(Mr_bin_min, Mr_bin_max):
         idx = (truth[:,2] >= Mr_min) & (truth[:,2] < Mr_max)
@@ -147,6 +150,21 @@ def main():
         DM_mean, DM_std = np.mean(samples_bin[:,:,0]), np.std(samples_bin[:,:,0])
         EBV_mean, EBV_std = np.mean(samples_bin[:,:,1]), np.std(samples_bin[:,:,1])
         
+        d_low, d_med, d_high = [10.**(DM_pctiles[i]/5.) - 1. for i in xrange(1,4)]
+        
+        if np.isfinite(Mr_min):
+            latex_table += '$ %d \\! < \\! M_{r} \\! \\leq \\! %d$ &\n' % (Mr_min, Mr_max)
+        
+        latex_table += '$\\substack{+%d \\%% \\\\ %d \\%%}$ &\n' % (100.*d_high, 100.*d_low)
+        latex_table += '$\\substack{+%.2f \\\\ %.2f}$ \\\\ \n\n' % (EBV_pctiles[3], EBV_pctiles[1])
+        
+        if np.isfinite(Mr_min):
+            latex_table_2 += '$ %d \\! < \\! M_{r} \\! \\leq \\! %d$ &\n' % (Mr_min, Mr_max)
+        
+        latex_table_2 += '$%d \\%% \\substack{+%d \\%% \\\\ %d \\%%}$ &\n' % (100.*d_med, 100.*(d_high-d_med), 100.*(d_low-d_med))
+        latex_table_2 += '$%.2f \\substack{+%.2f \\\\ %.2f}$ \\\\ \n\n' % (EBV_pctiles[2], EBV_pctiles[3]-EBV_pctiles[2], EBV_pctiles[1]-EBV_pctiles[2])
+        
+        
         print '%.1f < M_r < %.1f:' % (Mr_min, Mr_max)
         print '    # of stars: %d' % (np.sum(idx))
         print '    Delta DM %%iles: %.3f %.3f %.3f %.3f %.3f' % (DM_pctiles[0], DM_pctiles[1], DM_pctiles[2], DM_pctiles[3], DM_pctiles[4])
@@ -154,6 +172,12 @@ def main():
         print '    Delta DM = %.3f +- %.3f' % (DM_mean, DM_std)
         print '    Delta E(B-V) = %.3f +- %.3f' % (EBV_mean, EBV_std)
         print ''
+    
+    print latex_table
+    
+    print ''
+    
+    print latex_table_2
     
     return 0
 

@@ -81,6 +81,7 @@ struct TImgStack {
 
 struct TLOSMCMCParams {
 	TImgStack *img_stack;
+	std::vector<double> p0_over_Z, ln_p0_over_Z, inv_p0_over_Z;
 	double p0, lnp0;
 	
 	double *line_int;
@@ -101,8 +102,8 @@ struct TLOSMCMCParams {
 	double *sigma_log_Delta_EBV;
 	double alpha_skew;
 	
-	TLOSMCMCParams(TImgStack* _img_stack, double _p0,
-	               unsigned int _N_threads, unsigned int _N_regions,
+	TLOSMCMCParams(TImgStack* _img_stack, const std::vector<double>& _lnZ,
+		       double _p0, unsigned int _N_threads, unsigned int _N_regions,
 	               double _EBV_max=-1.);
 	~TLOSMCMCParams();
 	

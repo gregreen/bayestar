@@ -24,6 +24,7 @@
 
 #include <iostream>
 #include <iomanip>
+#include <ctime>
 
 #include <boost/program_options.hpp>
 
@@ -183,7 +184,7 @@ int main(int argc, char **argv) {
 		("SFD-prior", "Use SFD E(B-V) as a prior on the total extinction in each pixel.")
 		("SFD-subpixel", "Use SFD E(B-V) as a subpixel template for the angular variation in reddening.")
 		("evidence-cut", po::value<double>(&evCut), "Delta lnZ to use as threshold for including star\n"
-		                                            "in l.o.s. fit (default: 30).")
+		                                            "in l.o.s. fit (default: 15).")
 		
 		("threads", po::value<unsigned int>(&N_threads), "# of threads to run on (default: 4)")
 		
@@ -226,6 +227,13 @@ int main(int argc, char **argv) {
 		}
 	}
 	
+	time_t tmp_time = time(0);
+	char * dt = ctime(&tmp_time);
+	cout << "# Start time: " << dt;
+	
+	timespec prog_start_time;
+	clock_gettime(CLOCK_MONOTONIC, &prog_start_time);
+	
 	
 	/*
 	 *  MCMC Options
@@ -267,8 +275,10 @@ int main(int argc, char **argv) {
 	
 	// Run each pixel
 	timespec t_start, t_mid, t_end;
+	
 	double t_tot, t_star;
 	unsigned int pixel_list_no = 0;
+	
 	for(vector<unsigned int>::iterator it = healpix_index.begin(); it != healpix_index.end(); ++it, pixel_list_no++) {
 		clock_gettime(CLOCK_MONOTONIC, &t_start);
 		
@@ -314,11 +324,13 @@ int main(int argc, char **argv) {
 		bool tmpFilter;
 		size_t nFiltered = 0;
 		std::vector<double> subpixel;
+		lnZ_filtered.clear();
 		for(size_t n=0; n<conv.size(); n++) {
-			tmpFilter = conv[n] && (lnZ[n] > lnZmax - evCut) && !isnan(lnZ[n]) && !is_inf_replacement(lnZ[n]);
+			tmpFilter = conv[n] && (lnZ[n] > lnZmax - (20. + evCut)) && !isnan(lnZ[n]) && !is_inf_replacement(lnZ[n]);
 			keep.push_back(tmpFilter);
 			if(tmpFilter) {
 				subpixel.push_back(stellar_data.star[n].EBV);
+				lnZ_filtered.push_back(lnZ[n] - lnZmax);
 			} else {
 				nFiltered++;
 			}
@@ -330,7 +342,7 @@ int main(int argc, char **argv) {
 			cout << "# of stars filtered: " << nFiltered << " of " << conv.size();
 			cout << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
 			
-			double p0 = 1.e-6;
+			double p0 = exp(-5. - evCut);
 			double EBV_max = -1.;
 			if(SFDPrior) {
 				if(SFDsubpixel) {
@@ -339,7 +351,7 @@ int main(int argc, char **argv) {
 					EBV_max = stellar_data.EBV;
 				}
 			}
-			TLOSMCMCParams params(&img_stack, p0, N_threads, N_regions, EBV_max);
+			TLOSMCMCParams params(&img_stack, lnZ_filtered, p0, N_threads, N_regions, EBV_max);
 			if(SFDsubpixel) { params.set_subpixel_mask(subpixel); }
 			if(N_clouds != 0) {
 				sample_los_extinction_clouds(output_fname, cloud_options, params, N_clouds, *it, verbosity);
@@ -398,6 +410,22 @@ int main(int argc, char **argv) {
 	
 	if(synthlib != NULL) { delete synthlib; }
 	if(emplib != NULL) { delete emplib; }
+	
+	tmp_time = time(0);
+	dt = ctime(&tmp_time);
+	cout << "# End time: " << dt;
+	
+	timespec prog_end_time;
+	clock_gettime(CLOCK_MONOTONIC, &prog_end_time);
+	double prog_ss = prog_end_time.tv_sec - prog_start_time.tv_sec + 1.e-9 * (prog_end_time.tv_nsec - prog_start_time.tv_nsec);
+	int prog_mm = floor(prog_ss / 60.);
+	int prog_hh = floor(prog_mm / 60.);
+	int prog_dd = floor(prog_hh / 24.);
+	prog_hh = prog_hh % 24;
+	prog_mm = prog_mm % 60;
+	prog_ss -= 60. * prog_mm + 3600. * prog_hh + 3600.*24. * prog_dd;
+	cout << "# Elapsed time: " << prog_dd << " d " << prog_hh << " h " << prog_mm << " m " << prog_ss << " s" << endl;
+	
 	
 	return 0;
 }
