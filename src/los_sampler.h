@@ -54,12 +54,12 @@ struct TMCMCOptions {
 	unsigned int steps;
 	unsigned int samplers;
 	double p_replacement;
-	unsigned int N_threads;
+	unsigned int N_runs;
 	
 	TMCMCOptions(unsigned int _steps, unsigned int _samplers,
-	             double _p_replacement, unsigned int _N_threads)
+	             double _p_replacement, unsigned int _N_runs)
 		: steps(_steps), samplers(_samplers),
-		  p_replacement(_p_replacement), N_threads(_N_threads)
+		  p_replacement(_p_replacement), N_runs(_N_runs)
 	{}
 };
 
@@ -86,6 +86,7 @@ struct TLOSMCMCParams {
 	
 	double *line_int;
 	float *Delta_EBV;
+	unsigned int N_runs;
 	unsigned int N_threads;
 	unsigned int N_regions;
 	
@@ -102,8 +103,8 @@ struct TLOSMCMCParams {
 	double *sigma_log_Delta_EBV;
 	double alpha_skew;
 	
-	TLOSMCMCParams(TImgStack* _img_stack, const std::vector<double>& _lnZ,
-		       double _p0, unsigned int _N_threads, unsigned int _N_regions,
+	TLOSMCMCParams(TImgStack* _img_stack, const std::vector<double>& _lnZ, double _p0,
+		       unsigned int _N_runs, unsigned int _N_threads, unsigned int _N_regions,
 	               double _EBV_max=-1.);
 	~TLOSMCMCParams();
 	

@@ -1420,48 +1420,27 @@ TParallelAffineSampler<TParams, TLogger>::~TParallelAffineSampler() {
 template<class TParams, class TLogger>
 void TParallelAffineSampler<TParams, TLogger>::step(unsigned int N_steps, bool record_steps, double cycle,
                                                     double p_replacement, bool unbalanced, bool diag_approx) {
-	//omp_set_num_threads(N_samplers);
-	#pragma omp parallel firstprivate(record_steps, N_steps, cycle, p_replacement, unbalanced, diag_approx) num_threads(N_samplers)
-	{
-		unsigned int thread_ID = omp_get_thread_num();
-		double base_a = sampler[thread_ID]->get_scale();
+	#pragma omp parallel for schedule(dynamic) firstprivate(record_steps, N_steps, cycle, p_replacement, unbalanced, diag_approx)
+	for(int sampler_num = 0; sampler_num < N_samplers; sampler_num++) {
 		for(unsigned int i=0; i<N_steps; i++) {
-			if(cycle > 1) {
-				if((i % 10) == 0) {
-					sampler[thread_ID]->set_scale(base_a*cycle);
-				} else if((i % 10) == 1) {
-					sampler[thread_ID]->set_scale(base_a);
-				}
-			}
-			sampler[thread_ID]->step(record_steps, p_replacement, unbalanced, diag_approx);
+			sampler[sampler_num]->step(record_steps, p_replacement, unbalanced, diag_approx);
 		}
-		sampler[thread_ID]->flush(record_steps);
-		
-		//#pragma omp critical (append_stats)
-		//stats += sampler[thread_ID]->get_stats();
-		
-		#pragma omp barrier
+		sampler[sampler_num]->flush(record_steps);
 	}
+	#pragma omp barrier
 	Gelman_Rubin_diagnostic(component_stats, N_samplers, R, N);
 }
 
 template<class TParams, class TLogger>
 void TParallelAffineSampler<TParams, TLogger>::step_MH(unsigned int N_steps, bool record_steps) {
-	//omp_set_num_threads(N_samplers);
-	#pragma omp parallel firstprivate(record_steps, N_steps) num_threads(N_samplers)
-	{
-		unsigned int thread_ID = omp_get_thread_num();
-		
+	#pragma omp parallel for schedule(dynamic) firstprivate(record_steps, N_steps)
+	for(int sampler_num = 0; sampler_num < N_samplers; sampler_num++) {
 		for(unsigned int i=0; i<N_steps; i++) {
-			sampler[thread_ID]->step_MH(record_steps);
+			sampler[sampler_num]->step_MH(record_steps);
 		}
-		sampler[thread_ID]->flush(record_steps);
-		
-		//#pragma omp critical (append_stats)
-		//stats += sampler[thread_ID]->get_stats();
-		
-		#pragma omp barrier
+		sampler[sampler_num]->flush(record_steps);
 	}
+	#pragma omp barrier
 	Gelman_Rubin_diagnostic(component_stats, N_samplers, R, N);
 }
 
@@ -1469,30 +1448,22 @@ template<class TParams, class TLogger>
 void TParallelAffineSampler<TParams, TLogger>::step_custom_reversible(unsigned int N_steps,
 	                                                              typename TAffineSampler<TParams, TLogger>::reversible_step_t f_reversible_step,
 	                                                              bool record_steps) {
-	//omp_set_num_threads(N_samplers);
-	#pragma omp parallel firstprivate(record_steps, N_steps) num_threads(N_samplers)
-	{
-		unsigned int thread_ID = omp_get_thread_num();
-		
+	#pragma omp parallel for schedule(dynamic) firstprivate(record_steps, N_steps)
+	for(int sampler_num = 0; sampler_num < N_samplers; sampler_num++) {
 		for(unsigned int i=0; i<N_steps; i++) {
-			sampler[thread_ID]->step_custom_reversible(f_reversible_step, record_steps);
+			sampler[sampler_num]->step_custom_reversible(f_reversible_step, record_steps);
 		}
-		sampler[thread_ID]->flush(record_steps);
-		
-		//#pragma omp critical (append_stats)
-		//stats += sampler[thread_ID]->get_stats();
-		
-		#pragma omp barrier
+		sampler[sampler_num]->flush(record_steps);
 	}
+	#pragma omp barrier
 	Gelman_Rubin_diagnostic(component_stats, N_samplers, R, N);
 }
 
 template<class TParams, class TLogger>
 void TParallelAffineSampler<TParams, TLogger>::tune_MH(unsigned int N_rounds, double target_acceptance) {
-	#pragma omp parallel num_threads(N_samplers)
-	{
-		unsigned int thread_ID = omp_get_thread_num();
-		unsigned int N_steps = 100. / ((double)(sampler[thread_ID]->get_N_walkers()) * target_acceptance);
+	#pragma omp parallel for
+	for(int sampler_num = 0; sampler_num < N_samplers; sampler_num++) {
+		unsigned int N_steps = 100. / ((double)(sampler[sampler_num]->get_N_walkers()) * target_acceptance);
 		if(N_steps < 3) { N_steps = 3; }
 		
 		//#pragma omp critical
@@ -1501,22 +1472,22 @@ void TParallelAffineSampler<TParams, TLogger>::tune_MH(unsigned int N_rounds, do
 		double acceptance_tmp, bandwidth_tmp;
 		
 		for(int k=0; k<N_rounds; k++) {
-			sampler[thread_ID]->clear();
+			sampler[sampler_num]->clear();
 			for(unsigned int i=0; i<N_steps; i++) {
-				sampler[thread_ID]->step_MH(false);
+				sampler[sampler_num]->step_MH(false);
 			}
-			sampler[thread_ID]->flush(false);
+			sampler[sampler_num]->flush(false);
 			
-			acceptance_tmp = sampler[thread_ID]->get_MH_acceptance_rate();
+			acceptance_tmp = sampler[sampler_num]->get_MH_acceptance_rate();
 			if(acceptance_tmp < 0.9 * target_acceptance) {
-				bandwidth_tmp = sampler[thread_ID]->get_MH_bandwidth();
-				sampler[thread_ID]->set_MH_bandwidth(0.9 * bandwidth_tmp);
+				bandwidth_tmp = sampler[sampler_num]->get_MH_bandwidth();
+				sampler[sampler_num]->set_MH_bandwidth(0.9 * bandwidth_tmp);
 				
 				//#pragma omp critical
 				//std::cout << "Thread " << thread_ID << ": " << bandwidth_tmp << " -> " << 0.8 * bandwidth_tmp << " (" << 100. * acceptance_tmp << "%)" << std::endl;
 			} else if(acceptance_tmp > 1.1 * target_acceptance) {
-				bandwidth_tmp = sampler[thread_ID]->get_MH_bandwidth();
-				sampler[thread_ID]->set_MH_bandwidth(1.1 * bandwidth_tmp);
+				bandwidth_tmp = sampler[sampler_num]->get_MH_bandwidth();
+				sampler[sampler_num]->set_MH_bandwidth(1.1 * bandwidth_tmp);
 				
 				//#pragma omp critical
 				//std::cout << "Thread " << thread_ID << ": " << bandwidth_tmp << " -> " << 1.2 * bandwidth_tmp << " (" << 100. * acceptance_tmp << "%)" << std::endl;
@@ -1527,10 +1498,9 @@ void TParallelAffineSampler<TParams, TLogger>::tune_MH(unsigned int N_rounds, do
 
 template<class TParams, class TLogger>
 void TParallelAffineSampler<TParams, TLogger>::tune_stretch(unsigned int N_rounds, double target_acceptance) {
-	#pragma omp parallel num_threads(N_samplers)
-	{
-		unsigned int thread_ID = omp_get_thread_num();
-		unsigned int N_steps = 100. / ((double)(sampler[thread_ID]->get_N_walkers()) * target_acceptance);
+	#pragma omp parallel for
+	for(int sampler_num = 0; sampler_num < N_samplers; sampler_num++) {
+		unsigned int N_steps = 100. / ((double)(sampler[sampler_num]->get_N_walkers()) * target_acceptance);
 		if(N_steps < 3) { N_steps = 3; }
 		
 		//#pragma omp critical
@@ -1539,22 +1509,22 @@ void TParallelAffineSampler<TParams, TLogger>::tune_stretch(unsigned int N_round
 		double acceptance_tmp, scale_Delta;
 		
 		for(int k=0; k<N_rounds; k++) {
-			sampler[thread_ID]->clear();
+			sampler[sampler_num]->clear();
 			for(unsigned int i=0; i<N_steps; i++) {
-				sampler[thread_ID]->step(false, 0., false);
+				sampler[sampler_num]->step(false, 0., false);
 			}
-			sampler[thread_ID]->flush(false);
+			sampler[sampler_num]->flush(false);
 			
-			acceptance_tmp = sampler[thread_ID]->get_stretch_acceptance_rate();
+			acceptance_tmp = sampler[sampler_num]->get_stretch_acceptance_rate();
 			if(acceptance_tmp < 0.9 * target_acceptance) {
-				scale_Delta = sampler[thread_ID]->get_scale() - 1.;
-				sampler[thread_ID]->set_scale(1. + 0.9 * scale_Delta);
+				scale_Delta = sampler[sampler_num]->get_scale() - 1.;
+				sampler[sampler_num]->set_scale(1. + 0.9 * scale_Delta);
 				
 				//#pragma omp critical
 				//std::cout << "Thread " << thread_ID << ": " << 1. + scale_Delta << " -> " << 1. + 0.8 * scale_Delta << " (" << 100. * acceptance_tmp << "%)" << std::endl;
 			} else if(acceptance_tmp > 1.1 * target_acceptance) {
-				scale_Delta = sampler[thread_ID]->get_scale() - 1.;
-				sampler[thread_ID]->set_scale(1. + 1.1 * scale_Delta);
+				scale_Delta = sampler[sampler_num]->get_scale() - 1.;
+				sampler[sampler_num]->set_scale(1. + 1.1 * scale_Delta);
 				
 				//#pragma omp critical
 				//std::cout << "Thread " << thread_ID << ": " << 1. + scale_Delta << " -> " << 1. + 1.2 * scale_Delta << " (" << 100. * acceptance_tmp << "%)" << std::endl;
@@ -1776,11 +1746,10 @@ void TParallelAffineSampler<TParams, TLogger>::calc_GR_transformed(std::vector<d
 		transf_stats[n] = new TStats(N);
 	}
 	
-	#pragma omp parallel num_threads(N_samplers)
-	{
-		size_t n = omp_get_thread_num();
-		TStats& transf_comp_stat = *(transf_stats[n]);
-		TChain& chain = sampler[n]->get_chain();
+	#pragma omp parallel for
+	for(int sampler_num = 0; sampler_num < N_samplers; sampler_num++) {
+		TStats& transf_comp_stat = *(transf_stats[sampler_num]);
+		TChain& chain = sampler[sampler_num]->get_chain();
 		size_t n_points = chain.get_length();
 		
 		double* y = new double[N];
@@ -1791,9 +1760,8 @@ void TParallelAffineSampler<TParams, TLogger>::calc_GR_transformed(std::vector<d
 		}
 		
 		delete[] y;
-		
-		#pragma omp barrier
 	}
+	#pragma omp barrier
 	
 	GR.resize(N);
 	Gelman_Rubin_diagnostic(transf_stats, N_samplers, GR.data(), N);
