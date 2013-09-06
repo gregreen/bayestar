@@ -142,7 +142,9 @@ int main(int argc, char **argv) {
 	bool SFDsubpixel = false;
 	double evCut = 15.;
 	
-	unsigned int N_threads = 4;
+	unsigned int N_runs = 4;
+	unsigned int N_threads = 1;
+	
 	int verbosity = 0;
 	
 	
@@ -186,7 +188,8 @@ int main(int argc, char **argv) {
 		("evidence-cut", po::value<double>(&evCut), "Delta lnZ to use as threshold for including star\n"
 		                                            "in l.o.s. fit (default: 15).")
 		
-		("threads", po::value<unsigned int>(&N_threads), "# of threads to run on (default: 4)")
+		("runs", po::value<unsigned int>(&N_runs), "# of times to run each chain (to check for non-convergence) (default: 4)")
+		("threads", po::value<unsigned int>(&N_threads), "# of threads to run on (default: 1)")
 		
 		("verbosity", po::value<int>(&verbosity), "Level of verbosity (0 = minimal, 2 = highest)")
 	;
@@ -239,9 +242,9 @@ int main(int argc, char **argv) {
 	 *  MCMC Options
 	 */
 	
-	TMCMCOptions star_options(star_steps, star_samplers, star_p_replacement, N_threads);
-	TMCMCOptions cloud_options(cloud_steps, cloud_samplers, cloud_p_replacement, N_threads);
-	TMCMCOptions los_options(los_steps, los_samplers, los_p_replacement, N_threads);
+	TMCMCOptions star_options(star_steps, star_samplers, star_p_replacement, N_runs);
+	TMCMCOptions cloud_options(cloud_steps, cloud_samplers, cloud_p_replacement, N_runs);
+	TMCMCOptions los_options(los_steps, los_samplers, los_p_replacement, N_runs);
 	
 	
 	/*
@@ -351,7 +354,7 @@ int main(int argc, char **argv) {
 					EBV_max = stellar_data.EBV;
 				}
 			}
-			TLOSMCMCParams params(&img_stack, lnZ_filtered, p0, N_threads, N_regions, EBV_max);
+			TLOSMCMCParams params(&img_stack, lnZ_filtered, p0, N_runs, N_threads, N_regions, EBV_max);
 			if(SFDsubpixel) { params.set_subpixel_mask(subpixel); }
 			if(N_clouds != 0) {
 				sample_los_extinction_clouds(output_fname, cloud_options, params, N_clouds, *it, verbosity);

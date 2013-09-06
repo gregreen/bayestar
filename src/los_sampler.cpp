@@ -57,7 +57,7 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	unsigned int max_attempts = 2;
 	unsigned int N_steps = options.steps;
 	unsigned int N_samplers = options.samplers;
-	unsigned int N_threads = options.N_threads;
+	unsigned int N_runs = options.N_runs;
 	unsigned int ndim = 2 * N_clouds;
 	
 	std::vector<double> GR_transf;
@@ -74,7 +74,7 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	}
 	
 	//std::cerr << "# Setting up sampler" << std::endl;
-	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 	sampler.set_scale(2.);
 	sampler.set_replacement_bandwidth(0.35);
 	
@@ -232,6 +232,8 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 }
 
 double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams& params) {
+	int thread_num = omp_get_thread_num();
+	
 	const size_t N_clouds = N / 2;
 	const double *Delta_mu = x;
 	const double *logDelta_EBV = x + N_clouds;
@@ -283,7 +285,7 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	}
 	
 	// Compute line integrals through probability surfaces
-	double *line_int = params.get_line_int(omp_get_thread_num());
+	double *line_int = params.get_line_int(thread_num);
 	los_integral_clouds(*(params.img_stack), params.subpixel.data(), line_int, Delta_mu, logDelta_EBV, N_clouds);
 	
 	// Soften and multiply line integrals
@@ -384,7 +386,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	unsigned int max_attempts = 2;
 	unsigned int N_steps = options.steps;
 	unsigned int N_samplers = options.samplers;
-	unsigned int N_threads = options.N_threads;
+	unsigned int N_runs = options.N_runs;
 	unsigned int ndim = params.N_regions + 1;
 	
 	double max_conv_mu = 15.;
@@ -404,7 +406,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t mix_step = &mix_log_Delta_EBVs;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t move_one_step = &step_one_Delta_EBV;
 	
-	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 	
 	// Burn-in
 	if(verbosity >= 1) { std::cout << "# Burn-in ..." << std::endl; }
@@ -911,7 +913,7 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params) {
 	if(N_steps < 40) { N_steps = 40; }
 	unsigned int N_samplers = options.samplers;
 	//if(N_samplers < 10) { N_samplers = 10; }
-	unsigned int N_threads = options.N_threads;
+	unsigned int N_runs = options.N_runs;
 	unsigned int ndim = params.N_regions + 1;
 	
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
@@ -920,7 +922,7 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params) {
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t mix_step = &mix_log_Delta_EBVs;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t move_one_step = &step_one_Delta_EBV;
 	
-	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 	sampler.set_scale(1.05);
 	sampler.set_replacement_bandwidth(0.75);
 	
@@ -1076,7 +1078,7 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 	// Fit monotonic guess
 	unsigned int N_steps = 100;
 	unsigned int N_samplers = 2 * N_regions;
-	unsigned int N_threads = options.N_threads;
+	unsigned int N_runs = options.N_runs;
 	unsigned int ndim = N_regions + 1;
 	
 	std::cout << "Setting up params" << std::endl;
@@ -1087,7 +1089,7 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 	TAffineSampler<TEBVGuessParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_monotonic;
 	
 	std::cout << "Setting up sampler" << std::endl;
-	TParallelAffineSampler<TEBVGuessParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+	TParallelAffineSampler<TEBVGuessParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.75);
 	
@@ -1268,9 +1270,10 @@ double step_one_Delta_EBV(double *const _X, double *const _Y, unsigned int _N, g
  ****************************************************************************************************************************/
 
 TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, const std::vector<double>& _lnZ, double _p0,
-                               unsigned int _N_threads, unsigned int _N_regions, double _EBV_max)
+                               unsigned int _N_runs, unsigned int _N_threads, unsigned int _N_regions,
+                               double _EBV_max)
 	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.),
-	  N_threads(_N_threads), N_regions(_N_regions),
+	  N_runs(_N_runs), N_threads(_N_threads), N_regions(_N_regions),
 	  line_int(NULL), Delta_EBV_prior(NULL),
 	  log_Delta_EBV_prior(NULL), sigma_log_Delta_EBV(NULL),
 	  guess_cov(NULL), guess_sqrt_cov(NULL)
