@@ -27,6 +27,7 @@ import numpy as np
 from scipy.interpolate import interp2d, RectBivariateSpline
 import scipy.ndimage.interpolation as interp
 import scipy.stats
+import scipy.optimize as opt
 
 import matplotlib.pyplot as plt
 import matplotlib as mplib
@@ -165,9 +166,23 @@ def multinomial_confidence_interval(confidence, n_bins,
 	
 	return low, high
 
+def find_contour_levels(pdf, pctiles):
+	norm = np.sum(pdf)
+	pctile_diff = lambda pixval, target: np.sum(pdf[pdf > pixval]) / norm - target
+	
+	levels = []
+	
+	for P in pctiles:
+		l = opt.brentq(pctile_diff, np.min(pdf), np.max(pdf),
+		               args=P/100., xtol=1.e-5, maxiter=25)
+		levels.append(l)
+	
+	return np.array(levels)
+
+
 def main():
 	parser = argparse.ArgumentParser(
-	              prog='mock-comparison.py',
+	              prog='pctile-test.py',
 	              description='Compares results from Bayestar for mock data '
 	                          'with true stellar parameters.',
 	              add_help=True)
@@ -529,11 +544,22 @@ def main():
 			
 			ax.append(fig.add_subplot(2,2,i+1))
 			
+			# Probability surface
 			ax[i].imshow(p[idx].T, extent=bounds, origin='lower', vmin=0.,
 			                  aspect='auto', cmap='Blues', interpolation='nearest')
 			
-			ax[i].scatter([truth[idx]['DM']], [truth[idx]['EBV']], s=5., c='g', alpha=0.8)
+			# Contours
+			levels = find_contour_levels(p[idx], [50., 95.])
 			
+			X = np.linspace(bounds[0], bounds[1], p[idx].shape[0])
+			Y = np.linspace(bounds[2], bounds[3], p[idx].shape[1])
+			
+			ax[i].contour(X.flatten(), Y.flatten(), p[idx].T, levels)
+			
+			# True value
+			ax[i].scatter([truth[idx]['DM']], [truth[idx]['EBV']], s=8., c='g', alpha=0.8)
+			
+			# Formatting
 			ax[i].xaxis.set_major_locator(MaxNLocator(nbins=4))
 			ax[i].xaxis.set_minor_locator(AutoMinorLocator())
 			ax[i].yaxis.set_major_locator(MaxNLocator(nbins=4))

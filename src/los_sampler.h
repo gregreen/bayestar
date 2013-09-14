@@ -54,12 +54,12 @@ struct TMCMCOptions {
 	unsigned int steps;
 	unsigned int samplers;
 	double p_replacement;
-	unsigned int N_threads;
+	unsigned int N_runs;
 	
 	TMCMCOptions(unsigned int _steps, unsigned int _samplers,
-	             double _p_replacement, unsigned int _N_threads)
+	             double _p_replacement, unsigned int _N_runs)
 		: steps(_steps), samplers(_samplers),
-		  p_replacement(_p_replacement), N_threads(_N_threads)
+		  p_replacement(_p_replacement), N_runs(_N_runs)
 	{}
 };
 
@@ -81,10 +81,14 @@ struct TImgStack {
 
 struct TLOSMCMCParams {
 	TImgStack *img_stack;
+	std::vector<double> p0_over_Z, ln_p0_over_Z, inv_p0_over_Z;
 	double p0, lnp0;
 	
 	double *line_int;
+	float *Delta_EBV;
+	unsigned int N_runs;
 	unsigned int N_threads;
+	unsigned int N_regions;
 	
 	double EBV_max;
 	double EBV_guess_max;
@@ -99,8 +103,9 @@ struct TLOSMCMCParams {
 	double *sigma_log_Delta_EBV;
 	double alpha_skew;
 	
-	TLOSMCMCParams(TImgStack* _img_stack, double _p0,
-	               unsigned int _N_threads, double _EBV_max=-1.);
+	TLOSMCMCParams(TImgStack* _img_stack, const std::vector<double>& _lnZ, double _p0,
+		       unsigned int _N_runs, unsigned int _N_threads, unsigned int _N_regions,
+	               double _EBV_max=-1.);
 	~TLOSMCMCParams();
 	
 	void set_p0(double _p0);
@@ -108,12 +113,13 @@ struct TLOSMCMCParams {
 	void set_subpixel_mask(std::vector<double>& new_mask);
 	
 	void calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model,
-	                          double EBV_tot, unsigned int N_regions,
-	                          int verbosity=1);
+	                          double EBV_tot, int verbosity=1);
 	
-	void gen_guess_covariance(unsigned int N_regions, double scale_length);
+	void gen_guess_covariance(double scale_length);
 	
 	double* get_line_int(unsigned int thread_num);
+	float* get_Delta_EBV(unsigned int thread_num);
+	
 };
 
 // Transform from log(DeltaEBV) to cumulative EBV for piecewise-linear l.o.s. fit
@@ -144,7 +150,7 @@ public:
 // Sample piecewise-linear model
 
 void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
-                           unsigned int N_regions, uint64_t healpix_index, int verbosity=1);
+                           uint64_t healpix_index, int verbosity=1);
 
 double lnp_los_extinction(const double *const Delta_EBV, unsigned int N_regions, TLOSMCMCParams &params);
 
@@ -153,11 +159,11 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 void gen_rand_los_extinction(double *const Delta_EBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
 
 void los_integral(TImgStack& img_stack, const double *const subpixel, double *const ret,
-                  const double *const Delta_EBV, unsigned int N_regions);
+                  const float *const Delta_EBV, unsigned int N_regions);
 
 double guess_EBV_max(TImgStack &img_stack);
 
-void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned int N_regions);
+void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params);
 
 void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<double>& Delta_EBV, TMCMCOptions& options);
 

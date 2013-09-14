@@ -57,7 +57,7 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	unsigned int max_attempts = 2;
 	unsigned int N_steps = options.steps;
 	unsigned int N_samplers = options.samplers;
-	unsigned int N_threads = options.N_threads;
+	unsigned int N_runs = options.N_runs;
 	unsigned int ndim = 2 * N_clouds;
 	
 	std::vector<double> GR_transf;
@@ -74,7 +74,7 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	}
 	
 	//std::cerr << "# Setting up sampler" << std::endl;
-	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 	sampler.set_scale(2.);
 	sampler.set_replacement_bandwidth(0.35);
 	
@@ -232,6 +232,8 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 }
 
 double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams& params) {
+	int thread_num = omp_get_thread_num();
+	
 	const size_t N_clouds = N / 2;
 	const double *Delta_mu = x;
 	const double *logDelta_EBV = x + N_clouds;
@@ -283,16 +285,23 @@ double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams
 	}
 	
 	// Compute line integrals through probability surfaces
-	double *line_int = params.get_line_int(omp_get_thread_num());
+	double *line_int = params.get_line_int(thread_num);
 	los_integral_clouds(*(params.img_stack), params.subpixel.data(), line_int, Delta_mu, logDelta_EBV, N_clouds);
 	
 	// Soften and multiply line integrals
+	double lnp_indiv;
 	for(size_t i=0; i<params.img_stack->N_images; i++) {
-		if(line_int[i] < 1.e5*params.p0) {
+		/*if(line_int[i] < 1.e5*params.p0) {
 			line_int[i] += params.p0 * exp(-line_int[i]/params.p0);
 		}
-		lnp += log(line_int[i]);
-		//std::cerr << line_int[i] << std::endl;
+		lnp += log(line_int[i]);*/
+		if(line_int[i] > params.p0_over_Z[i]) {
+			lnp_indiv = log(line_int[i]) + log(1. + params.p0_over_Z[i] / line_int[i]);
+		} else {
+			lnp_indiv = params.ln_p0_over_Z[i] + log(1. + line_int[i] * params.inv_p0_over_Z[i]);
+		}
+		
+		lnp += lnp_indiv;
 	}
 	
 	return lnp;
@@ -346,7 +355,7 @@ void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r,
  */
 
 void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
-                           unsigned int N_regions, uint64_t healpix_index, int verbosity) {
+                           uint64_t healpix_index, int verbosity) {
 	timespec t_start, t_write, t_end;
 	clock_gettime(CLOCK_MONOTONIC, &t_start);
 	
@@ -363,7 +372,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	if(verbosity >= 1) {
 		std::cout << "# Generating Guess ..." << std::endl;
 	}
-	guess_EBV_profile(options, params, N_regions);
+	guess_EBV_profile(options, params);
 	//monotonic_guess(img_stack, N_regions, params.EBV_prof_guess, options);
 	if(verbosity >= 2) {
 		for(size_t i=0; i<params.EBV_prof_guess.size(); i++) {
@@ -377,13 +386,13 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	unsigned int max_attempts = 2;
 	unsigned int N_steps = options.steps;
 	unsigned int N_samplers = options.samplers;
-	unsigned int N_threads = options.N_threads;
-	unsigned int ndim = N_regions + 1;
+	unsigned int N_runs = options.N_runs;
+	unsigned int ndim = params.N_regions + 1;
 	
 	double max_conv_mu = 15.;
 	double DM_max = params.img_stack->rect->max[1];
 	double DM_min = params.img_stack->rect->min[1];
-	double Delta_DM = (DM_max - DM_min) / (double)N_regions;
+	double Delta_DM = (DM_max - DM_min) / (double)(params.N_regions);
 	unsigned int max_conv_idx = ceil((max_conv_mu - DM_min) / Delta_DM);
 	//std::cout << "max_conv_idx = " << max_conv_idx << std::endl;
 	
@@ -397,22 +406,23 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t mix_step = &mix_log_Delta_EBVs;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t move_one_step = &step_one_Delta_EBV;
 	
-	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 	
 	// Burn-in
 	if(verbosity >= 1) { std::cout << "# Burn-in ..." << std::endl; }
 	
 	// Round 1 (5/20)
+	unsigned int base_N_steps = ceil((double)N_steps * 1./20.);
 	
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.10);
 	sampler.set_MH_bandwidth(0.15);
 	
 	sampler.tune_MH(8, 0.25);
-	sampler.step_MH(int(N_steps*1./20.), false);
+	sampler.step_MH(base_N_steps, false);
 	
 	sampler.tune_MH(8, 0.25);
-	sampler.step_MH(int(N_steps*1./20.), false);
+	sampler.step_MH(base_N_steps, false);
 	
 	if(verbosity >= 2) {
 		std::cout << "scale: (";
@@ -429,8 +439,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 		std::cout << ")" << std::endl;
 	}
 	
-	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
-	sampler.step(int(N_steps*1./20.), false, 0., 1., true, true);
+	sampler.step(2*base_N_steps, false, 0., options.p_replacement);
+	sampler.step(base_N_steps, false, 0., 1., true, true);
 	
 	if(verbosity >= 2) {
 		std::cout << "Round 1 diagnostics:" << std::endl;
@@ -459,9 +469,9 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(int(N_steps*1./20.), switch_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), move_one_step, false);
+	sampler.step_custom_reversible(base_N_steps, switch_step, false);
+	sampler.step_custom_reversible(base_N_steps, mix_step, false);
+	sampler.step_custom_reversible(base_N_steps, move_one_step, false);
 	
 	if(verbosity >= 2) {
 		std::cout << "Round 2 diagnostics:" << std::endl;
@@ -487,11 +497,11 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	}
 	
 	//sampler.step_MH(int(N_steps*1./20.), false);
-	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
+	sampler.step(2*base_N_steps, false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(int(N_steps*1./20.), switch_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), move_one_step, false);
+	sampler.step_custom_reversible(base_N_steps, switch_step, false);
+	sampler.step_custom_reversible(base_N_steps, mix_step, false);
+	sampler.step_custom_reversible(base_N_steps, move_one_step, false);
 	
 	if(verbosity >= 2) {
 		std::cout << "Round 3 diagnostics:" << std::endl;
@@ -519,11 +529,11 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	}
 	
 	//sampler.step_MH(int(N_steps*2./15.), false);
-	sampler.step(int(N_steps*2./20.), false, 0., options.p_replacement);
+	sampler.step(2*base_N_steps, false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(int(N_steps*1./20.), switch_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), mix_step, false);
-	sampler.step_custom_reversible(int(N_steps*1./20.), move_one_step, false);
+	sampler.step_custom_reversible(base_N_steps, switch_step, false);
+	sampler.step_custom_reversible(base_N_steps, mix_step, false);
+	sampler.step_custom_reversible(base_N_steps, move_one_step, false);
 	
 	if(verbosity >= 2) {
 		std::cout << "Round 4 diagnostics:" << std::endl;
@@ -561,7 +571,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
 			}
 		}
-		sampler.tune_stretch(8, 0.30);
+		//sampler.tune_stretch(8, 0.30);
 		if(verbosity >= 2) {
 			std::cout << ") -> (";
 			for(int k=0; k<sampler.get_N_samplers(); k++) {
@@ -570,25 +580,27 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 			std::cout << ")" << std::endl;
 		}
 		
+		base_N_steps = ceil((double)((1<<attempt)*N_steps)*1./15.);
+		
 		// Round 1 (5/15)
-		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., switch_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
+		sampler.step(2*base_N_steps, true, 0., options.p_replacement);
+		sampler.step_custom_reversible(base_N_steps, switch_step, true);
+		sampler.step_custom_reversible(base_N_steps, mix_step, true);
+		sampler.step_custom_reversible(base_N_steps, move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		// Round 2 (5/15)
-		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., switch_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
+		sampler.step(2*base_N_steps, true, 0., options.p_replacement);
+		sampler.step_custom_reversible(base_N_steps, switch_step, true);
+		sampler.step_custom_reversible(base_N_steps, mix_step, true);
+		sampler.step_custom_reversible(base_N_steps, move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		// Round 3 (5/15)
-		sampler.step((1<<attempt)*N_steps*2./15., true, 0., options.p_replacement);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., switch_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., mix_step, true);
-		sampler.step_custom_reversible((1<<attempt)*N_steps*1./15., move_one_step, true);
+		sampler.step(2*base_N_steps, true, 0., options.p_replacement);
+		sampler.step_custom_reversible(base_N_steps, switch_step, true);
+		sampler.step_custom_reversible(base_N_steps, mix_step, true);
+		sampler.step_custom_reversible(base_N_steps, move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		sampler.calc_GR_transformed(GR_transf, &transf);
@@ -614,8 +626,8 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 						std::cout << "# Extending run ..." << std::endl;
 					}
 					
-					sampler.step(int(N_steps*1./5.), false, 0., 1.);
-					sampler.step_custom_reversible(int(N_steps*1./10.), switch_step, true);
+					sampler.step(3*base_N_steps, false, 0., 1.);
+					sampler.step_custom_reversible(base_N_steps, switch_step, true);
 					
 					sampler.clear();
 					//logger.clear();
@@ -658,51 +670,87 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	}
 }
 
-
 void los_integral(TImgStack &img_stack, const double *const subpixel, double *const ret,
-                                        const double *const logEBV, unsigned int N_regions) {
+                                        const float *const Delta_EBV, unsigned int N_regions) {
 	assert(img_stack.rect->N_bins[1] % N_regions == 0);
 	
-	unsigned int N_samples = img_stack.rect->N_bins[1] / N_regions;
-	int y_max = img_stack.rect->N_bins[0];
+	const int subsampling = 1;
+	const int N_pix_per_bin = img_stack.rect->N_bins[1] / N_regions;
+	const float N_samples = subsampling * N_pix_per_bin;
+	const int y_max = img_stack.rect->N_bins[0];
 	
-	int x_start = 0;
 	int x;
-	float y_start = exp(logEBV[0]) / img_stack.rect->dx[0];
-	float y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
-	float y_ceil, y_floor, y, dy, y_scaled;
-	int y_floor_int, y_ceil_int;
 	
-	for(size_t i=0; i<img_stack.N_images; i++) { ret[i] = 0.; }
+	float Delta_y_0 = Delta_EBV[0] / img_stack.rect->dx[0];
+	const float y_0 = -img_stack.rect->min[0] / img_stack.rect->dx[0];
+	float y, dy;
 	
-	for(int i=1; i<N_regions+1; i++) {
-		dy = (float)(exp(logEBV[i])) / (float)(N_samples) / img_stack.rect->dx[0];
+	// Integer arithmetic is the poor man's fixed-point math
+	typedef uint32_t fixed_point_t;
+	const int base_2_prec = 18;	// unsigned Q14.18 format
+	
+	const fixed_point_t prec_factor_int = (1 << base_2_prec);
+	const float prec_factor = (float)prec_factor_int;
+	
+	fixed_point_t y_int, dy_int;
+	fixed_point_t y_ceil, y_floor;
+	fixed_point_t diff;
+	
+	// Pre-computed multiplicative factors
+	float dy_mult_factor = 1. / N_samples / img_stack.rect->dx[0];
+	float ret_mult_factor = 1. / (float)subsampling / prec_factor;
+	
+	float tmp_ret, tmp_subpixel;
+	cv::Mat *img;
+	
+	// For each image
+	for(int k=0; k<img_stack.N_images; k++) {
+		tmp_ret = 0.;
+		img = img_stack.img[k];
+		tmp_subpixel = subpixel[k];
 		
-		for(int k=0; k<img_stack.N_images; k++) {
-			y = y_start;
-			x = x_start;
+		x = 0;
+		y = y_0 + tmp_subpixel * Delta_y_0;
+		y_int = (fixed_point_t)(prec_factor * y);
+		
+		for(int i=1; i<N_regions+1; i++) {
+			// Determine y increment in region (slope)
+			dy = tmp_subpixel * Delta_EBV[i] * dy_mult_factor;
+			dy_int = (fixed_point_t)(prec_factor * dy);
 			
-			for(int j=0; j<N_samples; j++, x++, y+=dy) {
-				y_scaled = y_0 + y * subpixel[k];
-				y_floor = floor(y_scaled);
-				y_ceil = y_floor + 1.;
-				y_floor_int = (int)y_floor;
-				y_ceil_int = y_floor + 1;
+			// For each DM pixel
+			for(int j=0; j<N_pix_per_bin; j++, x++, y_int+=dy_int) {
 				
-				//if((y_floor_int < 0) || (y_ceil_int >= y_max)) {
-				//	#pragma omp critical
-				//	std::cout << "! BOUNDS OVERRUN !" << std::endl;
-				//	
-				//	break;
-				//}
+				// Manual loop unrolling. It's ugly, but it works!
 				
-				ret[k] += (y_ceil - y_scaled) * img_stack.img[k]->at<float>(y_floor_int, x)
-				           + (y_scaled - y_floor) * img_stack.img[k]->at<float>(y_ceil_int, x);
+				// 0
+				y_floor = (y_int >> base_2_prec);
+				diff = y_int - (y_floor << base_2_prec);
+				
+				tmp_ret += diff * img->at<float>(y_floor, x)
+				        + (prec_factor_int - diff) * img->at<float>(y_floor+1, x);
+				
+				/*
+				// 1
+				y_int += dy_int;
+				y_floor = (y_int >> base_2_prec);
+				diff = y_int - (y_floor << base_2_prec);
+				
+				tmp_ret += diff * img->at<float>(y_floor, x)
+				        + (prec_factor_int - diff) * img->at<float>(y_floor+1, x);
+				
+				// 2
+				y_int += dy_int;
+				y_floor = (y_int >> base_2_prec);
+				diff = y_int - (y_floor << base_2_prec);
+				
+				tmp_ret += diff * img->at<float>(y_floor, x)
+				        + (prec_factor_int - diff) * img->at<float>(y_floor+1, x);
+				*/
 			}
 		}
 		
-		y_start += (float)N_samples * dy;
-		x_start += N_samples;
+		ret[k] = tmp_ret * ret_mult_factor;
 	}
 }
 
@@ -713,12 +761,20 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	double EBV_tmp;
 	double diff_scaled;
 	
+	int thread_num = omp_get_thread_num();
+	
+	// Calculate Delta E(B-V) from log(Delta E(B-V))
+	float *Delta_EBV = params.get_Delta_EBV(thread_num);
+	
+	for(int i=0; i<N; i++) {
+		Delta_EBV[i] = exp(logEBV[i]);
+	}
+	
 	if(params.log_Delta_EBV_prior != NULL) {
 		//const double sigma = 2.5;
 		
 		for(size_t i=0; i<N; i++) {
-			EBV_tmp = exp(logEBV[i]);
-			EBV_tot += EBV_tmp;
+			EBV_tot += Delta_EBV[i];
 			
 			// Prior that reddening traces stellar disk
 			diff_scaled = (logEBV[i] - params.log_Delta_EBV_prior[i]) / params.sigma_log_Delta_EBV[i];
@@ -730,8 +786,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		const double sigma = 2.;
 		
 		for(size_t i=0; i<N; i++) {
-			EBV_tmp = exp(logEBV[i]);
-			EBV_tot += EBV_tmp;
+			EBV_tot += Delta_EBV[i];
 			
 			// Wide Gaussian prior on logEBV to prevent fit from straying drastically
 			lnp -= (logEBV[i] - bias) * (logEBV[i] - bias) / (2. * sigma * sigma);
@@ -749,15 +804,27 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 	}
 	
 	// Compute line integrals through probability surfaces
-	double *line_int = params.get_line_int(omp_get_thread_num());
-	los_integral(*(params.img_stack), params.subpixel.data(), line_int, logEBV, N-1);
+	double *line_int = params.get_line_int(thread_num);
+	los_integral(*(params.img_stack), params.subpixel.data(), line_int, Delta_EBV, N-1);
 	
 	// Soften and multiply line integrals
+	double lnp_indiv;
 	for(size_t i=0; i<params.img_stack->N_images; i++) {
-		if(line_int[i] < 1.e5*params.p0) {
-			line_int[i] += params.p0 * exp(-line_int[i]/params.p0);
+		//if(line_int[i] < 1.e5*params.p0) {
+		//	line_int[i] += params.p0 * exp(-line_int[i]/params.p0);
+		//}
+		if(line_int[i] > params.p0_over_Z[i]) {
+			lnp_indiv = log(line_int[i]) + log(1. + params.p0_over_Z[i] / line_int[i]);
+		} else {
+			lnp_indiv = params.ln_p0_over_Z[i] + log(1. + line_int[i] * params.inv_p0_over_Z[i]);
 		}
-		lnp += log(line_int[i]);
+		
+		lnp += lnp_indiv;
+		
+		/*#pragma omp critical (cout)
+		{
+		std::cerr << i << "(" << params.ln_p0_over_Z[i] <<"): " << log(line_int[i]) << " --> " << lnp_indiv << std::endl;
+		}*/
 	}
 	
 	return lnp;
@@ -765,7 +832,7 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 
 void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params) {
 	double EBV_ceil = params.img_stack->rect->max[0] / params.subpixel_max;
-	double mu = log(1.5 * params.EBV_guess_max / params.subpixel_max / (double)N);
+	double mu = 1.5 * params.EBV_guess_max / params.subpixel_max / (double)N;
 	double EBV_sum = 0.;
 	
 	if((params.log_Delta_EBV_prior != NULL) && (gsl_rng_uniform(r) < 0.8)) {
@@ -774,9 +841,37 @@ void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, T
 			EBV_sum += exp(logEBV[i]);
 		}
 	} else {
+		double log_scaling = gsl_ran_gaussian_ziggurat(r, 0.25);
 		for(size_t i=0; i<N; i++) {
-			logEBV[i] = mu + gsl_ran_gaussian_ziggurat(r, 2.5);
+			logEBV[i] = log(mu * gsl_rng_uniform(r)) + log_scaling; //mu + gsl_ran_gaussian_ziggurat(r, 2.5);
 			EBV_sum += exp(logEBV[i]);
+		}
+		/*#pragma omp critical (cout)
+		{
+		std::cerr << EBV_sum << ": ";
+		for(size_t i=0; i<N; i++) {
+			std::cerr << logEBV[i] << " ";
+		}
+		std::cerr << std::endl;
+		}*/
+	}
+	
+	// Add in cloud to bring total reddening up to guess value (with some scatter)
+	if(gsl_rng_uniform(r) < 0.25) {
+		const double sigma_tmp = 0.5;
+		double EBV_target_tmp = params.EBV_guess_max * exp(gsl_ran_gaussian_ziggurat(r, sigma_tmp) - 0.5*sigma_tmp*sigma_tmp - 0.5);
+		if(EBV_sum < EBV_target_tmp) {
+			size_t k = gsl_rng_uniform_int(r, N);
+			logEBV[k] = log(exp(logEBV[k]) + EBV_target_tmp - EBV_sum);
+			/*#pragma omp critical (cout)
+			{
+			std::cerr << EBV_sum << ": " << EBV_target_tmp << ": ";
+			for(size_t j=0; j<N; j++) {
+				std::cerr << logEBV[j] << " ";
+			}
+			std::cerr << std::endl;
+			}*/
+			EBV_sum = EBV_target_tmp;
 		}
 	}
 	
@@ -811,14 +906,15 @@ double guess_EBV_max(TImgStack &img_stack) {
 	return max * img_stack.rect->dx[0] + img_stack.rect->min[0];
 }
 
-void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned int N_regions) {
+void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params) {
 	TNullLogger logger;
 	
 	unsigned int N_steps = options.steps / 8;
 	if(N_steps < 40) { N_steps = 40; }
 	unsigned int N_samplers = options.samplers;
-	unsigned int N_threads = options.N_threads;
-	unsigned int ndim = N_regions + 1;
+	//if(N_samplers < 10) { N_samplers = 10; }
+	unsigned int N_runs = options.N_runs;
+	unsigned int ndim = params.N_regions + 1;
 	
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction;
@@ -826,7 +922,7 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned i
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t mix_step = &mix_log_Delta_EBVs;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t move_one_step = &step_one_Delta_EBV;
 	
-	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 	sampler.set_scale(1.05);
 	sampler.set_replacement_bandwidth(0.75);
 	
@@ -839,8 +935,9 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned i
 	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, true);
 	sampler.step_custom_reversible(int(N_steps*10./100.), move_one_step, true);
 	
-	sampler.step(int(N_steps*10./100.), true, 0., 0.5, true);
+	//sampler.step(int(N_steps*10./100.), true, 0., 0.5, true);
 	//sampler.step(int(N_steps*10./100), true, 0., 1., true);
+	sampler.step_MH(int(N_steps*10./100.), true);
 	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, true);
 	sampler.step_custom_reversible(int(N_steps*10./100.), move_one_step, true);
 	
@@ -981,7 +1078,7 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 	// Fit monotonic guess
 	unsigned int N_steps = 100;
 	unsigned int N_samplers = 2 * N_regions;
-	unsigned int N_threads = options.N_threads;
+	unsigned int N_runs = options.N_runs;
 	unsigned int ndim = N_regions + 1;
 	
 	std::cout << "Setting up params" << std::endl;
@@ -992,7 +1089,7 @@ void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<d
 	TAffineSampler<TEBVGuessParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_monotonic;
 	
 	std::cout << "Setting up sampler" << std::endl;
-	TParallelAffineSampler<TEBVGuessParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+	TParallelAffineSampler<TEBVGuessParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.75);
 	
@@ -1039,7 +1136,7 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	//}
 	//}
 	
-	double sigma = 0.05;
+	const double sigma = 0.05;
 	
 	if(params.guess_cov == NULL) {
 		for(size_t i=0; i<N; i++) {
@@ -1049,6 +1146,14 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 	} else {
 		// Redistribute reddening among distance bins
 		draw_from_cov(logEBV, params.guess_sqrt_cov, N, r);
+		
+		/*#pragma omp critical (cout)
+		{
+		for(int i=0; i<N; i++) {
+			std::cout << std::setw(6) << std::setprecision(2) << logEBV[i] << " ";
+		}
+		std::cout << std::endl;
+		}*/
 		
 		for(size_t i=0; i<N; i++) {
 			logEBV[i] *= sigma;
@@ -1061,14 +1166,6 @@ void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gs
 		//double norm = exp(gsl_ran_gaussian_ziggurat(r, 0.05));
 		//factor = log(norm * guess_sum / EBV_sum);
 		//for(size_t i=0; i<N; i++) { logEBV[i] += factor; }
-		
-		/*#pragma omp critical (cout)
-		{
-		for(int i=0; i<N; i++) {
-			std::cout << std::setw(6) << std::setprecision(2) << logEBV[i] << " ";
-		}
-		std::cout << std::endl;
-		}*/
 	}
 	
 	// Switch adjacent reddenings
@@ -1172,17 +1269,32 @@ double step_one_Delta_EBV(double *const _X, double *const _Y, unsigned int _N, g
  * 
  ****************************************************************************************************************************/
 
-TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
-                               unsigned int _N_threads, double _EBV_max)
-	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.), N_threads(_N_threads),
+TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, const std::vector<double>& _lnZ, double _p0,
+                               unsigned int _N_runs, unsigned int _N_threads, unsigned int _N_regions,
+                               double _EBV_max)
+	: img_stack(_img_stack), subpixel(_img_stack->N_images, 1.),
+	  N_runs(_N_runs), N_threads(_N_threads), N_regions(_N_regions),
 	  line_int(NULL), Delta_EBV_prior(NULL),
 	  log_Delta_EBV_prior(NULL), sigma_log_Delta_EBV(NULL),
 	  guess_cov(NULL), guess_sqrt_cov(NULL)
 {
 	line_int = new double[_img_stack->N_images * N_threads];
+	Delta_EBV = new float[(N_regions+1) * N_threads];
+	
 	//std::cout << "Allocated line_int[" << _img_stack->N_images * N_threads << "] (" << _img_stack->N_images << " images, " << N_threads << " threads)" << std::endl;
 	p0 = _p0;
 	lnp0 = log(p0);
+	
+	p0_over_Z.reserve(_lnZ.size());
+	inv_p0_over_Z.reserve(_lnZ.size());
+	ln_p0_over_Z.reserve(_lnZ.size());
+	
+	for(std::vector<double>::const_iterator it=_lnZ.begin(); it != _lnZ.end(); ++it) {
+		ln_p0_over_Z.push_back(lnp0 - *it);
+		p0_over_Z.push_back(exp(lnp0 - *it));
+		inv_p0_over_Z.push_back(exp(*it - lnp0));
+	}
+	
 	EBV_max = _EBV_max;
 	EBV_guess_max = guess_EBV_max(*img_stack);
 	subpixel_max = 1.;
@@ -1192,6 +1304,7 @@ TLOSMCMCParams::TLOSMCMCParams(TImgStack* _img_stack, double _p0,
 
 TLOSMCMCParams::~TLOSMCMCParams() {
 	if(line_int != NULL) { delete[] line_int; }
+	if(Delta_EBV != NULL) { delete[] Delta_EBV; }
 	if(Delta_EBV_prior != NULL) { delete[] Delta_EBV_prior; }
 	if(log_Delta_EBV_prior != NULL) { delete[] log_Delta_EBV_prior; }
 	if(sigma_log_Delta_EBV != NULL) { delete[] sigma_log_Delta_EBV; }
@@ -1231,7 +1344,7 @@ void TLOSMCMCParams::set_subpixel_mask(std::vector<double>& new_mask) {
 }
 
 // Calculate the mean and std. dev. of log(delta_EBV)
-void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, double EBV_tot, unsigned int N_regions, int verbosity) {
+void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, double EBV_tot, int verbosity) {
 	double mu_0 = img_stack->rect->min[1];
 	double mu_1 = img_stack->rect->max[1];
 	assert(mu_1 > mu_0);
@@ -1355,7 +1468,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 }
 
 
-void TLOSMCMCParams::gen_guess_covariance(unsigned int N_regions, double scale_length) {
+void TLOSMCMCParams::gen_guess_covariance(double scale_length) {
 	if(guess_cov != NULL) { gsl_matrix_free(guess_cov); }
 	if(guess_sqrt_cov != NULL) { gsl_matrix_free(guess_sqrt_cov); }
 	
@@ -1399,6 +1512,10 @@ double* TLOSMCMCParams::get_line_int(unsigned int thread_num) {
 	return line_int + img_stack->N_images * thread_num;
 }
 
+float* TLOSMCMCParams::get_Delta_EBV(unsigned int thread_num) {
+	assert(thread_num < N_threads);
+	return Delta_EBV + (N_regions+1) * thread_num;
+}
 
 
 

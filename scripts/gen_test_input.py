@@ -36,7 +36,7 @@ import matplotlib as mplib
 from model import TGalacticModel, TStellarModel
 from wrap_bayestar import write_infile, write_true_params
 
-fh = 0.0051
+fh = 0.003 #0.0051
 
 class TSample1D:
 	'''
@@ -119,7 +119,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	R = np.array([3.172, 2.271, 1.682, 1.322, 1.087])
 	
 	mu_max = mag_lim[1] - gal_model.Mr_min + 3.
-	mu_min = min(0., mu_max-15.)
+	mu_min = min(0., mu_max-25.)
 	Mr_max = min(mag_lim[1], gal_model.Mr_max)
 	
 	dN_dDM = lambda mu: gal_model.dn_dDM(mu, cos_l, sin_l, cos_b, sin_b)
@@ -206,7 +206,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		
 		# Re-estimate errors based on magnitudes
 		for k in xrange(5):
-			ret['err'][idx,k] = err_model(ret['err'][idx,k], mag_lim[k])
+			ret['err'][idx,k] = err_model(ret['mag'][idx,k], mag_lim[k])
 		
 		# Remove observations with errors above 0.2 mags
 		obs = obs & (ret['err'][idx] < 0.2)
@@ -228,6 +228,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 			
 			ret = ret[obs]
 	
+	print ret['err']
 	return ret
 
 

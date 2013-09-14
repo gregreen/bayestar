@@ -754,7 +754,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 	unsigned int max_attempts = 3;
 	unsigned int N_steps = options.steps;
 	unsigned int N_samplers = options.samplers;
-	unsigned int N_threads = options.N_threads;
+	unsigned int N_runs = options.N_runs;
 	unsigned int ndim;
 	
 	if(params.vary_RV) { ndim = 6; } else { ndim = 5; }
@@ -788,7 +788,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		}
 		
 		//std::cerr << "# Setting up sampler" << std::endl;
-		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 		sampler.set_scale(1.2);
 		sampler.set_replacement_bandwidth(0.2);
 		sampler.set_sigma_min(0.02);
@@ -909,7 +909,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	unsigned int max_attempts = 3;
 	unsigned int N_steps = options.steps;
 	unsigned int N_samplers = options.samplers;
-	unsigned int N_threads = options.N_threads;
+	unsigned int N_runs = options.N_runs;
 	unsigned int ndim;
 	
 	if(params.vary_RV) { ndim = 5; } else { ndim = 4; }
@@ -960,9 +960,9 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		}
 		
 		//std::cerr << "# Setting up sampler" << std::endl;
-		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 		sampler.set_scale(1.5);
-		sampler.set_replacement_bandwidth(0.40);
+		sampler.set_replacement_bandwidth(0.30);
 		sampler.set_replacement_accept_bias(1.e-5);
 		sampler.set_sigma_min(0.02);
 		

@@ -320,6 +320,9 @@ class TGalacticModel:
         
         log_Delta_EBV += np.log(norm)
         
+        idx = (log_Delta_EBV < -6.)
+        log_Delta_EBV[idx] = -6.
+        
         return DM, log_Delta_EBV, sigma, mean_Delta_EBV, norm
 
 
@@ -705,7 +708,7 @@ def print_rho(l, b):
         print 'rho(DM = %.1f) = %.5f' % (DM, model.dA_dmu(l, b, DM) / np.power(10., DM / 5.))
 
 def main():
-    l, b = 0., 1.
+    l, b = 45.3516, 1.41762
     
     print_rho(l, b)
     plot_EBV_prior_profile(l, b)
