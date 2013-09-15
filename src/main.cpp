@@ -143,7 +143,7 @@ int main(int argc, char **argv) {
 	double evCut = 15.;
 	
 	unsigned int N_runs = 4;
-	unsigned int N_threads = 4;
+	unsigned int N_threads = 1;
 	
 	int verbosity = 0;
 	
@@ -189,7 +189,7 @@ int main(int argc, char **argv) {
 		                                            "in l.o.s. fit (default: 15).")
 		
 		("runs", po::value<unsigned int>(&N_runs), "# of times to run each chain (to check for non-convergence) (default: 4)")
-		("threads", po::value<unsigned int>(&N_threads), "# of threads to run on (default: 4)")
+		("threads", po::value<unsigned int>(&N_threads), "# of threads to run on (default: 1)")
 		
 		("verbosity", po::value<int>(&verbosity), "Level of verbosity (0 = minimal, 2 = highest)")
 	;
