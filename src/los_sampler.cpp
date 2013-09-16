@@ -75,6 +75,7 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	
 	//std::cerr << "# Setting up sampler" << std::endl;
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
+	sampler.set_sigma_min(1.e-5);
 	sampler.set_scale(2.);
 	sampler.set_replacement_bandwidth(0.35);
 	
@@ -372,7 +373,28 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	if(verbosity >= 1) {
 		std::cout << "# Generating Guess ..." << std::endl;
 	}
-	guess_EBV_profile(options, params);
+	
+	//std::vector<double> guess_time;
+	
+	/*for(int i=0; i<50; i++) {
+		timespec t_0, t_1;
+		double t_tmp;
+		
+		clock_gettime(CLOCK_MONOTONIC, &t_0);
+		
+		guess_EBV_profile(options, params);
+		
+		clock_gettime(CLOCK_MONOTONIC, &t_1);
+		
+		t_tmp = (t_1.tv_sec - t_0.tv_sec) + 1.e-9 * (t_1.tv_nsec - t_0.tv_nsec);
+		//guess_time.push_back(t_tmp);
+		
+		std::cerr << "Guess " << i << ": " << t_tmp << " s" << std::endl;
+	}*/
+	
+	guess_EBV_profile(options, params, verbosity);
+	
+	
 	//monotonic_guess(img_stack, N_regions, params.EBV_prof_guess, options);
 	if(verbosity >= 2) {
 		for(size_t i=0; i<params.EBV_prof_guess.size(); i++) {
@@ -414,6 +436,7 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	// Round 1 (5/20)
 	unsigned int base_N_steps = ceil((double)N_steps * 1./20.);
 	
+	sampler.set_sigma_min(1.e-5);
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.10);
 	sampler.set_MH_bandwidth(0.15);
@@ -906,7 +929,7 @@ double guess_EBV_max(TImgStack &img_stack) {
 	return max * img_stack.rect->dx[0] + img_stack.rect->min[0];
 }
 
-void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params) {
+void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, int verbosity) {
 	TNullLogger logger;
 	
 	unsigned int N_steps = options.steps / 8;
@@ -923,6 +946,7 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params) {
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::reversible_step_t move_one_step = &step_one_Delta_EBV;
 	
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
+	sampler.set_sigma_min(0.001);
 	sampler.set_scale(1.05);
 	sampler.set_replacement_bandwidth(0.75);
 	
@@ -937,13 +961,38 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params) {
 	
 	//sampler.step(int(N_steps*10./100.), true, 0., 0.5, true);
 	//sampler.step(int(N_steps*10./100), true, 0., 1., true);
+	/*std::cout << "scale: (";
+	for(int k=0; k<sampler.get_N_samplers(); k++) {
+		std::cout << sampler.get_MH_bandwidth(k) << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+	}*/
+	//sampler.tune_MH(8, 0.30);
+	/*std::cout << ") -> (";
+	for(int k=0; k<sampler.get_N_samplers(); k++) {
+		std::cout << sampler.get_MH_bandwidth(k) << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+	}
+	std::cout << ")" << std::endl;*/
 	sampler.step_MH(int(N_steps*10./100.), true);
 	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, true);
 	sampler.step_custom_reversible(int(N_steps*10./100.), move_one_step, true);
 	
+	/*std::cout << "scale: (";
+	for(int k=0; k<sampler.get_N_samplers(); k++) {
+		std::cout << sampler.get_MH_bandwidth(k) << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+	}*/
+	//sampler.tune_MH(8, 0.30);
+	/*std::cout << ") -> (";
+	for(int k=0; k<sampler.get_N_samplers(); k++) {
+		std::cout << sampler.get_MH_bandwidth(k) << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+	}
+	std::cout << ")" << std::endl;*/
 	sampler.step_MH(int(N_steps*10./100.), true);
 	
-	sampler.print_diagnostics();
+	if(verbosity >= 2) {
+		sampler.print_diagnostics();
+		std::cout << std::endl;
+	}
+	
+	//std::cout << std::endl;
 	
 	//if(verbosity >= 2) {
 	//	sampler.print_stats();
