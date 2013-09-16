@@ -163,7 +163,7 @@ void los_integral(TImgStack& img_stack, const double *const subpixel, double *co
 
 double guess_EBV_max(TImgStack &img_stack);
 
-void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params);
+void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, int verbosity=1);
 
 void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<double>& Delta_EBV, TMCMCOptions& options);
 
