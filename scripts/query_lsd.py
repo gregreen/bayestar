@@ -37,6 +37,58 @@ import iterators
 import matplotlib.pyplot as plt
 
 
+def lb2pix(nside, l, b, nest=True):
+	theta = np.pi/180. * (90. - b)
+	phi = np.pi/180. * l
+	
+	return hp.pixelfunc.ang2pix(nside, theta, phi, nest=nest)
+
+def pix2lb(nside, ipix, nest=True):
+	theta, phi = hp.pixelfunc.pix2ang(nside, ipix, nest=True)
+	
+	l = 180./np.pi * phi
+	b = 90. - 180./np.pi * theta
+	
+	return l, b
+
+
+def adaptive_subdivide(pix_idx, nside, obj,
+                    n_stars_max, n_stars_min=10, nside_max=2048):
+	# Subdivide pixel
+	if (len(obj) > n_stars_max[nside]) and (nside < nside_max):
+		sub_pix_idx = lb2pix(nside*2, obj['l'], obj['b'], nest=True)
+		
+		# Check that all pixels have more than minimum # of pixels
+		over_threshold = True
+		
+		for i in xrange(4 * pix_idx, 4 * pix_idx + 4):
+			idx = (sub_pix_idx == i)
+			
+			if np.sum(idx) < n_stars_min:
+				over_threshold = False
+				break
+		
+		if not over_threshold:
+			return [(nside, pix_idx, obj)]
+		
+		# Return subdivided pixel
+		ret = []
+		
+		for i in xrange(4 * pix_idx, 4 * pix_idx + 4):
+			idx = (sub_pix_idx == i)
+			
+			tmp = adaptive_subdivide(i, nside*2, obj[idx],
+			                         n_stars_max, n_stars_min, nside_max)
+			
+			for pix in tmp:
+				ret.append(pix)
+		
+		return ret
+		
+	else:
+		return [(nside, pix_idx, obj)]
+
+
 def mapper(qresult, nside, nest, bounds):
 	obj = lsd.colgroup.fromiter(qresult, blocks=True)
 	
@@ -83,6 +135,20 @@ def reducer(keyvalue):
 	yield (pix_index, obj[mask_keep])
 
 
+def subdivider(keyvalue, nside, n_stars_max, n_stars_min, nside_max):
+	pix_index, obj = keyvalue
+	obj = lsd.colgroup.fromiter(obj, blocks=True)
+	
+	# Adaptively subdivide pixel
+	ret = adaptive_subdivide(pix_index, nside, obj,
+                             n_stars_max, n_stars_min, nside_max)
+	
+	for subpixel in ret:
+		sub_nside, sub_idx, sub_obj = subpixel
+		
+		yield ((sub_nside, sub_idx), sub_obj)
+
+
 def start_file(base_fname, index):
 	fout = open('%s_%d.in' % (base_fname, index), 'wb')
 	f.write(np.array([0], dtype=np.uint32).tostring())
@@ -95,7 +161,7 @@ def to_file(f, pix_index, nside, nest, EBV, data):
 		f = h5py.File(fname, 'a')
 		close_file = True
 	
-	ds_name = '/photometry/pixel %d' % pix_index
+	ds_name = '/photometry/pixel %d-%d' % (nside, pix_index)
 	ds = f.create_dataset(ds_name, data.shape, data.dtype, chunks=True,
 	                      compression='gzip', compression_opts=9)
 	ds[:] = data[:]
@@ -131,8 +197,12 @@ def main():
 	           description='Generate bayestar input files from PanSTARRS data.',
 	           add_help=True)
 	parser.add_argument('out', type=str, help='Output filename.')
-	parser.add_argument('-n', '--nside', type=int, default=512,
-	                    help='Healpix nside parameter (default: 512).')
+	parser.add_argument('-nmin', '--nside-min', type=int, default=512,
+	                    help='Lowest resolution in healpix nside parameter (default: 512).')
+	parser.add_argument('-nmax', '--nside-max', type=int, default=512,
+	                    help='Lowest resolution in healpix nside parameter (default: 512).')
+	parser.add_argument('-rt', '--res-thresh', type=int, nargs='+', default=None,
+	                    help='Maximum # of pixels for each healpix resolution (from lowest to highest).')
 	parser.add_argument('-b', '--bounds', type=float, nargs=4, default=None,
 	                    help='Restrict pixels to region enclosed by: l_min, l_max, b_min, b_max.')
 	parser.add_argument('-min', '--min-stars', type=int, default=1,
@@ -143,10 +213,6 @@ def main():
 	                    help='Only select objects identified in the SDSS catalog as stars.')
 	parser.add_argument('-ext', '--maxAr', type=float, default=None,
 	                    help='Maximum allowed A_r.')
-	parser.add_argument('-r', '--ring', action='store_true',
-	                    help='Use healpix ring ordering scheme (default: nested).')
-	parser.add_argument('-vis', '--visualize', action='store_true',
-	                    help='Show number of stars in each pixel when query is done')
 	parser.add_argument('--n-bands', type=int, default=4,
 	                    help='Min. # of passbands with detection.')
 	parser.add_argument('--n-det', type=int, default=4,
@@ -161,10 +227,37 @@ def main():
 	if nPointlike == 0:
 		nPointlike = 1
 	
+	# Handle adaptive pixelization parameters
+	base_2_choices = [2**n for n in xrange(15)]
+	if values.nside_min not in base_2_choices:
+		raise ValueError('--nside-min is not a small power of two.')
+	elif values.nside_max not in base_2_choices:
+		raise ValueError('--nside-max is not a small power of two.')
+	elif values.nside_max < values.nside_min:
+		raise ValueError('--nside-max is less than --nside-min.')
+	
+	n_stars_max = None
+	
+	if values.nside_min == values.nside_max:
+		n_stars_max = {values.nside_max: 1}
+	else:
+		n_stars_max = {}
+		nside = values.nside_min
+		k = 0
+		
+		while nside < values.nside_max:
+			n_stars_max[nside] = values.res_thresh[k]
+			
+			nside *= 2
+			k += 1
+		
+		n_stars_max[values.nside_max] = 1
+	
 	# Determine the query bounds
 	query_bounds = None
 	if values.bounds != None:
-		pix_scale = hp.pixelfunc.nside2resol(values.nside) * 180. / np.pi
+		pix_scale = hp.pixelfunc.nside2resol(values.nside_min) * 180. / np.pi
+		query_bounds = []
 		query_bounds.append(max([0., values.bounds[0] - 3.*pix_scale]))
 		query_bounds.append(min([360., values.bounds[1] + 3.*pix_scale]))
 		query_bounds.append(max([-90., values.bounds[2] - 3.*pix_scale]))
@@ -209,11 +302,6 @@ def main():
 	
 	query = db.query(query)
 	
-	# Initialize map to store number of stars in each pixel
-	pix_map = None
-	if values.visualize:
-		pix_map = np.zeros(12 * values.nside**2, dtype=np.uint64)
-	
 	# Initialize stats on pixels, # of stars, etc.
 	l_min = np.inf
 	l_max = -np.inf
@@ -237,11 +325,25 @@ def main():
 	nInFile = 0
 	
 	# Write each pixel to the same file
-	nest = (not values.ring)
-	for (pix_index, obj) in query.execute([(mapper, values.nside, nest, values.bounds), reducer],
+	nest = True
+	for (pix_info, obj) in query.execute([(mapper, values.nside_min, nest, values.bounds),
+	                                      reducer,
+	                                      (subdivider, values.nside_min, n_stars_max, values.min_stars, values.nside_max)],
 	                                      #group_by_static_cell=True,
 	                                      bounds=query_bounds):
+		# Filter out pixels that have too few stars
 		if len(obj) < values.min_stars:
+			continue
+		
+		nside, pix_index = pix_info
+		
+		# Filter out pixels that are outside of bounds
+		l_center, b_center = pix2lb(nside, pix_index, nest=nest)
+		
+		if (   (l_center < values.bounds[0])
+		    or (l_center > values.bounds[1]) 
+		    or (b_center < values.bounds[2]) 
+		    or (b_center > values.bounds[3]) ):
 			continue
 		
 		# Prepare output for pixel
@@ -269,16 +371,13 @@ def main():
 			nFiles += 1
 		
 		# Write to file
-		gal_lb = to_file(f, pix_index, values.nside, nest, EBV, outarr)
+		gal_lb = to_file(f, pix_index, nside, nest, EBV, outarr)
 		
 		# Update stats
 		N_pix += 1
 		stars_in_pix = len(obj)
 		N_stars += stars_in_pix
 		nInFile += stars_in_pix
-		
-		if values.visualize:
-			pix_max[pix_index] += N_stars
 		
 		if gal_lb[0] < l_min:
 			l_min = gal_lb[0]
@@ -318,12 +417,6 @@ def main():
 		print 'Bounds of included pixel centers:'
 		print '\t(l_min, l_max) = (%.3f, %.3f)' % (l_min, l_max)
 		print '\t(b_min, b_max) = (%.3f, %.3f)' % (b_min, b_max)
-	
-	# Show footprint of stored pixels on sky
-	if values.visualize:
-		hp.visufunc.mollview(map=np.log(pix_map), nest=nest,
-		                     title=r'# of stars', coord='G', xsize=5000)
-		plt.show()
 	
 	return 0
 
