@@ -262,6 +262,12 @@ bool H5Utils::add_watermark<double>(const std::string &filename, const std::stri
 }
 
 template<>
+bool H5Utils::add_watermark<uint32_t>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const uint32_t &value) {
+	H5::DataType dtype = H5::PredType::NATIVE_UINT32;
+	return add_watermark_helper<uint32_t>(filename, group_name, attribute_name, value, &dtype);
+}
+
+template<>
 bool H5Utils::add_watermark<uint64_t>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const uint64_t &value) {
 	H5::DataType dtype = H5::PredType::NATIVE_UINT64;
 	return add_watermark_helper<uint64_t>(filename, group_name, attribute_name, value, &dtype);

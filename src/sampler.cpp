@@ -773,7 +773,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 	
 	TChainWriteBuffer chainBuffer(ndim, 100, params.N_stars);
 	std::stringstream group_name;
-	group_name << "/pixel " << stellar_data.healpix_index;
+	group_name << "/" << stellar_data.pix_name;
 	
 	timespec t_start, t_write, t_end;
 	
@@ -931,7 +931,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	
 	TChainWriteBuffer chainBuffer(ndim, 100, params.N_stars);
 	std::stringstream group_name;
-	group_name << "/pixel " << stellar_data.healpix_index;
+	group_name << "/" << stellar_data.pix_name;
 	
 	for(size_t n=0; n<params.N_stars; n++) {
 		params.idx_star = n;
