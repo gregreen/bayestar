@@ -101,12 +101,12 @@ def mapper(qresult, nside, nest, bounds):
 		# Group together stars having same index
 		for pix_index, block_indices in iterators.index_by_key(pix_indices):
 			# Filter out pixels by bounds
-			if bounds != None:
-				theta_0, phi_0 = hp.pix2ang(nside, pix_index, nest=nest)
-				l_0 = 180./np.pi * phi_0
-				b_0 = 90. - 180./np.pi * theta_0
-				if (l_0 < bounds[0]) or (l_0 > bounds[1]) or (b_0 < bounds[2]) or (b_0 > bounds[3]):
-					continue
+			#if bounds != None:
+			#	theta_0, phi_0 = hp.pix2ang(nside, pix_index, nest=nest)
+			#	l_0 = 180./np.pi * phi_0
+			#	b_0 = 90. - 180./np.pi * theta_0
+			#	if (l_0 < bounds[0]) or (l_0 > bounds[1]) or (b_0 < bounds[2]) or (b_0 > bounds[3]):
+			#		continue
 			
 			yield (pix_index, obj[block_indices])
 
@@ -237,21 +237,32 @@ def main():
 		raise ValueError('--nside-max is less than --nside-min.')
 	
 	n_stars_max = None
+	n_pixels_at_res = None
+	nside_options = None
 	
 	if values.nside_min == values.nside_max:
 		n_stars_max = {values.nside_max: 1}
+		n_pixels_at_res = {values.nside_max: 0}
+		nside_options = [values.nside_options]
 	else:
 		n_stars_max = {}
+		n_pixels_at_res = {}
+		nside_options = []
+		
 		nside = values.nside_min
 		k = 0
 		
 		while nside < values.nside_max:
 			n_stars_max[nside] = values.res_thresh[k]
+			n_pixels_at_res[nside] = 0
+			nside_options.append(nside)
 			
 			nside *= 2
 			k += 1
 		
 		n_stars_max[values.nside_max] = 1
+		n_pixels_at_res[values.nside_max] = 0
+		nside_options.append(values.nside_max)
 	
 	# Determine the query bounds
 	query_bounds = None
@@ -313,6 +324,10 @@ def main():
 	N_min = np.inf
 	N_max = -np.inf
 	
+	N_in_pixel = []
+	N_pix_too_sparse = 0
+	N_pix_out_of_bounds = 0
+	
 	fnameBase = abspath(values.out)
 	fnameSuffix = 'h5'
 	if fnameBase.endswith('.h5'):
@@ -333,6 +348,8 @@ def main():
 	                                      bounds=query_bounds):
 		# Filter out pixels that have too few stars
 		if len(obj) < values.min_stars:
+			N_pix_too_sparse += 1
+			
 			continue
 		
 		nside, pix_index = pix_info
@@ -340,11 +357,13 @@ def main():
 		# Filter out pixels that are outside of bounds
 		l_center, b_center = pix2lb(nside, pix_index, nest=nest)
 		
-		if (   (l_center < values.bounds[0])
-		    or (l_center > values.bounds[1]) 
-		    or (b_center < values.bounds[2]) 
-		    or (b_center > values.bounds[3]) ):
-			continue
+		if values.bounds != None:
+			if (     (l_center < values.bounds[0])
+			      or (l_center > values.bounds[1]) 
+			      or (b_center < values.bounds[2]) 
+			      or (b_center > values.bounds[3]) ):
+				N_pix_out_of_bounds += 1
+				continue
 		
 		# Prepare output for pixel
 		outarr = np.empty(len(obj), dtype=[('obj_id','u8'),
@@ -378,6 +397,8 @@ def main():
 		stars_in_pix = len(obj)
 		N_stars += stars_in_pix
 		nInFile += stars_in_pix
+		N_in_pixel.append(stars_in_pix)
+		n_pixels_at_res[nside] += 1
 		
 		if gal_lb[0] < l_min:
 			l_min = gal_lb[0]
@@ -402,12 +423,30 @@ def main():
 		f.close()
 	
 	if N_pix != 0:
+		N_in_pixel = np.array(N_in_pixel)
 		print '# of stars in footprint: %d.' % N_stars
 		print '# of pixels in footprint: %d.' % N_pix
 		print 'Stars per pixel:'
 		print '    min: %d' % N_min
-		print '    mean: %d' % (N_stars / N_pix)
+		print '    5%%: %d' % (np.percentile(N_in_pixel, 5.))
+		print '    50%%: %d' % (np.percentile(N_in_pixel, 50.))
+		print '    mean: %d' % (float(N_stars) / float(N_pix))
+		print '    95%%: %d' % (np.percentile(N_in_pixel, 95.))
 		print '    max: %d' % N_max
+		print '# of pixels at each nside resolution:'
+		
+		for nside in nside_options:
+			area_per_pix = hp.pixelfunc.nside2pixarea(nside, degrees=True)
+			#area_per_pix = 4.*np.pi * (180./np.pi)**2. / (12. * nside**2.)
+			area = n_pixels_at_res[nside] * area_per_pix
+			print '    %d: %d (%.2f deg^2)' % (nside, n_pixels_at_res[nside], area)
+		
+		pct_sparse = 100. * float(N_pix_too_sparse) / float(N_pix_too_sparse + N_pix)
+		print '# of pixels too sparse: %d (%.3f %%)' % (N_pix_too_sparse, pct_sparse)
+		
+		pct_out_of_bounds = 100. * float(N_pix_out_of_bounds) / float(N_pix_out_of_bounds + N_pix)
+		print '# of pixels out of bounds: %d (%.3f %%)' % (N_pix_out_of_bounds, pct_out_of_bounds)
+		
 		print '# of files: %d.' % nFiles
 	else:
 		print 'No pixels in specified bounds with sufficient # of stars.'

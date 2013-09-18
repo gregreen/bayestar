@@ -153,7 +153,7 @@ def main():
 	              description='Plots posterior distributions produced by galstar',
 	              add_help=True)
 	parser.add_argument('input', type=str, help='Bayestar output file.')
-	parser.add_argument('index', type=int, help='Healpix index.')
+	parser.add_argument('loc', type=int, nargs=2, help='HEALPix nside and index.')
 	parser.add_argument('-o', '--output', type=str, help='Filename for plot.')
 	parser.add_argument('-s', '--show', action='store_true', help='Show plot.')
 	parser.add_argument('-pdfs', '--show-pdfs', action='store_true',
@@ -181,7 +181,7 @@ def main():
 		return 0
 	
 	fname = abspath(expanduser(args.input))
-	group = 'pixel %d' % (args.index)
+	group = 'pixel %d-%d' % (args.loc[0], args.loc[1])
 	
 	# Load in pdfs
 	x_min, x_max = [4., 0.], [19., 5.]
