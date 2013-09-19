@@ -37,6 +37,130 @@ import healpy as hp
 import h5py
 
 
+class los_collection:
+	def __init__(self, fnames):
+		# Pixel locations
+		self.pix_idx = []
+		self.nside = []
+		
+		# Cloud fit data
+		self.cloud_delta_mu = []
+		self.cloud_delta_lnEBV = []
+		self.cloud_mask = []
+		
+		self.n_clouds = None
+		self.n_cloud_samples = None
+		
+		# Piecewise-linear fit data
+		self.los_delta_lnEBV = []
+		self.los_mask = []
+		
+		self.n_slices = None
+		self.n_los_samples = None
+		self.DM_min = None
+		self.DM_max = None
+		
+		# Load files
+		self.load_files(fnames)
+	
+	def load_file_indiv(self, fname):
+		print 'Loading %s ...' % fname
+		
+		f = h5py.File(fname, 'r')
+		
+		# Load each pixel
+		
+		for name,item in f.iteritems():
+			# Load pixel position
+			try:
+				pix_idx_tmp = item.attrs['healpix_index']
+				nside_tmp = item.attrs['nside']
+			except:
+				continue
+			
+			self.pix_idx.append(pix_idx_tmp)
+			self.nside.append(nside)
+			
+			# Load cloud fit
+			try:
+				cloud_samples_tmp = item['clouds'][:, 1:, 1:]
+				tmp, n_cloud_samples, n_clouds = cloud_samples_tmp.shape
+				
+				self.cloud_delta_mu.append(cloud_samples_tmp[:n_clouds])
+				self.cloud_delta_lnEBV.append(cloud_samples_tmp[n_clouds:])
+				
+				if self.n_cloud_samples != None:
+					if n_cloud_samples != self.n_cloud_samples:
+						raise ValueError('# of cloud fit samples in "%s" different from other pixels') % name
+					if n_clouds != self.n_clouds:
+						raise ValueError('# of cloud fit clouds in "%s" different from other pixels') % name
+				else:
+					self.n_cloud_samples = n_cloud_samples
+					self.n_clouds = n_clouds
+				
+				self.cloud_mask.append(True)
+				
+			except:
+				self.cloud_mask.append(False)
+			
+			# Load piecewise-linear fit
+			try:
+				los_samples_tmp = item['los'][:, 1:, 1:]
+				tmp, n_los_samples, n_slices = los_samples_tmp.shape
+				
+				DM_min = item['los'].attrs['DM_min']
+				DM_max = item['los'].attrs['DM_max']
+				
+				self.los_lnEBV.append(los_samples_tmp)
+				
+				if self.n_los_samples != None:
+					if n_los_samples != self.n_los_samples:
+						raise ValueError('# of l.o.s. fit samples in "%s" different from other pixels') % name
+					if n_slices != self.n_slices:
+						raise ValueError('# of l.o.s. regions in "%s" different from other pixels') % name
+					if DM_min != self.DM_min:
+						raise ValueError('DM_min in "%s" different from other pixels') % name
+					if DM_max != self.DM_max:
+						raise ValueError('DM_min in "%s" different from other pixels') % name
+				else:
+					self.n_los_samples = n_los_samples
+					self.n_slices = n_slices
+					self.DM_min = DM_min
+					self.DM_max = DM_max
+				
+				self.los_mask.append(True)
+				
+			except:
+				self.los_mask.append(False)
+		
+		f.close()
+	
+	def load_files(self, fnames):
+		# Create a giant lists of info from all pixels
+		for fname in fnames:
+			self.load_file_indiv(fname)
+		
+		# Combine pixel information
+		self.pix_idx = np.array(self.pix_idx)
+		self.nside = np.array(self.nside)
+		
+		# Combine cloud fits
+		self.cloud_delta_mu = np.concatenate(self.cloud_delta_mu, axis=0)
+		self.cloud_delta_lnEBV = np.concatenate(self.cloud_delta_lnEBV, axis=0)
+		
+		# Combine piecewise-linear fits
+		self.los_delta_lnEBV = np.concatenate(self.los_delta_lnEBV, axis=0)
+		
+		# Calculate derived information
+		self.cloud_mu_anchor = np.cumsum(self.cloud_delta_mu, axis=2)
+		self.cloud_delta_EBV = np.exp(self.cloud_delta_lnEBV)
+		
+		self.los_delta_EBV = np.exp(self.los_delta_lnEBV)
+		self.DM_anchor = np.linspace(self.DM_min, self.DM_max, self.n_slices)
+		
+		
+
+
 def getLOS(fname):
 	print 'Loading %s ...' % fname
 	f = h5py.File(fname, 'r')

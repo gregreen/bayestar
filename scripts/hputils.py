@@ -68,6 +68,33 @@ def wrap_longitude(lon, delta_lon, degrees=True):
 		return np.mod(lon_shifted, 2. * np.pi)
 
 
+def shift_lon_lat(lon, lat, delta_lon, delta_lat,
+                  degrees=True, clip=False):
+	'''
+	Shift latitudes and longitudes, but do not
+	move them off edges map, and do not wrap
+	longitude.
+	'''
+	
+	lon_shifted = lon + delta_lon
+	lat_shifted = lat + delta_lat
+	
+	if clip:
+		idx = (lon_shifted > 360.)
+		lon_shifted[idx] = 360.
+		
+		idx = (lon_shifted < 0.)
+		lon_shifted[idx] = 0.
+		
+		idx = (lat_shifted > 90.)
+		lat_shifted[idx] = 90.
+		
+		idx = (lat_shifted < -90.)
+		lat_shifted[idx] = -90.
+	
+	return lon_shifted, lat_shifted
+
+
 class Mollweide_projection:
 	def __init__(self, lam_0=180.):
 		'''
@@ -143,19 +170,39 @@ def rasterize_map(pix_idx, pix_val,
                   nside, size,
                   nest=True, clip=True,
                   proj=Cartesian_projection()):
+	'''
+	Rasterize a healpix map.
+	'''
+	
 	pix_scale = 180./np.pi * hp.nside2resol(nside)
 	
-	# Determine pixel centers and bounds
+	# Determine pixel centers
 	l_0, b_0 = pix2lb(nside, pix_idx, nest=nest)
 	l_0 = 360. - wrap_longitude(l_0, 180.)
-	x_0, y_0 = proj.proj(np.pi/180. * b_0, np.pi/180. * l_0)
 	
-	print x_0, y_0
+	# Determine display-space bounds
+	shift = [(0., 0.), (1., 0.), (0., 1.), (-1., 0.), (0., -1.)]
+	x_min, x_max, y_min, y_max = [], [], [], []
 	
-	x_min = np.min(x_0)
-	x_max = np.max(x_0)
-	y_min = np.min(y_0)
-	y_max = np.max(y_0)
+	#for (s_x, s_y) in shift:
+	for s_x in np.linspace(-pix_scale, pix_scale, 3):
+		for s_y in np.linspace(-pix_scale, pix_scale, 3):
+			l, b = shift_lon_lat(l_0, b_0, 0.75*s_x, 0.75*s_y, clip=True)
+			
+			#print l
+			#print b
+			
+			x_0, y_0 = proj.proj(np.pi/180. * b, np.pi/180. * l)
+			
+			x_min.append(np.min(x_0))
+			x_max.append(np.max(x_0))
+			y_min.append(np.min(y_0))
+			y_max.append(np.max(y_0))
+	
+	x_min = np.min(x_min)
+	x_max = np.max(x_max)
+	y_min = np.min(y_min)
+	y_max = np.max(y_max)
 	
 	# Make grid of display-space pixels
 	x_size, y_size = size
@@ -213,52 +260,6 @@ def rasterize_map(pix_idx, pix_val,
 	return img, bounds
 
 
-def rasterizeMap(pixels, EBV, nside=512, nest=True, oversample=4):
-	# Determine pixel centers and bounds
-	pixels = np.array(pixels)
-	theta, phi = hp.pix2ang(nside, pixels, nest=nest)
-	lCenter, bCenter = 180./np.pi * phi, 90. - 180./np.pi * theta
-	
-	pixLength = np.sqrt( hp.nside2pixarea(nside, degrees=True) )
-	lMin, lMax = np.min(lCenter)-pixLength/2., np.max(lCenter)+pixLength/2.
-	bMin, bMax = np.min(bCenter)-pixLength/2., np.max(bCenter)+pixLength/2.
-	
-	# Set resolution of image
-	xSize = int( oversample * (lMax - lMin) / pixLength )
-	ySize = int( oversample * (bMax - bMin) / pixLength )
-	
-	# Make grid of pixels to plot
-	l, b = np.mgrid[0:xSize, 0:ySize].astype(np.float32) + 0.5
-	l = lMax - (lMax - lMin) * l / float(xSize)
-	b = bMin + (bMax - bMin) * b / float(ySize)
-	theta, phi = np.pi/180. * (90. - b), np.pi/180. * l
-	del l, b
-	
-	pixIdx = hp.ang2pix(nside, theta, phi, nest=nest)
-	idxMap = np.empty(12*nside*nside, dtype='i8')
-	idxMap[:] = -1
-	idxMap[pixels] = np.arange(len(pixels))
-	idxEBV = idxMap[pixIdx]
-	mask = (idxEBV == -1)
-	del idxMap
-	
-	# Grab pixels from map
-	img = None
-	if len(EBV.shape) == 1:
-		img = EBV[idxEBV]
-		img[mask] = np.nan
-		img.shape = (xSize, ySize)
-	elif len(EBV.shape) == 2:
-		img = EBV[:,idxEBV]
-		img[mask] = np.nan
-		img.shape = (img.shape[0], xSize, ySize)
-	else:
-		raise Exception('EBV must be either 1- or 2-dimensional.')
-	
-	bounds = (lMin, lMax, bMin, bMax)
-	return img, bounds
-
-
 def test_Mollweide():
 	proj = Mollweide_projection()
 	
@@ -280,29 +281,40 @@ def test_Mollweide():
 
 
 def test_proj():
-	nside = 32
+	nside = 16
 	nest = True
 	clip = True
-	size = (4000, 2000)
+	size = (1000, 500)
 	
 	n_pix = hp.pixelfunc.nside2npix(nside)
 	pix_idx = np.arange(n_pix)#[:256]
 	l, b = pix2lb(nside, pix_idx, nest=nest)
-	pix_val = np.random.random(size=n_pix)#pix_idx[:]
-	
-	print pix_idx
-	print pix_val
-	
-	# Rasterize map
-	img, bounds = rasterize_map(pix_idx, pix_val,
-	                            nside, size,
-	                            nest=nest, clip=clip,
-	                            proj=Mollweide_projection(lam_0=180.))
+	pix_val = pix_idx[:]
 	
 	# Plot map
 	
 	fig = plt.figure()
 	ax = fig.add_subplot(1,1,1)
+	
+	# Rasterize map
+	img, bounds = rasterize_map(pix_idx[:64], pix_val[:64],
+	                            nside, size,
+	                            nest=nest, clip=clip,
+	                            proj=Mollweide_projection(lam_0=180.))
+	
+	cimg = ax.imshow(img.T, extent=bounds,
+	                 origin='lower', interpolation='nearest',
+	                 aspect='auto')
+	
+	# Rasterize map
+	img, bounds = rasterize_map(pix_idx[64:], pix_val[64:],
+	                            nside, size,
+	                            nest=nest, clip=clip,
+	                            proj=Mollweide_projection(lam_0=180.))
+	
+	cimg = ax.imshow(img.T, extent=bounds,
+	                 origin='lower', interpolation='nearest',
+	                 aspect='auto')
 	
 	cimg = ax.imshow(img.T, extent=bounds,
 	                 origin='lower', interpolation='nearest',
