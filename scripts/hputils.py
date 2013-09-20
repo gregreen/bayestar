@@ -39,7 +39,7 @@ def lb2pix(nside, l, b, nest=True):
 	return hp.pixelfunc.ang2pix(nside, theta, phi, nest=nest)
 
 
-def pix2lb(nside, ipix, nest=True):
+def pix2lb(nside, ipix, nest=True, use_negative_l=False):
 	'''
 	Convert pixel index to (l, b).
 	'''
@@ -48,6 +48,9 @@ def pix2lb(nside, ipix, nest=True):
 	
 	l = 180./np.pi * phi
 	b = 90. - 180./np.pi * theta
+	
+	idx = (l > 180.)
+	l[idx] = l[idx] - 360.
 	
 	return l, b
 
@@ -119,11 +122,11 @@ class Mollweide_projection:
 		
 		theta = self.Mollweide_theta(phi, iterations)
 		
-		#x = 2. * np.sqrt(2.) * (lam - self.lam_0) * np.cos(theta) / np.pi
-		#y = np.sqrt(2.) * np.sin(theta)
+		x = 2. * np.sqrt(2.) * (lam - self.lam_0) * np.cos(theta) / np.pi
+		y = np.sqrt(2.) * np.sin(theta)
 		
-		x = 180. * (lam - self.lam_0) * np.cos(theta) / np.pi
-		y = 90. * np.sin(theta)
+		#x = 180. * (lam - self.lam_0) * np.cos(theta) / np.pi
+		#y = 90. * np.sin(theta)
 		
 		return x, y
 	
@@ -139,16 +142,16 @@ class Mollweide_projection:
 		x and y can be floats or numpy float arrays.
 		'''
 		
-		#theta = np.arcsin(y / np.sqrt(2.))
-		
-		#phi = np.arcsin((2. * theta + np.sin(2. * theta)) / np.pi)
-		#lam = self.lam_0 + np.pi * x / (2. * np.sqrt(2.) * np.cos(theta))
-		
-		theta = np.arcsin(y / 90.)
+		theta = np.arcsin(y / np.sqrt(2.))
 		
 		phi = np.arcsin((2. * theta + np.sin(2. * theta)) / np.pi)
+		lam = self.lam_0 + np.pi * x / (2. * np.sqrt(2.) * np.cos(theta))
 		
-		lam = self.lam_0 + np.pi * x / (180. * np.cos(theta))
+		#theta = np.arcsin(y / 90.)
+		
+		#phi = np.arcsin((2. * theta + np.sin(2. * theta)) / np.pi)
+		
+		#lam = self.lam_0 + np.pi * x / (180. * np.cos(theta))
 		
 		return phi, lam
 	
@@ -265,8 +268,8 @@ def rasterize_map(pix_idx, pix_val,
 	pix_scale = 180./np.pi * hp.nside2resol(nside)
 	
 	# Determine pixel centers
-	l_0, b_0 = pix2lb(nside, pix_idx, nest=nest)
-	l_0 = 360. - wrap_longitude(l_0, 180.)
+	l_0, b_0 = pix2lb(nside, pix_idx, nest=nest, use_negative_l=True)
+	lam_0 = 180. - l_0
 	
 	# Determine display-space bounds
 	shift = [(0., 0.), (1., 0.), (0., 1.), (-1., 0.), (0., -1.)]
@@ -275,12 +278,12 @@ def rasterize_map(pix_idx, pix_val,
 	#for (s_x, s_y) in shift:
 	for s_x in np.linspace(-pix_scale, pix_scale, 3):
 		for s_y in np.linspace(-pix_scale, pix_scale, 3):
-			l, b = shift_lon_lat(l_0, b_0, 0.75*s_x, 0.75*s_y, clip=True)
+			lam, b = shift_lon_lat(lam_0, b_0, 0.75*s_x, 0.75*s_y, clip=True)
 			
 			#print l
 			#print b
 			
-			x_0, y_0 = proj.proj(np.pi/180. * b, np.pi/180. * l)
+			x_0, y_0 = proj.proj(np.pi/180. * b, np.pi/180. * lam)
 			
 			x_min.append(np.min(x_0))
 			x_max.append(np.max(x_0))
@@ -300,20 +303,25 @@ def rasterize_map(pix_idx, pix_val,
 	y = y_min + (y_max - y_min) * y / float(y_size)
 	
 	# Convert display-space pixels to (l, b)
-	b, l = proj.inv(x, y)
-	l *= 180./np.pi
+	b, lam = proj.inv(x, y)
+	l = 180. - 180./np.pi * lam
 	b *= 180./np.pi
 	
 	# Generate clip mask
 	mask = None
 	
 	if clip:
-		mask = (l < 0.) | (l > 360.) | (b < -90.) | (b > 90.)
+		mask = (l < -180.) | (l > 180.) | (b < -90.) | (b > 90.)
+		
+		l_min, l_max = np.min(l[~mask]), np.max(l[~mask])
+		b_min, b_max = np.min(b[~mask]), np.max(b[~mask])
+	else:
+		l_min, l_max = np.min(l), np.max(l)
+		b_min, b_max = np.min(b), np.max(b)
 	
 	# Convert (l, b) to healpix indices
-	l = 360. - wrap_longitude(l, 180.)	# Center on l=0 and reverse direction of l
+	#l = 360. - wrap_longitude(l, 180.)	# Center on l=0 and reverse direction of l
 	disp_idx = lb2pix(nside, l, b, nest=nest)
-	#mask = 
 	
 	# Generate full map
 	n_pix = hp.pixelfunc.nside2npix(nside)
@@ -343,7 +351,7 @@ def rasterize_map(pix_idx, pix_val,
 	else:
 		raise Exception('pix_val must be either 1- or 2-dimensional.')
 	
-	bounds = (x_max, x_min, y_min, y_max)
+	bounds = (l_max, l_min, b_min, b_max)
 	
 	return img, bounds
 
@@ -433,7 +441,8 @@ def test_proj():
 	nside = 128
 	nest = True
 	clip = True
-	size = (4000, 200)
+	size = (4000, 4000)
+	proj = Mollweide_projection()
 	
 	n_pix = hp.pixelfunc.nside2npix(nside)
 	pix_idx = np.arange(n_pix)
@@ -449,7 +458,9 @@ def test_proj():
 	img, bounds = rasterize_map(pix_idx, pix_val,
 	                            nside, size,
 	                            nest=nest, clip=clip,
-	                            proj=Cartesian_projection(180.))
+	                            proj=proj)
+	
+	print bounds
 	
 	cimg = ax.imshow(img.T, extent=bounds,
 	                 origin='lower', interpolation='nearest',
