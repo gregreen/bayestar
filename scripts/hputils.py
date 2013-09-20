@@ -96,6 +96,12 @@ def shift_lon_lat(lon, lat, delta_lon, delta_lat,
 
 
 class Mollweide_projection:
+	'''
+	The Mollweide projection of the sphere onto a flat plane.
+	
+	Pseudocylindrical, equal-area.
+	'''
+	
 	def __init__(self, lam_0=180.):
 		'''
 		lam_0 is the central longitude of the map.
@@ -103,7 +109,7 @@ class Mollweide_projection:
 		
 		self.lam_0 = np.pi/180. * lam_0
 	
-	def proj(self, phi, lam, iterations=10):
+	def proj(self, phi, lam, iterations=15):
 		'''
 		Mollweide projection.
 		
@@ -113,8 +119,11 @@ class Mollweide_projection:
 		
 		theta = self.Mollweide_theta(phi, iterations)
 		
-		x = 2. * np.sqrt(2.) * (lam - self.lam_0) * np.cos(theta) / np.pi
-		y = np.sqrt(2.) * np.sin(theta)
+		#x = 2. * np.sqrt(2.) * (lam - self.lam_0) * np.cos(theta) / np.pi
+		#y = np.sqrt(2.) * np.sin(theta)
+		
+		x = 180. * (lam - self.lam_0) * np.cos(theta) / np.pi
+		y = 90. * np.sin(theta)
 		
 		return x, y
 	
@@ -122,8 +131,7 @@ class Mollweide_projection:
 		'''
 		Inverse Mollweide projection.
 		
-		Returns (phi, lam), given (x, y), where
-		x and y can each range from -1 to 1.
+		Returns (phi, lam), given (x, y).
 		
 		phi = latitude
 		lam = longitude
@@ -131,11 +139,16 @@ class Mollweide_projection:
 		x and y can be floats or numpy float arrays.
 		'''
 		
-		theta = np.arcsin(y / np.sqrt(2.))
+		#theta = np.arcsin(y / np.sqrt(2.))
+		
+		#phi = np.arcsin((2. * theta + np.sin(2. * theta)) / np.pi)
+		#lam = self.lam_0 + np.pi * x / (2. * np.sqrt(2.) * np.cos(theta))
+		
+		theta = np.arcsin(y / 90.)
 		
 		phi = np.arcsin((2. * theta + np.sin(2. * theta)) / np.pi)
 		
-		lam = self.lam_0 + np.pi * x / (2. * np.sqrt(2.) * np.cos(theta))
+		lam = self.lam_0 + np.pi * x / (180. * np.cos(theta))
 		
 		return phi, lam
 	
@@ -150,20 +163,95 @@ class Mollweide_projection:
 
 
 class Cartesian_projection:
-	def __init__(self):
-		pass
+	'''
+	The Cartesian projection of the sphere onto a flat plane.
+	'''
+	
+	def __init__(self, lam_0=180.):
+		self.lam_0 = np.pi / 180. * lam_0
 	
 	def proj(self, phi, lam):
-		x = 180./np.pi * lam
+		x = 180./np.pi * (lam - self.lam_0)
 		y = 180./np.pi * phi
 		
 		return x, y
 	
 	def inv(self, x, y):
-		lam = np.pi/180. * x
+		lam = self.lam_0 + np.pi/180. * x
 		phi = np.pi/180. * y
 		
 		return phi, lam
+
+
+class EckertIV_projection:
+	'''
+	The Eckert IV projection of the sphere onto a flat plane.
+	
+	Pseudocylindrical, equal-area.
+	'''
+	
+	def __init__(self, lam_0=180.):
+		'''
+		lam_0 is the central longitude of the map.
+		'''
+		
+		self.lam_0 = np.pi/180. * lam_0
+		
+		self.x_scale = 180. / 2.65300085635
+		self.y_scale = 90. / 1.32649973731
+		
+		self.a = np.sqrt(np.pi * (4. + np.pi))
+		self.b = np.sqrt(np.pi / (4. + np.pi))
+		self.c = 2. + np.pi / 2.
+		
+		#self.a = 2. / np.sqrt(np.pi * (4. + np.pi))
+		#self.b = 2. * np.sqrt(np.pi / (4. + np.pi))
+		#self.d = np.sqrt((4. + np.pi) / np.pi)
+		#self.e = np.sqrt(np.pi * (4. + np.pi))
+	
+	def proj(self, phi, lam, iterations=10):
+		'''
+		Eckert IV projection.
+		
+		phi = latitude
+		lam = longitude
+		'''
+		
+		theta = self.EckertIV_theta(phi, iterations)
+		
+		x = self.x_scale * 2. / self.a * (lam - self.lam_0) * (1. + np.cos(theta))
+		y = self.y_scale * 2. * self.b * np.sin(theta)
+		
+		return x, y
+	
+	def inv(self, x, y):
+		'''
+		Inverse Eckert projection.
+		
+		Returns (phi, lam), given (x, y).
+		
+		phi = latitude
+		lam = longitude
+		
+		x and y can be floats or numpy float arrays.
+		'''
+		
+		theta = np.arcsin((y / self.y_scale) / 2. / self.b)
+		
+		phi = np.arcsin((theta + 0.5 * np.sin(2. * theta) + 2. * np.sin(theta)) / self.c)
+		
+		lam = self.lam_0 + self.a / 2. * (x / self.x_scale) / (1. + np.cos(theta))
+		
+		return phi, lam
+	
+	def EckertIV_theta(self, phi, iterations):
+		theta = phi / 2.
+		sin_phi = np.sin(phi)
+		
+		for i in xrange(iterations):
+			theta -= (theta + 0.5 * np.sin(2. * theta) + 2. * np.sin(theta) - self.c * sin_phi) / (2. * np.cos(theta) * (1. + np.cos(theta)))
+		
+		return theta
 
 
 def rasterize_map(pix_idx, pix_val,
@@ -223,7 +311,7 @@ def rasterize_map(pix_idx, pix_val,
 		mask = (l < 0.) | (l > 360.) | (b < -90.) | (b > 90.)
 	
 	# Convert (l, b) to healpix indices
-	l = 360. - wrap_longitude(l, 180.)
+	l = 360. - wrap_longitude(l, 180.)	# Center on l=0 and reverse direction of l
 	disp_idx = lb2pix(nside, l, b, nest=nest)
 	#mask = 
 	
@@ -255,7 +343,7 @@ def rasterize_map(pix_idx, pix_val,
 	else:
 		raise Exception('pix_val must be either 1- or 2-dimensional.')
 	
-	bounds = (x_min, x_max, y_min, y_max)
+	bounds = (x_max, x_min, y_min, y_max)
 	
 	return img, bounds
 
@@ -280,14 +368,75 @@ def test_Mollweide():
 		print '%.2f %.2f %.2f %.2f' % (phi[i], phi_1[i], lam[i], lam_1[i])
 
 
+def test_EckertIV():
+	proj = EckertIV_projection()
+	
+	phi = np.pi * (np.random.random(10) - 0.5)
+	lam = 2. * np.pi * (np.random.random(10) - 0.5)
+	
+	x, y = proj.proj(phi, lam)
+	phi_1, lam_1 = proj.inv(x, y)
+	
+	iterations = 10
+	theta = proj.EckertIV_theta(phi, iterations)
+	lhs = theta + np.sin(theta) * np.cos(theta) + 2. * np.sin(theta)
+	rhs = (2. + np.pi / 2.) * np.sin(phi)
+	
+	print 'lat  lon  x    y'
+	
+	for i in xrange(len(phi)):
+		print '%.2f %.2f %.2f %.2f' % (phi[i]*180./np.pi, lam[i]*180./np.pi, x[i], y[i])
+	
+	print ''
+	print "phi  phi'  lam  lam'"
+	for i in xrange(len(phi)):
+		print '%.2f %.2f %.2f %.2f' % (phi[i], phi_1[i], lam[i], lam_1[i])
+	
+	
+	print ''
+	print 'theta  lhs   rhs'
+	for t,l,r in zip(theta, lhs, rhs):
+		print '%.3f %.3f %.3f' % (t, l, r)
+	
+	# Find corners
+	phi = np.array([0., 0., np.pi/2., -np.pi/2.])
+	lam = np.array([0., 2. * np.pi, 0., 0.])
+	x, y = proj.proj(phi, lam)
+	
+	print ''
+	print 'x   y'
+	for xx,yy in zip(x, y):
+		print xx, yy
+
+
+def test_Cartesian():
+	proj = Cartesian_projection()
+	
+	phi = np.pi * (np.random.random(10) - 0.5)
+	lam = 2. * np.pi * (np.random.random(10) - 0.5)
+	
+	x, y = proj.proj(phi, lam)
+	phi_1, lam_1 = proj.inv(x, y)
+	
+	print 'lat  lon  x    y'
+	
+	for i in xrange(len(phi)):
+		print '%.2f %.2f %.2f %.2f' % (phi[i]*180./np.pi, lam[i]*180./np.pi, x[i], y[i])
+	
+	print ''
+	print "phi  phi'  lam  lam'"
+	for i in xrange(len(phi)):
+		print '%.2f %.2f %.2f %.2f' % (phi[i], phi_1[i], lam[i], lam_1[i])
+
+
 def test_proj():
-	nside = 16
+	nside = 128
 	nest = True
 	clip = True
-	size = (1000, 500)
+	size = (4000, 200)
 	
 	n_pix = hp.pixelfunc.nside2npix(nside)
-	pix_idx = np.arange(n_pix)#[:256]
+	pix_idx = np.arange(n_pix)
 	l, b = pix2lb(nside, pix_idx, nest=nest)
 	pix_val = pix_idx[:]
 	
@@ -297,24 +446,10 @@ def test_proj():
 	ax = fig.add_subplot(1,1,1)
 	
 	# Rasterize map
-	img, bounds = rasterize_map(pix_idx[:64], pix_val[:64],
+	img, bounds = rasterize_map(pix_idx, pix_val,
 	                            nside, size,
 	                            nest=nest, clip=clip,
-	                            proj=Mollweide_projection(lam_0=180.))
-	
-	cimg = ax.imshow(img.T, extent=bounds,
-	                 origin='lower', interpolation='nearest',
-	                 aspect='auto')
-	
-	# Rasterize map
-	img, bounds = rasterize_map(pix_idx[64:], pix_val[64:],
-	                            nside, size,
-	                            nest=nest, clip=clip,
-	                            proj=Mollweide_projection(lam_0=180.))
-	
-	cimg = ax.imshow(img.T, extent=bounds,
-	                 origin='lower', interpolation='nearest',
-	                 aspect='auto')
+	                            proj=Cartesian_projection(180.))
 	
 	cimg = ax.imshow(img.T, extent=bounds,
 	                 origin='lower', interpolation='nearest',
@@ -325,11 +460,12 @@ def test_proj():
 	cax = fig.add_axes([0.10, 0.10, 0.80, 0.05])
 	fig.colorbar(cimg, cax=cax, orientation='horizontal')
 	
-	
 	plt.show()
 
 
 def main():
+	#test_Cartesian()
+	#test_EckertIV()
 	#test_Mollweide()
 	test_proj()
 

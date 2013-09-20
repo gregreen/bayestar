@@ -99,57 +99,57 @@ class los_collection:
 			self.nside.append(nside_tmp)
 			
 			# Load cloud fit
-			#try:
-			cloud_samples_tmp = item['clouds'][:, 1:, 1:]
-			tmp, n_cloud_samples, n_clouds = cloud_samples_tmp.shape
-			n_clouds /= 2
-			
-			self.cloud_delta_mu.append(cloud_samples_tmp[:, :, :n_clouds])
-			self.cloud_delta_lnEBV.append(cloud_samples_tmp[:, :, n_clouds:])
-			
-			if self.n_cloud_samples != None:
-				if n_cloud_samples != self.n_cloud_samples:
-					raise ValueError('# of cloud fit samples in "%s" different from other pixels') % name
-				if n_clouds != self.n_clouds:
-					raise ValueError('# of cloud fit clouds in "%s" different from other pixels') % name
-			else:
-				self.n_cloud_samples = n_cloud_samples
-				self.n_clouds = n_clouds
-			
-			self.cloud_mask.append(True)
+			try:
+				cloud_samples_tmp = item['clouds'][:, 1:, 1:]
+				tmp, n_cloud_samples, n_clouds = cloud_samples_tmp.shape
+				n_clouds /= 2
 				
-			#except:
-			#	self.cloud_mask.append(False)
+				self.cloud_delta_mu.append(cloud_samples_tmp[:, :, :n_clouds])
+				self.cloud_delta_lnEBV.append(cloud_samples_tmp[:, :, n_clouds:])
+				
+				if self.n_cloud_samples != None:
+					if n_cloud_samples != self.n_cloud_samples:
+						raise ValueError('# of cloud fit samples in "%s" different from other pixels') % name
+					if n_clouds != self.n_clouds:
+						raise ValueError('# of cloud fit clouds in "%s" different from other pixels') % name
+				else:
+					self.n_cloud_samples = n_cloud_samples
+					self.n_clouds = n_clouds
+				
+				self.cloud_mask.append(True)
+				
+			except:
+				self.cloud_mask.append(False)
 			
 			# Load piecewise-linear fit
-			#try:
-			los_samples_tmp = item['los'][:, 1:, 1:]
-			tmp, n_los_samples, n_slices = los_samples_tmp.shape
-			
-			DM_min = item['los'].attrs['DM_min']
-			DM_max = item['los'].attrs['DM_max']
-			
-			self.los_delta_lnEBV.append(los_samples_tmp)
+			try:
+				los_samples_tmp = item['los'][:, 1:, 1:]
+				tmp, n_los_samples, n_slices = los_samples_tmp.shape
 				
-			if self.n_los_samples != None:
-				if n_los_samples != self.n_los_samples:
-					raise ValueError('# of l.o.s. fit samples in "%s" different from other pixels') % name
-				if n_slices != self.n_slices:
-					raise ValueError('# of l.o.s. regions in "%s" different from other pixels') % name
-				if DM_min != self.DM_min:
-					raise ValueError('DM_min in "%s" different from other pixels') % name
-				if DM_max != self.DM_max:
-					raise ValueError('DM_min in "%s" different from other pixels') % name
-			else:
-				self.n_los_samples = n_los_samples
-				self.n_slices = n_slices
-				self.DM_min = DM_min
-				self.DM_max = DM_max
-			
-			self.los_mask.append(True)
-			
-			#except:
-			#	self.los_mask.append(False)
+				DM_min = item['los'].attrs['DM_min']
+				DM_max = item['los'].attrs['DM_max']
+				
+				self.los_delta_lnEBV.append(los_samples_tmp)
+					
+				if self.n_los_samples != None:
+					if n_los_samples != self.n_los_samples:
+						raise ValueError('# of l.o.s. fit samples in "%s" different from other pixels') % name
+					if n_slices != self.n_slices:
+						raise ValueError('# of l.o.s. regions in "%s" different from other pixels') % name
+					if DM_min != self.DM_min:
+						raise ValueError('DM_min in "%s" different from other pixels') % name
+					if DM_max != self.DM_max:
+						raise ValueError('DM_min in "%s" different from other pixels') % name
+				else:
+					self.n_los_samples = n_los_samples
+					self.n_slices = n_slices
+					self.DM_min = DM_min
+					self.DM_max = DM_max
+				
+				self.los_mask.append(True)
+				
+			except:
+				self.los_mask.append(False)
 		
 		f.close()
 	
@@ -309,7 +309,9 @@ class los_collection:
 		
 		return EBV_interp
 	
-	def gen_EBV_map(self, mu, fit='piecewise', method='median'):
+	def gen_EBV_map(self, mu, fit='piecewise',
+	                          method='median',
+	                          mask_sigma=None):
 		'''
 		Returns an array of E(B-V) evaluated at
 		distance modulus mu, with
@@ -330,11 +332,17 @@ class los_collection:
 		The method option determines which measure of E(B-V)
 		is returned. The options are
 		
-		    'median', 'mean', 'best', 'sample', float (percentile)
+		    'median', 'mean', 'best',
+		    'sample', 'sigma', float (percentile)
 		
 		'sample' generates a random map, drawn from the
-		posterior. If method is a float, then the corresponding
+		posterior. 'sigma' returns the percentile-equivalent
+		of the standard deviation (half the 84.13%% - 15.87%% range).
+		If method is a float, then the corresponding
 		percentile map is returned.
+		
+		If mask_sigma is a float, then pixels where sigma is
+		greater than the provided threshold will be masked out.
 		'''
 		
 		EBV = None
@@ -346,7 +354,14 @@ class los_collection:
 		else:
 			raise ValueError('Unrecognized fit type: "%s"' % fit)
 		
+		if mask_sigma != None:
+			sigma = self.take_measure(EBV, 'sigma')
+			mask_idx = (sigma > mask_sigma)
+		
 		EBV = self.take_measure(EBV, method)
+		
+		if mask_sigma != None:
+			EBV[mask_idx] = np.nan
 		
 		mask = self.los_mask
 		pix_idx = self.pix_idx[mask]
@@ -367,6 +382,12 @@ class los_collection:
 			n_pix, n_samples = EBV.shape
 			i = np.random.randint(1, high=n_samples, size=n_pix)
 			return EBV[:,i]
+		elif method == 'sigma':
+			high = np.percentile(EBV[:,1:], 84.13, axis=1)
+			low = np.percentile(EBV[:,1:], 15.87, axis=1)
+			return 0.5 * (high - low)
+		elif type(method) == float:
+			return np.percentile(EBV[:,1:], method, axis=1)
 		else:
 			raise ValueError('method not implemented: "%s"' % (str(method)))
 	
@@ -404,7 +425,8 @@ class los_collection:
 	
 	def rasterize(self, mu, size,
 	                    method='median', fit='piecewise',
-	                    clip=True, proj=hputils.Cartesian_projection()):
+	                    mask_sigma=None, clip=True,
+	                    proj=hputils.Cartesian_projection()):
 		'''
 		Rasterize the map, returning an image of the specified size.
 		
@@ -414,11 +436,17 @@ class los_collection:
 		The method option determines which measure of E(B-V)
 		is returned. The options are
 		
-		    'median', 'mean', 'best', 'sample', float (percentile)
+		    'median', 'mean', 'best',
+		    'sample', 'sigma', float (percentile)
 		
 		'sample' generates a random map, drawn from the
-		posterior. If method is a float, then the corresponding
+		posterior. 'sigma' returns the percentile-equivalent
+		of the standard deviation (half the 84.13%% - 15.87%% range).
+		If method is a float, then the corresponding
 		percentile map is returned.
+		
+		If mask_sigma is a float, then pixels where sigma is
+		greater than the provided threshold will be masked out.
 		
 		If clip is true, then map does not wrap around at
 		l = 180 deg. If
@@ -433,14 +461,14 @@ class los_collection:
 		    inv(x, y) -> (lat, lon)
 		'''
 		
-		nside, pix_idx, EBV = self.gen_EBV_map(mu,
-		                                       fit=fit,
-		                                       method=method)
+		nside, pix_idx, EBV = self.gen_EBV_map(mu, fit=fit,
+		                                           method=method,
+		                                           mask_sigma=mask_sigma)
 		
-		img = hputils.rasterize_map(pix_idx, EBV, nside, size,
-		                            nest=True, clip=clip, proj=proj)
+		img, bounds = hputils.rasterize_map(pix_idx, EBV, nside, size,
+		                                    nest=True, clip=clip, proj=proj)
 		
-		return img
+		return img, bounds
 
 
 def test_load():
@@ -465,7 +493,7 @@ def test_load():
 	print np.median(los_EBV, axis=1)
 	print np.median(cloud_EBV, axis=1)
 	
-	nside, pix_idx, EBV = los_coll.gen_EBV_map(mu, fit='cloud', method='best')
+	nside, pix_idx, EBV = los_coll.gen_EBV_map(mu, fit='cloud', method='median')
 	
 	for i, A in zip(pix_idx, EBV):
 		print i, A
@@ -473,7 +501,9 @@ def test_load():
 	# Rasterize map
 	size = (2000, 1000)
 	
-	img, bounds = los_coll.rasterize(mu, size, proj=hputils.Mollweide_projection())
+	img, bounds = los_coll.rasterize(mu, size,
+	                                 method='best', fit='cloud',
+	                                 proj=hputils.Mollweide_projection())
 	
 	# Plot map
 	fig = plt.figure()
