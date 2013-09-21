@@ -69,8 +69,8 @@ def plot_EBV(ax, img, bounds, **kwargs):
 	mask_img[:,:,3] = 0.65 * mask.astype('f8')
 	ax.imshow(mask_img, **kwargs)
 	
-	xlim = ax.get_xlim()
-	ax.set_xlim(xlim[1], xlim[0])
+	#xlim = ax.get_xlim()
+	#ax.set_xlim(xlim[1], xlim[0])
 	
 	return img_res
 
@@ -232,6 +232,10 @@ def main():
 		if outfname != None:
 			full_fname = '%s.%s.%s.%.5d.png' % (outfname, args.model, args.method, i)
 			fig.savefig(full_fname, dpi=args.dpi)
+		
+		if not args.show:
+			plt.close(fig)
+			del img
 	
 	
 	if args.show:

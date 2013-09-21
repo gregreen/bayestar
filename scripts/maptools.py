@@ -380,8 +380,9 @@ class los_collection:
 			return EBV[:,1]
 		elif method == 'sample':
 			n_pix, n_samples = EBV.shape
-			i = np.random.randint(1, high=n_samples, size=n_pix)
-			return EBV[:,i]
+			j = np.random.randint(1, high=n_samples, size=n_pix)
+			i = np.arange(n_pix)
+			return EBV[i,j]
 		elif method == 'sigma':
 			high = np.percentile(EBV[:,1:], 84.13, axis=1)
 			low = np.percentile(EBV[:,1:], 15.87, axis=1)
