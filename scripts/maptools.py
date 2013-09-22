@@ -487,21 +487,21 @@ class job_completion_counter:
 		'''
 		
 		# Load files
-		self.load_completion(fnames)
+		self.load_completion(infiles, outfiles)
 	
 	def load_output_indiv(self, outfname):
 		'''
 		Looks to see which pixels are finished in a job
 		'''
 		
-		print 'Loading %s ...' % outfname
+		#print 'Loading %s ...' % outfname
 		
 		f = None
 		
 		try:
 			f = h5py.File(outfname, 'r')
 		except:
-			raise IOError('Unable to open %s.' % fname)
+			raise IOError('Unable to open %s.' % outfname)
 		
 		# Load each pixel
 		
@@ -513,15 +513,14 @@ class job_completion_counter:
 			except:
 				continue
 			
-			#self.output_pix_idx.append(pix_idx_tmp)
-			#self.output_nside.append(nside_tmp)
-			
 			# Check which elements of output are present in pixel
 			keys = item.keys()
 			
 			star_tmp = ('stellar chains' in keys)
 			cloud_tmp = ('clouds' in keys)
 			los_tmp = ('los' in keys)
+			
+			#print keys
 			
 			self.completion_dict[(nside_tmp, pix_idx_tmp)] = (star_tmp, cloud_tmp, los_tmp)
 		
@@ -532,27 +531,24 @@ class job_completion_counter:
 		Looks to see which pixels are in an input file.
 		'''
 		
-		print 'Loading %s ...' % infname
+		#print 'Loading %s ...' % infname
 		
 		f = None
 		
 		try:
 			f = h5py.File(infname, 'r')
 		except:
-			raise IOError('Unable to open %s.' % fname)
+			raise IOError('Unable to open %s.' % infname)
 		
 		# Load each pixel
 		
 		for name,item in f['/photometry'].iteritems():
 			# Load pixel position
 			try:
-				pix_idx_tmp = item.attrs['healpix_index'][0]
-				nside_tmp = item.attrs['nside'][0]
+				pix_idx_tmp = item.attrs['healpix_index']
+				nside_tmp = item.attrs['nside']
 			except:
 				continue
-			
-			#self.input_pix_idx.append(pix_idx_tmp)
-			#self.input_nside.append(nside_tmp)
 			
 			self.completion_dict[(nside_tmp, pix_idx_tmp)] = (0, 0, 0)
 		
@@ -564,21 +560,27 @@ class job_completion_counter:
 		
 		# Load information from input and output files
 		for fname in infnames:
-			self.load_input_indiv(fname)
+			try:
+				self.load_input_indiv(fname)
+			except:
+				print 'Could not open %s !' % fname
 		
 		for fname in outfnames:
-			self.load_output_indiv(fname)
+			try:
+				self.load_output_indiv(fname)
+			except:
+				print 'Could not open %s !' % fname
 		
 		# Generate map of completion
-		locs = np.array(self.completion_dict.keys(), dtype='u8')
+		locs = np.array(self.completion_dict.keys(), dtype='i8')
 		
 		self.nside = locs[:,0]
 		self.pix_idx = locs[:,1]
 		
-		completion = np.array(completion_dict.values(), dtype='u4')
+		completion = np.array(self.completion_dict.values(), dtype='i4')
 		
 		self.star = completion[:,0]
-		self.chain = completion[:,1]
+		self.cloud = completion[:,1]
 		self.los = completion[:,2]
 	
 	def rasterize(self, size, method='both', proj=hputils.Cartesian_projection()):
@@ -596,7 +598,7 @@ class job_completion_counter:
 		The module hputils.py has two built-in projections,
 		Cartesian_projection() and Mollweide_projection(). The user
 		can supply their own custom projection class, if desired.
-		The projection class must have two functions,
+		The projection class must have two methods,
 		
 		    proj(lat, lon) --> (x, y)
 		    inv(x, y) -> (lat, lon, out_of_bounds)
@@ -607,16 +609,26 @@ class job_completion_counter:
 		if method == 'cloud':
 			comp_map += self.cloud
 		elif method == 'piecewise':
-			comp_map += self.piecewise
+			comp_map += self.los
 		elif method == 'both':
-			comp_map += (self.cloud & self.piecewise).astype('u4')
+			comp_map += (self.cloud & self.los).astype('i4')
 		else:
 			raise ValueError("Unrecognized method: '%s'" % method)
 		
+		#for k in xrange(4):
+		#	print k, np.sum(comp_map == k)
+		#print np.sum(self.star)
+		#print np.sum(self.cloud)
+		#print np.sum(self.los)
+		#print np.sum((self.cloud & self.los).astype('u4'))
+		
+		print 'reducing'
 		nside, pix_idx, val = reduce_to_single_res(self.pix_idx, self.nside, comp_map)
 		
+		print 'rasterizing'
 		img, bounds = hputils.rasterize_map(pix_idx, val, nside, size,
 		                                    nest=True, clip=True, proj=proj)
+		print 'done'
 		
 		return img, bounds
 

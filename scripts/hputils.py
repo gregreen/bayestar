@@ -391,7 +391,7 @@ def rasterize_map(pix_idx, pix_val,
 		
 		if clip:
 			img[mask] = np.nan
-			
+		
 		img.shape = (x_size, y_size)
 		
 	elif len(pix_val.shape) == 2:
