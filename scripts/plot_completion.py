@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 from mpl_toolkits.axes_grid1 import ImageGrid
 
-import argparse, sys
+import argparse, sys, time
 
 import healpy as hp
 import h5py
@@ -37,7 +37,7 @@ import h5py
 import hputils, maptools
 
 
-def plot_EBV(ax, img, bounds, **kwargs):
+def plot_completion(ax, img, bounds, **kwargs):
 	# Configure plotting options
 	if 'vmin' not in kwargs:
 		kwargs['vmin'] = np.min(img[np.isfinite(img)])
@@ -68,9 +68,6 @@ def plot_EBV(ax, img, bounds, **kwargs):
 	mask_img[:,:,2] = 1.
 	mask_img[:,:,3] = 0.65 * mask.astype('f8')
 	ax.imshow(mask_img, **kwargs)
-	
-	#xlim = ax.get_xlim()
-	#ax.set_xlim(xlim[1], xlim[0])
 	
 	return img_res
 
@@ -105,15 +102,15 @@ class PixelIdentifier:
 
 
 def main():
-	parser = argparse.ArgumentParser(prog='plotmap.py',
-	                                 description='Generate a map of E(B-V) from bayestar output.',
+	parser = argparse.ArgumentParser(prog='plot_completion.py',
+	                                 description='Represent competion of Bayestar job as a rasterized map.',
 	                                 add_help=True)
-	parser.add_argument('input', type=str, nargs='+', help='Bayestar output files.')
-	parser.add_argument('--output', '-o', type=str, help='Output filename for plot.')
+	parser.add_argument('--infiles', '-i', type=str, nargs='+', required=True,
+	                                       help='Bayestar input files.')
+	parser.add_argument('--outfiles', '-o', type=str, nargs='+', required=True,
+	                                       help='Bayestar output files.')
+	parser.add_argument('--plot-fname', '-plt', type=str, help='Output filename for plot.')
 	parser.add_argument('--show', '-sh', action='store_true', help='Show plot.')
-	parser.add_argument('--dists', '-d', type=float, nargs=3,
-	                                     default=(4., 19., 21),
-	                                     help='DM min, DM max, # of distance slices.')
 	parser.add_argument('--figsize', '-fs', type=int, nargs=2, default=(8, 4),
 	                                        help='Figure size (in inches).')
 	parser.add_argument('--dpi', '-dpi', type=float, default=200,
@@ -121,14 +118,9 @@ def main():
 	parser.add_argument('--projection', '-proj', type=str, default='Cartesian',
 	                                     choices=('Cartesian', 'Mollweide', 'Hammer', 'Eckert IV'),
 	                                     help='Map projection to use.')
-	parser.add_argument('--model', '-m', type=str, default='piecewise',
-	                                     choices=('piecewise', 'cloud'),
-	                                     help='Line-of-sight extinction model to use.')
-	parser.add_argument('--mask', '-msk', type=float, default=None,
-	                                      help=r'Hide parts of map where sigma_{E(B-V)} is greater than given value')
-	parser.add_argument('--method', '-mtd', type=str, default='median',
-	                                        choices=('median', 'mean', 'best', 'sample', 'sigma' , '5th', '95th'),
-	                                        help='Measure of E(B-V) to plot.')
+	parser.add_argument('--method', '-mtd', type=str, default='both',
+	                                        choices=('cloud', 'piecewise', 'both'),
+	                                        help='Measure of line-of-sight completion to show.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -137,16 +129,10 @@ def main():
 	
 	
 	# Parse arguments
-	outfname = args.output
-	if outfname != None:
-		if outfname.endswith('.png'):
-			outfname = outfname[:-4]
-	
-	method = args.method
-	if method == '5th':
-		method = 5.
-	elif method == '95th':
-		method = 95.
+	plot_fname = args.plot_fname
+	if plot_fname != None:
+		if plot_fname.endswith('.png'):
+			plot_fname = plot_fname[:-4]
 	
 	proj = None
 	if args.projection == 'Cartesian':
@@ -162,23 +148,6 @@ def main():
 	
 	size = (args.figsize[0] * 0.8 * args.dpi, args.figsize[1] * 0.8 * args.dpi)
 	
-	mu_plot = np.linspace(args.dists[0], args.dists[1], args.dists[2])
-	
-	
-	# Load in line-of-sight data
-	fnames = args.input
-	los_coll = maptools.los_collection(fnames)
-	
-	
-	# Get upper limit on E(B-V)
-	nside_tmp, pix_idx_tmp, EBV = los_coll.gen_EBV_map(mu_plot[-1],
-	                                                   fit=args.model,
-	                                                   method=method,
-	                                                   mask_sigma=args.mask)
-	idx = np.isfinite(EBV)
-	EBV_max = np.percentile(EBV[idx], 90.)
-	
-	print 'EBV_max = %.3f' % EBV_max
 	
 	# Matplotlib settings
 	mplib.rc('text', usetex=True)
@@ -191,54 +160,43 @@ def main():
 	mplib.rc('axes', grid=False)
 	
 	
-	# Plot at each distance
+	# Plot completion
+	
+	# Load information on completion
+	completion = maptools.job_completion_counter(args.infname, args.outfname)
+	
 	pix_identifiers = []
-	nside_max = los_coll.get_nside_levels()[-1]
+	nside_max = np.max(completion.nside)
 	
-	for i,mu in enumerate(mu_plot):
-		print 'Plotting mu = %.2f (%d of %d) ...' % (mu, i+1, len(mu_plot))
-		
-		fig = plt.figure(figsize=args.figsize, dpi=args.dpi)
-		ax = fig.add_subplot(1,1,1)
-		
-		# Plot E(B-V)
-		img, bounds = los_coll.rasterize(mu, size, fit=args.model,
-		                                           method=method,
-		                                           mask_sigma=args.mask,
-		                                           proj=proj)
-		
-		img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
-		
-		# Colorbar
-		fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.88)
-		cax = fig.add_axes([0.9, 0.12, 0.03, 0.76])
-		cb = fig.colorbar(img, cax=cax)
-		
-		# Labels, ticks, etc.
-		ax.set_xlabel(r'$\ell$', fontsize=16)
-		ax.set_ylabel(r'$b$', fontsize=16)
-		
-		ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
-		ax.xaxis.set_minor_locator(AutoMinorLocator())
-		ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
-		ax.yaxis.set_minor_locator(AutoMinorLocator())
-		
-		# Title
-		d = 10.**(mu/5. - 2.)
-		ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu, d), fontsize=16)
-		
-		# Allow user to determine healpix index
-		pix_identifiers.append(PixelIdentifier(ax, nside_max, nest=True, proj=proj))
-		
-		# Save figure
-		if outfname != None:
-			full_fname = '%s.%s.%s.%.5d.png' % (outfname, args.model, args.method, i)
-			fig.savefig(full_fname, dpi=args.dpi)
-		
-		if not args.show:
-			plt.close(fig)
-			del img
+	fig = plt.figure(figsize=args.figsize, dpi=args.dpi)
+	ax = fig.add_subplot(1,1,1)
 	
+	img, bounds = completion.rasterize(size, method=method, proj=proj)
+	
+	ax.imshow(img.T, extent=bounds, vmin=0, vmax=3,
+	                 aspect='auto', origin='lower', interpolation='nearest')
+	
+	
+	# Labels, ticks, etc.
+	ax.set_xlabel(r'$\ell$', fontsize=16)
+	ax.set_ylabel(r'$b$', fontsize=16)
+	
+	ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
+	ax.xaxis.set_minor_locator(AutoMinorLocator())
+	ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+	ax.yaxis.set_minor_locator(AutoMinorLocator())
+	
+	# Title
+	timestr = time.strftime('%m.%d-%H:%M:%S')
+	ax.set_title(r'$\mathrm{Completion \ as \ of %s$' % (timestr), fontsize=16)
+	
+	# Allow user to determine healpix index
+	pix_identifiers.append(PixelIdentifier(ax, nside_max, nest=True, proj=proj))
+	
+	# Save figure
+	if plot_fname != None:
+		full_fname = '%s.png' % (plot_fname)
+		fig.savefig(full_fname, dpi=args.dpi)
 	
 	if args.show:
 		plt.show()

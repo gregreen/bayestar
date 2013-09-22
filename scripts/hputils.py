@@ -153,7 +153,9 @@ class Mollweide_projection:
 		
 		#lam = self.lam_0 + np.pi * x / (180. * np.cos(theta))
 		
-		return phi, lam
+		out_of_bounds = (lam < 0.) | (lam > 2.*np.pi) | (phi < -np.pi) | (phi > np.pi)
+		
+		return phi, lam, out_of_bounds
 	
 	def Mollweide_theta(self, phi, iterations):
 		theta = np.arcsin(2. * phi / np.pi)
@@ -163,27 +165,6 @@ class Mollweide_projection:
 			theta -= 0.5 * (2. * theta + np.sin(2. * theta) - np.pi * sin_phi) / (1. + np.cos(2. * theta))
 		
 		return theta
-
-
-class Cartesian_projection:
-	'''
-	The Cartesian projection of the sphere onto a flat plane.
-	'''
-	
-	def __init__(self, lam_0=180.):
-		self.lam_0 = np.pi / 180. * lam_0
-	
-	def proj(self, phi, lam):
-		x = 180./np.pi * (lam - self.lam_0)
-		y = 180./np.pi * phi
-		
-		return x, y
-	
-	def inv(self, x, y):
-		lam = self.lam_0 + np.pi/180. * x
-		phi = np.pi/180. * y
-		
-		return phi, lam
 
 
 class EckertIV_projection:
@@ -245,7 +226,9 @@ class EckertIV_projection:
 		
 		lam = self.lam_0 + self.a / 2. * (x / self.x_scale) / (1. + np.cos(theta))
 		
-		return phi, lam
+		out_of_bounds = (lam < 0.) | (lam > 2.*np.pi) | (phi < -np.pi) | (phi > np.pi)
+		
+		return phi, lam, out_of_bounds
 	
 	def EckertIV_theta(self, phi, iterations):
 		theta = phi / 2.
@@ -255,6 +238,85 @@ class EckertIV_projection:
 			theta -= (theta + 0.5 * np.sin(2. * theta) + 2. * np.sin(theta) - self.c * sin_phi) / (2. * np.cos(theta) * (1. + np.cos(theta)))
 		
 		return theta
+
+
+class Hammer_projection:
+	'''
+	The Hammer projection of the sphere onto a flat plane.
+	
+	Equal-area. Similar to the Mollweide projection, but with curved
+	parallels to reduce distortion at the outer limbs.
+	'''
+	
+	def __init__(self, lam_0=180.):
+		'''
+		lam_0 is the central longitude of the map.
+		'''
+		
+		self.lam_0 = np.pi/180. * lam_0
+	
+	def proj(self, phi, lam):
+		'''
+		Hammer projection.
+		
+		phi = latitude
+		lam = longitude
+		'''
+		
+		denom = np.sqrt(1. + np.cos(phi) * np.cos((lam - self.lam_0)/2.))
+		
+		x = 2. * np.sqrt(2.) * np.cos(phi) * np.sin((lam - self.lam_0)/2.) / denom
+		y = np.sqrt(2.) * np.sin(phi) / denom
+		
+		return x, y
+	
+	def inv(self, x, y):
+		'''
+		Inverse Hammer projection.
+		
+		Returns (phi, lam, out_of_bounds), given (x, y).
+		
+		phi = latitude
+		lam = longitude
+		
+		out_of_bounds = True if pixel is not in standard range (ellipse
+		                that typically bounds the Hammer projection)
+		
+		x and y can be floats or numpy float arrays.
+		'''
+		
+		z = np.sqrt(1. - np.power(x/4., 2.) - np.power(y/2., 2.))
+		
+		lam = self.lam_0 + 2. * np.arctan(z * x / (2. * (2. * np.power(z, 2.) - 1.)))
+		
+		phi = np.arcsin(z * y)
+		
+		out_of_bounds = (0.25 * x*x + y*y) > 2.
+		
+		return phi, lam, out_of_bounds
+
+
+class Cartesian_projection:
+	'''
+	The Cartesian projection of the sphere onto a flat plane.
+	'''
+	
+	def __init__(self, lam_0=180.):
+		self.lam_0 = np.pi / 180. * lam_0
+	
+	def proj(self, phi, lam):
+		x = 180./np.pi * (lam - self.lam_0)
+		y = 180./np.pi * phi
+		
+		return x, y
+	
+	def inv(self, x, y):
+		lam = self.lam_0 + np.pi/180. * x
+		phi = np.pi/180. * y
+		
+		out_of_bounds = (lam < 0.) | (lam > 2.*np.pi) | (phi < -np.pi) | (phi > np.pi)
+		
+		return phi, lam, out_of_bounds
 
 
 def rasterize_map(pix_idx, pix_val,
@@ -280,9 +342,6 @@ def rasterize_map(pix_idx, pix_val,
 		for s_y in np.linspace(-pix_scale, pix_scale, 3):
 			lam, b = shift_lon_lat(lam_0, b_0, 0.75*s_x, 0.75*s_y, clip=True)
 			
-			#print l
-			#print b
-			
 			x_0, y_0 = proj.proj(np.pi/180. * b, np.pi/180. * lam)
 			
 			x_min.append(np.min(x_0))
@@ -303,24 +362,19 @@ def rasterize_map(pix_idx, pix_val,
 	y = y_min + (y_max - y_min) * y / float(y_size)
 	
 	# Convert display-space pixels to (l, b)
-	b, lam = proj.inv(x, y)
+	b, lam, mask = proj.inv(x, y)
 	l = 180. - 180./np.pi * lam
 	b *= 180./np.pi
 	
-	# Generate clip mask
-	mask = None
-	
-	if clip:
-		mask = (l < -180.) | (l > 180.) | (b < -90.) | (b > 90.)
-		
-		l_min, l_max = np.min(l[~mask]), np.max(l[~mask])
-		b_min, b_max = np.min(b[~mask]), np.max(b[~mask])
-	else:
-		l_min, l_max = np.min(l), np.max(l)
-		b_min, b_max = np.min(b), np.max(b)
+	# Determine bounds in (l, b)-space
+	#if clip:
+	l_min, l_max = np.min(l[~mask]), np.max(l[~mask])
+	b_min, b_max = np.min(b[~mask]), np.max(b[~mask])
+	#else:
+	#	l_min, l_max = np.min(l), np.max(l)
+	#	b_min, b_max = np.min(b), np.max(b)
 	
 	# Convert (l, b) to healpix indices
-	#l = 360. - wrap_longitude(l, 180.)	# Center on l=0 and reverse direction of l
 	disp_idx = lb2pix(nside, l, b, nest=nest)
 	
 	# Generate full map
@@ -441,8 +495,8 @@ def test_proj():
 	nside = 128
 	nest = True
 	clip = True
-	size = (4000, 4000)
-	proj = Mollweide_projection()
+	size = (2000, 2000)
+	proj = Hammer_projection()
 	
 	n_pix = hp.pixelfunc.nside2npix(nside)
 	pix_idx = np.arange(n_pix)

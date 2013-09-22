@@ -33,6 +33,39 @@ import h5py
 import hputils
 
 
+def reduce_to_single_res(pix_idx, nside, pix_val):
+	nside_unique = np.unique(nside)
+	nside_max = np.max(nside_unique)
+	
+	idx = (nside == nside_max)
+	pix_idx_exp = [pix_idx[idx]]
+	pix_val_exp = [pix_val[idx]]
+	
+	for n in nside_unique[:-1]:
+		n_rep = (nside_max / n)**2
+		
+		idx = (nside == n)
+		n_pix = np.sum(idx)
+		
+		pix_idx_n = np.repeat(n_rep * pix_idx[idx], n_rep, axis=0)
+		
+		pix_adv = np.mod(np.arange(n_rep * n_pix), n_rep)
+		pix_idx_n += pix_adv
+		
+		#for k in xrange(1, n_rep):
+		#	pix_idx_n[k*n_pix:(k+1)*n_pix] += k
+		
+		pix_val_n = np.repeat(pix_val[idx], n_rep, axis=0)
+		
+		pix_idx_exp.append(pix_idx_n)
+		pix_val_exp.append(pix_val_n)
+	
+	pix_idx_exp = np.concatenate(pix_idx_exp, axis=0)
+	pix_val_exp = np.concatenate(pix_val_exp, axis=0)
+	
+	return nside_max, pix_idx_exp, pix_val_exp
+
+
 class los_collection:
 	'''
 	Loads line-of-sight fits from Bayestar
@@ -367,7 +400,7 @@ class los_collection:
 		pix_idx = self.pix_idx[mask]
 		nside = self.nside[mask]
 		
-		nside, pix_idx, EBV = self.reduce_to_single_res(pix_idx, nside, EBV)
+		nside, pix_idx, EBV = reduce_to_single_res(pix_idx, nside, EBV)
 		
 		return nside, pix_idx, EBV
 	
@@ -392,38 +425,6 @@ class los_collection:
 		else:
 			raise ValueError('method not implemented: "%s"' % (str(method)))
 	
-	def reduce_to_single_res(self, pix_idx, nside, pix_val):
-		nside_unique = np.unique(nside)
-		nside_max = np.max(nside_unique)
-		
-		idx = (nside == nside_max)
-		pix_idx_exp = [pix_idx[idx]]
-		pix_val_exp = [pix_val[idx]]
-		
-		for n in nside_unique[:-1]:
-			n_rep = (nside_max / n)**2
-			
-			idx = (nside == n)
-			n_pix = np.sum(idx)
-			
-			pix_idx_n = np.repeat(n_rep * pix_idx[idx], n_rep, axis=0)
-			
-			pix_adv = np.mod(np.arange(n_rep * n_pix), n_rep)
-			pix_idx_n += pix_adv
-			
-			#for k in xrange(1, n_rep):
-			#	pix_idx_n[k*n_pix:(k+1)*n_pix] += k
-			
-			pix_val_n = np.repeat(pix_val[idx], n_rep, axis=0)
-			
-			pix_idx_exp.append(pix_idx_n)
-			pix_val_exp.append(pix_val_n)
-		
-		pix_idx_exp = np.concatenate(pix_idx_exp, axis=0)
-		pix_val_exp = np.concatenate(pix_val_exp, axis=0)	
-		
-		return nside_max, pix_idx_exp, pix_val_exp
-	
 	def rasterize(self, mu, size,
 	                    method='median', fit='piecewise',
 	                    mask_sigma=None, clip=True,
@@ -437,8 +438,8 @@ class los_collection:
 		The method option determines which measure of E(B-V)
 		is returned. The options are
 		
-		    'median', 'mean', 'best',
-		    'sample', 'sigma', float (percentile)
+			'median', 'mean', 'best',
+			'sample', 'sigma', float (percentile)
 		
 		'sample' generates a random map, drawn from the
 		posterior. 'sigma' returns the percentile-equivalent
@@ -458,16 +459,164 @@ class los_collection:
 		can supply their own custom projection class, if desired.
 		The projection class must have two functions,
 		
-		    proj(lat, lon) --> (x, y)
-		    inv(x, y) -> (lat, lon)
+			proj(lat, lon) --> (x, y)
+			inv(x, y) -> (lat, lon, out_of_bounds)
 		'''
 		
 		nside, pix_idx, EBV = self.gen_EBV_map(mu, fit=fit,
-		                                           method=method,
-		                                           mask_sigma=mask_sigma)
+		                                       method=method,
+		                                       mask_sigma=mask_sigma)
 		
 		img, bounds = hputils.rasterize_map(pix_idx, EBV, nside, size,
 		                                    nest=True, clip=clip, proj=proj)
+		
+		return img, bounds
+
+
+class job_completion_counter:
+	'''
+	Checks the status of a set of Bayestar jobs. Has the
+	ability to generate a rasterized map of the job
+	completion.
+	'''
+	
+	def __init__(self, infiles, outfiles):
+		'''
+		infiles is a list of Bayestar input files, while
+		outfiles is a list of Bayestar output files.
+		'''
+		
+		# Load files
+		self.load_completion(fnames)
+	
+	def load_output_indiv(self, outfname):
+		'''
+		Looks to see which pixels are finished in a job
+		'''
+		
+		print 'Loading %s ...' % outfname
+		
+		f = None
+		
+		try:
+			f = h5py.File(outfname, 'r')
+		except:
+			raise IOError('Unable to open %s.' % fname)
+		
+		# Load each pixel
+		
+		for name,item in f.iteritems():
+			# Load pixel position
+			try:
+				pix_idx_tmp = item.attrs['healpix_index'][0]
+				nside_tmp = item.attrs['nside'][0]
+			except:
+				continue
+			
+			#self.output_pix_idx.append(pix_idx_tmp)
+			#self.output_nside.append(nside_tmp)
+			
+			# Check which elements of output are present in pixel
+			keys = item.keys()
+			
+			star_tmp = ('stellar chains' in keys)
+			cloud_tmp = ('clouds' in keys)
+			los_tmp = ('los' in keys)
+			
+			self.completion_dict[(nside_tmp, pix_idx_tmp)] = (star_tmp, cloud_tmp, los_tmp)
+		
+		f.close()
+	
+	def load_input_indiv(self, infname):
+		'''
+		Looks to see which pixels are in an input file.
+		'''
+		
+		print 'Loading %s ...' % infname
+		
+		f = None
+		
+		try:
+			f = h5py.File(infname, 'r')
+		except:
+			raise IOError('Unable to open %s.' % fname)
+		
+		# Load each pixel
+		
+		for name,item in f['/photometry'].iteritems():
+			# Load pixel position
+			try:
+				pix_idx_tmp = item.attrs['healpix_index'][0]
+				nside_tmp = item.attrs['nside'][0]
+			except:
+				continue
+			
+			#self.input_pix_idx.append(pix_idx_tmp)
+			#self.input_nside.append(nside_tmp)
+			
+			self.completion_dict[(nside_tmp, pix_idx_tmp)] = (0, 0, 0)
+		
+		f.close()
+	
+	def load_completion(self, infnames, outfnames):
+		# Information of completeness of jobs
+		self.completion_dict = {}
+		
+		# Load information from input and output files
+		for fname in infnames:
+			self.load_input_indiv(fname)
+		
+		for fname in outfnames:
+			self.load_output_indiv(fname)
+		
+		# Generate map of completion
+		locs = np.array(self.completion_dict.keys(), dtype='u8')
+		
+		self.nside = locs[:,0]
+		self.pix_idx = locs[:,1]
+		
+		completion = np.array(completion_dict.values(), dtype='u4')
+		
+		self.star = completion[:,0]
+		self.chain = completion[:,1]
+		self.los = completion[:,2]
+	
+	def rasterize(self, size, method='both', proj=hputils.Cartesian_projection()):
+		'''
+		Rasterize the completion map, returning an image of the specified size.
+		
+		The argument <method> indicates how completion should be calculated.
+		The options are:
+		
+		    "cloud"      mark as complete if cloud fit present
+		    "piecewise"  mark as complete if piecewise-linear fit present
+		    "both"       mark as complete if both l.o.s. fits present
+		
+		The argument <proj> is a class representing a projection.
+		The module hputils.py has two built-in projections,
+		Cartesian_projection() and Mollweide_projection(). The user
+		can supply their own custom projection class, if desired.
+		The projection class must have two functions,
+		
+		    proj(lat, lon) --> (x, y)
+		    inv(x, y) -> (lat, lon, out_of_bounds)
+		'''
+		
+		comp_map = 1 + self.star
+		
+		if method == 'cloud':
+			comp_map += self.cloud
+		elif method == 'piecewise':
+			comp_map += self.piecewise
+		elif method == 'both':
+			comp_map += (self.cloud & self.piecewise).astype('u4')
+		else:
+			raise ValueError("Unrecognized method: '%s'" % method)
+		
+		nside, pix_idx, val = reduce_to_single_res(self.pix_idx, self.nside, comp_map)
+		
+		img, bounds = hputils.rasterize_map(pix_idx, val, nside, size,
+		                                    nest=True, clip=True, proj=proj)
 		
 		return img, bounds
 
