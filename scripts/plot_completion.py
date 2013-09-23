@@ -25,6 +25,7 @@
 import numpy as np
 
 import matplotlib as mplib
+mplib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 from mpl_toolkits.axes_grid1 import ImageGrid
