@@ -428,14 +428,15 @@ class los_collection:
 	def rasterize(self, mu, size,
 	                    method='median', fit='piecewise',
 	                    mask_sigma=None, clip=True,
-	                    proj=hputils.Cartesian_projection()):
+	                    proj=hputils.Cartesian_projection(),
+	                    l_cent=0., b_cent=0.):
 		'''
 		Rasterize the map, returning an image of the specified size.
 		
-		The fit option can be either 'piecewise' or 'cloud',
+		The <fit> argument can be either 'piecewise' or 'cloud',
 		depending on which type of fit the map should use.
 		
-		The method option determines which measure of E(B-V)
+		The <method> argument determines which measure of E(B-V)
 		is returned. The options are
 		
 			'median', 'mean', 'best',
@@ -447,20 +448,24 @@ class los_collection:
 		If method is a float, then the corresponding
 		percentile map is returned.
 		
-		If mask_sigma is a float, then pixels where sigma is
+		If <mask_sigma> is a float, then pixels where sigma is
 		greater than the provided threshold will be masked out.
 		
-		If clip is true, then map does not wrap around at
+		If <clip> is true, then map does not wrap around at
 		l = 180 deg. If
 		
-		The variable proj is a class representing a projection.
+		The variable <proj> is a class representing a projection.
 		The module hputils.py has two built-in projections,
 		Cartesian_projection() and Mollweide_projection(). The user
 		can supply their own custom projection class, if desired.
 		The projection class must have two functions,
 		
-			proj(lat, lon) --> (x, y)
-			inv(x, y) -> (lat, lon, out_of_bounds)
+		    proj(lat, lon) --> (x, y)
+		    inv(x, y) -> (lat, lon, out_of_bounds)
+		
+		The optional argument <l_cent> and <b_cent> determine the
+		Galactic longitude and latitude on which the map is centered,
+		respectively.
 		'''
 		
 		nside, pix_idx, EBV = self.gen_EBV_map(mu, fit=fit,
@@ -468,7 +473,8 @@ class los_collection:
 		                                       mask_sigma=mask_sigma)
 		
 		img, bounds = hputils.rasterize_map(pix_idx, EBV, nside, size,
-		                                    nest=True, clip=clip, proj=proj)
+		                                    nest=True, clip=clip, proj=proj,
+		                                    l_cent=l_cent, b_cent=b_cent)
 		
 		return img, bounds
 
@@ -583,7 +589,9 @@ class job_completion_counter:
 		self.cloud = completion[:,1]
 		self.los = completion[:,2]
 	
-	def rasterize(self, size, method='both', proj=hputils.Cartesian_projection()):
+	def rasterize(self, size, method='both',
+	                          proj=hputils.Cartesian_projection(),
+	                          l_cent=0., b_cent=0.):
 		'''
 		Rasterize the completion map, returning an image of the specified size.
 		
@@ -602,6 +610,10 @@ class job_completion_counter:
 		
 		    proj(lat, lon) --> (x, y)
 		    inv(x, y) -> (lat, lon, out_of_bounds)
+		
+		The optional argument <l_cent> and <b_cent> determine the
+		Galactic longitude and latitude on which the map is centered,
+		respectively.
 		'''
 		
 		comp_map = 1 + self.star
@@ -627,7 +639,8 @@ class job_completion_counter:
 		
 		print 'rasterizing'
 		img, bounds = hputils.rasterize_map(pix_idx, val, nside, size,
-		                                    nest=True, clip=True, proj=proj)
+		                                    nest=True, clip=True, proj=proj,
+		                                    l_cent=l_cent, b_cent=b_cent)
 		print 'done'
 		
 		return img, bounds
