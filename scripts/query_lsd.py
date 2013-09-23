@@ -115,6 +115,11 @@ def reducer(keyvalue):
 	pix_index, obj = keyvalue
 	obj = lsd.colgroup.fromiter(obj, blocks=True)
 	
+	# Scale errors
+	err_scale = 1.3
+	err_floor = 0.02
+	obj['err'] = np.sqrt((err_scale * obj['err'])**2. + err_floor**2.)
+	
 	# Find stars with bad detections
 	mask_zero_mag = (obj['mean'] == 0.)
 	mask_zero_err = (obj['err'] == 0.)
@@ -128,11 +133,13 @@ def reducer(keyvalue):
 	obj['err'][mask_zero_mag] = 1.e10
 	
 	# Combine and apply the masks
-	mask_detect = np.sum(obj['mean'], axis=1).astype(np.bool)
-	mask_informative = (np.sum(obj['err'] > 1.e10, axis=1) < 3).astype(np.bool)
-	mask_keep = np.logical_and(mask_detect, mask_informative)
+	#mask_detect = np.sum(obj['mean'], axis=1).astype(np.bool)
+	#mask_informative = (np.sum(obj['err'] > 1.e10, axis=1) < 3).astype(np.bool)
+	#mask_keep = np.logical_and(mask_detect, mask_informative)
 	
-	yield (pix_index, obj[mask_keep])
+	#yield (pix_index, obj[mask_keep])
+	
+	yield (pix_index, obj)
 
 
 def subdivider(keyvalue, nside, n_stars_max, n_stars_min, nside_max):
