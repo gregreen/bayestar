@@ -319,10 +319,93 @@ class Cartesian_projection:
 		return phi, lam, out_of_bounds
 
 
+def Euler_rotation_vec(x, y, z, alpha, beta, gamma, inverse=False):
+	if inverse:
+		alpha *= -1.
+		beta *= -1.
+		gamma *= -.1
+	
+	X = np.array([[1., 0.,             0.           ],
+	              [0., np.cos(gamma), -np.sin(gamma)],
+	              [0., np.sin(gamma),  np.cos(gamma)]])
+	
+	Y = np.array([[ np.cos(beta), 0., np.sin(beta)],
+	              [ 0.,           1., 0.          ],
+	              [-np.sin(beta), 0., np.cos(beta)]])
+	
+	Z = np.array([[np.cos(alpha), -np.sin(alpha), 0.],
+	              [np.sin(alpha),  np.cos(alpha), 0.],
+	              [0.,             0.,            1.]])
+	
+	shape = x.shape
+	
+	vec = np.empty((x.size, 3), dtype='f8')
+	vec[:,0] = x.flatten()
+	vec[:,1] = y.flatten()
+	vec[:,2] = z.flatten()
+	
+	if inverse:
+		vec = np.einsum('ij,jk,kl,ml->mi', Z, Y, X, vec)
+	else:
+		vec = np.einsum('ij,jk,kl,ml->mi', X, Y, Z, vec)
+	
+	x = np.reshape(vec[:,0], shape)
+	y = np.reshape(vec[:,1], shape)
+	z = np.reshape(vec[:,2], shape)
+	
+	return x, y, z
+
+
+def ang2vec(theta, phi):
+	cos_theta = np.cos(theta)
+	
+	x = np.cos(phi) * cos_theta
+	y = np.sin(phi) * cos_theta
+	z = np.sin(theta)
+	
+	return x, y, z
+
+
+def vec2ang(x, y, z):
+	r = np.sqrt(x*x + y*y + z*z)
+	
+	phi = np.arctan2(y, x)
+	theta = np.arcsin(z/r)
+	
+	return theta, phi
+
+
+def Euler_rotation_ang(theta, phi, alpha, beta, gamma,
+                       degrees=False, inverse=False):
+	x, y, z = None, None, None
+	
+	if degrees:
+		x, y, z = ang2vec(np.pi/180. * theta, np.pi/180. * phi)
+		
+		alpha *= np.pi/180.
+		beta *= np.pi/180.
+		gamma *= np.pi/180.
+		
+	else:
+		x, y, z = ang2vec(theta, phi)
+	
+	x, y, z = Euler_rotation_vec(x, y, z, alpha, beta, gamma,
+	                                      inverse=inverse)
+	
+	t, p = vec2ang(x, y, z)
+	
+	if degrees:
+		t *= 180. / np.pi
+		p *= 180. / np.pi
+	
+	return t, p
+
+
 def rasterize_map(pix_idx, pix_val,
                   nside, size,
                   nest=True, clip=True,
-                  proj=Cartesian_projection()):
+                  proj=Cartesian_projection(),
+                  l_cent=0., b_cent=0.):
 	'''
 	Rasterize a healpix map.
 	'''
@@ -331,6 +414,13 @@ def rasterize_map(pix_idx, pix_val,
 	
 	# Determine pixel centers
 	l_0, b_0 = pix2lb(nside, pix_idx, nest=nest, use_negative_l=True)
+	
+	# Rotate coordinate system to center (l_0, b_0)
+	if (l_cent != 0.) | (b_cent != 0.):
+		b_0, l_0 = Euler_rotation_ang(b_0, l_0, -l_cent, b_cent, 0.,
+		                                        degrees=True)
+		#l_0 = np.mod(l_0, 360.)
+	
 	lam_0 = 180. - l_0
 	
 	# Determine display-space bounds
@@ -366,10 +456,15 @@ def rasterize_map(pix_idx, pix_val,
 	l = 180. - 180./np.pi * lam
 	b *= 180./np.pi
 	
+	# Rotate back to original (l, b)-space
+	if (l_cent != 0.) | (b_cent != 0.):
+		b, l = Euler_rotation_ang(b, l, -l_cent, b_cent, 0.,
+		                                degrees=True, inverse=True)
+	
 	# Determine bounds in (l, b)-space
 	#if clip:
-	l_min, l_max = np.min(l[~mask]), np.max(l[~mask])
-	b_min, b_max = np.min(b[~mask]), np.max(b[~mask])
+	#l_min, l_max = np.min(l[~mask]), np.max(l[~mask])
+	#b_min, b_max = np.min(b[~mask]), np.max(b[~mask])
 	#else:
 	#	l_min, l_max = np.min(l), np.max(l)
 	#	b_min, b_max = np.min(b), np.max(b)
@@ -386,11 +481,15 @@ def rasterize_map(pix_idx, pix_val,
 	
 	# Grab pixel values
 	img = None
+	good_idx = None
+	
 	if len(pix_val.shape) == 1:
 		img = pix_val_full[disp_idx]
 		
 		if clip:
 			img[mask] = np.nan
+		
+		good_idx = np.isfinite(img)
 		
 		img.shape = (x_size, y_size)
 		
@@ -400,10 +499,15 @@ def rasterize_map(pix_idx, pix_val,
 		if clip:
 			img[:,mask] = np.nan
 		
+		good_idx = np.any(np.isfinite(img), axis=0)
+		
 		img.shape = (img.shape[0], x_size, y_size)
 		
 	else:
 		raise Exception('pix_val must be either 1- or 2-dimensional.')
+	
+	l_min, l_max = np.min(l[good_idx]), np.max(l[good_idx])
+	b_min, b_max = np.min(b[good_idx]), np.max(b[good_idx])
 	
 	bounds = (l_max, l_min, b_min, b_max)
 	
@@ -495,11 +599,13 @@ def test_proj():
 	nside = 128
 	nest = True
 	clip = True
-	size = (2000, 2000)
+	size = (1000, 1000)
 	proj = Hammer_projection()
+	l_cent = 90.
+	b_cent = 90.
 	
 	n_pix = hp.pixelfunc.nside2npix(nside)
-	pix_idx = np.arange(n_pix)
+	pix_idx = np.arange(n_pix)#[4*n_pix/12:5*n_pix/12]
 	l, b = pix2lb(nside, pix_idx, nest=nest)
 	pix_val = pix_idx[:]
 	
@@ -512,7 +618,8 @@ def test_proj():
 	img, bounds = rasterize_map(pix_idx, pix_val,
 	                            nside, size,
 	                            nest=nest, clip=clip,
-	                            proj=proj)
+	                            proj=proj,
+	                            l_cent=l_cent, b_cent=b_cent)
 	
 	print bounds
 	
@@ -528,11 +635,32 @@ def test_proj():
 	plt.show()
 
 
+def test_rot():
+	p = np.array([[0., 45., 90., 135., 180.],
+	              [225., 270., 315., 360., 45.]])
+	t = 180. * (np.random.random(size=p.shape) - 0.5)
+	
+	print t
+	
+	#t *= np.pi / 180.
+	#p *= np.pi / 180.
+	
+	t, p = Euler_rotation_ang(t, p, 90., 45., 0., degrees=True)
+	t, p = Euler_rotation_ang(t, p, 90., 45., 0., degrees=True, inverse=True)
+	
+	#t *= 180. / np.pi
+	#p *= 180. / np.pi
+	
+	print t
+	print p
+
+
 def main():
 	#test_Cartesian()
 	#test_EckertIV()
 	#test_Mollweide()
 	test_proj()
+	#test_rot()
 
 
 if __name__ == '__main__':

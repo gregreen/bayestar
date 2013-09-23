@@ -115,20 +115,22 @@ def main():
 	                                     default=(4., 19., 21),
 	                                     help='DM min, DM max, # of distance slices.')
 	parser.add_argument('--figsize', '-fs', type=int, nargs=2, default=(8, 4),
-	                                        help='Figure size (in inches).')
+	                                     help='Figure size (in inches).')
 	parser.add_argument('--dpi', '-dpi', type=float, default=200,
 	                                     help='Dots per inch for figure.')
 	parser.add_argument('--projection', '-proj', type=str, default='Cartesian',
 	                                     choices=('Cartesian', 'Mollweide', 'Hammer', 'Eckert IV'),
 	                                     help='Map projection to use.')
+	parser.add_argument('--center-lb', '-cent', type=float, nargs=2, default=(0., 0.),
+	                                     help='Center map on (l, b).')
 	parser.add_argument('--model', '-m', type=str, default='piecewise',
 	                                     choices=('piecewise', 'cloud'),
 	                                     help='Line-of-sight extinction model to use.')
 	parser.add_argument('--mask', '-msk', type=float, default=None,
-	                                      help=r'Hide parts of map where sigma_{E(B-V)} is greater than given value')
+	                                     help=r'Hide parts of map where sigma_{E(B-V)} is greater than given value')
 	parser.add_argument('--method', '-mtd', type=str, default='median',
-	                                        choices=('median', 'mean', 'best', 'sample', 'sigma' , '5th', '95th'),
-	                                        help='Measure of E(B-V) to plot.')
+	                                     choices=('median', 'mean', 'best', 'sample', 'sigma' , '5th', '95th'),
+	                                     help='Measure of E(B-V) to plot.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -159,6 +161,8 @@ def main():
 		proj = hputils.EckertIV_projection()
 	else:
 		raise ValueError("Unrecognized projection: '%s'" % args.proj)
+	
+	l_cent, b_cent = args.center_lb
 	
 	size = (args.figsize[0] * 0.8 * args.dpi, args.figsize[1] * 0.8 * args.dpi)
 	
@@ -205,7 +209,9 @@ def main():
 		img, bounds = los_coll.rasterize(mu, size, fit=args.model,
 		                                           method=method,
 		                                           mask_sigma=args.mask,
-		                                           proj=proj)
+		                                           proj=proj,
+		                                           l_cent=l_cent,
+		                                           b_cent=b_cent)
 		
 		img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
 		

@@ -84,6 +84,8 @@ def main():
 	parser.add_argument('--projection', '-proj', type=str, default='Cartesian',
 	                                       choices=('Cartesian', 'Mollweide', 'Hammer', 'Eckert IV'),
 	                                       help='Map projection to use.')
+	parser.add_argument('--center-lb', '-cent', type=float, nargs=2, default=(0., 0.),
+	                                       help='Center map on (l, b).')
 	parser.add_argument('--method', '-mtd', type=str, default='both',
 	                                       choices=('cloud', 'piecewise', 'both'),
 	                                       help='Measure of line-of-sight completion to show.')
@@ -111,8 +113,9 @@ def main():
 	else:
 		raise ValueError("Unrecognized projection: '%s'" % args.proj)
 	
-	size = (int(args.figsize[0] * 0.8 * args.dpi), int(args.figsize[1] * 0.8 * args.dpi))
+	l_cent, b_cent = args.center_lb
 	
+	size = (int(args.figsize[0] * 0.8 * args.dpi), int(args.figsize[1] * 0.8 * args.dpi))
 	
 	# Matplotlib settings
 	mplib.rc('text', usetex=True)
@@ -138,7 +141,10 @@ def main():
 		fig = plt.figure(figsize=args.figsize, dpi=args.dpi)
 		ax = fig.add_subplot(1,1,1)
 		
-		img, bounds = completion.rasterize(size, method=args.method, proj=proj)
+		img, bounds = completion.rasterize(size, method=args.method,
+		                                         proj=proj,
+		                                         l_cent=l_cent,
+		                                         b_cent=b_cent)
 		
 		ax.imshow(img.T, extent=bounds, vmin=0, vmax=3,
 		                 aspect='auto', origin='lower', interpolation='nearest')
