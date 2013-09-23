@@ -44,6 +44,7 @@
 #include <gsl/gsl_randist.h>
 
 #include "h5utils.h"
+#include "cpp_utils.h"
 
 
 // Auxiliary functions

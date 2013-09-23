@@ -164,6 +164,9 @@ class Mollweide_projection:
 		for i in xrange(iterations):
 			theta -= 0.5 * (2. * theta + np.sin(2. * theta) - np.pi * sin_phi) / (1. + np.cos(2. * theta))
 		
+		idx = np.isnan(theta)
+		theta[idx] = np.sign(sin_phi) * 0.5 * np.pi
+		
 		return theta
 
 
@@ -600,9 +603,9 @@ def test_proj():
 	nest = True
 	clip = True
 	size = (1000, 1000)
-	proj = Hammer_projection()
-	l_cent = 90.
-	b_cent = 90.
+	proj = Cartesian_projection()
+	l_cent = 0.
+	b_cent = 0.
 	
 	n_pix = hp.pixelfunc.nside2npix(nside)
 	pix_idx = np.arange(n_pix)#[4*n_pix/12:5*n_pix/12]

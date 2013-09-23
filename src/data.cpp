@@ -226,22 +226,31 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	// Fix magnitude limits
 	for(int n=0; n<nbands; n++) {
 		float tmp;
+		float maglim_replacement = 25.;
+		
+		// Find the 95th percentile of valid magnitude limits
 		std::vector<float> maglimit;
 		for(hsize_t i=0; i<length; i++) {
 			tmp = data_buf[i].maglimit[n];
-			if((tmp > 10.) && (tmp < 40.)) {
+			
+			if((tmp > 10.) && (tmp < 40.) && (!isnan(tmp))) {
 				maglimit.push_back(tmp);
 			}
 		}
-		std::sort(maglimit.begin(), maglimit.end());
+		
+		//std::sort(maglimit.begin(), maglimit.end());
 		if(maglimit.size() != 0) {
-			size_t medIdx = maglimit.size() / 2;
-			tmp = maglimit[medIdx];
-		} else {
-			tmp = 23.;
+			maglim_replacement = percentile(maglimit, 95.);
 		}
+		
+		// Replace missing magnitude limits with the 95th percentile magnitude limit
 		for(hsize_t i=0; i<length; i++) {
-			data_buf[i].maglimit[n] = tmp;
+			tmp = data_buf[i].maglimit[n];
+			
+			if(!((tmp > 10.) && (tmp < 40.)) || isnan(tmp)) {
+				//std::cout << i << ", " << n << ":  " << tmp << std::endl;
+				data_buf[i].maglimit[n] = maglim_replacement;
+			}
 		}
 	}
 	
