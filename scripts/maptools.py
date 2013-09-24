@@ -73,10 +73,18 @@ class los_collection:
 	requested distances.
 	'''
 	
-	def __init__(self, fnames):
+	def __init__(self, fnames, bounds=None):
 		'''
 		fnames is a list of Bayestar output files
 		containing line-of-sight fit information.
+		
+		
+		Do not load pixels whose centers are outside of the range set
+		by <bounds>, where
+		
+		    bounds = [l_min, l_max, b_min, b_max]
+		
+		If <bounds> is None, then all pixels are loaded.
 		'''
 		
 		# Pixel locations
@@ -101,12 +109,19 @@ class los_collection:
 		self.DM_max = None
 		
 		# Load files
-		self.load_files(fnames)
+		self.load_files(fnames, bounds=bounds)
 	
-	def load_file_indiv(self, fname):
+	def load_file_indiv(self, fname, bounds=None):
 		'''
 		Loads data on the line-of-sight fits from one
 		Bayestar output file.
+		
+		Do not load pixels whose centers are outside of the range set
+		by <bounds>, where
+		
+		    bounds = [l_min, l_max, b_min, b_max]
+		
+		If <bounds> is None, then all pixels are loaded.
 		'''
 		
 		print 'Loading %s ...' % fname
@@ -127,6 +142,14 @@ class los_collection:
 				nside_tmp = item.attrs['nside'][0]
 			except:
 				continue
+			
+			# Check if pixel is in bounds
+			if bounds != None:
+				l, b = pix2lb(nside_tmp, pix_idx_tmp, nest=True)
+				
+				if (     (l < bounds[0]) or (l > bounds[1])
+				      or (b < bounds[2]) or (b > bounds[3])  ):
+					continue
 			
 			self.pix_idx.append(pix_idx_tmp)
 			self.nside.append(nside_tmp)
@@ -186,15 +209,22 @@ class los_collection:
 		
 		f.close()
 	
-	def load_files(self, fnames):
+	def load_files(self, fnames, bounds=None):
 		'''
 		Loads data on the line-of-sight fits from a set
 		of Bayestar output files.
+		
+		Do not load pixels whose centers are outside of the range set
+		by <bounds>, where
+		
+		    bounds = [l_min, l_max, b_min, b_max]
+		
+		If <bounds> is None, then all pixels are loaded.
 		'''
 		
 		# Create a giant lists of info from all pixels
 		for fname in fnames:
-			self.load_file_indiv(fname)
+			self.load_file_indiv(fname, bounds=bounds)
 		
 		# Combine pixel information
 		self.pix_idx = np.array(self.pix_idx).astype('i8')

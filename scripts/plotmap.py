@@ -123,6 +123,8 @@ def main():
 	                                     help='Map projection to use.')
 	parser.add_argument('--center-lb', '-cent', type=float, nargs=2, default=(0., 0.),
 	                                     help='Center map on (l, b).')
+	parser.add_argument('--bounds', '-b', type=float, nargs=4, default=None,
+	                                     help='Bounds of pixels to plot (l_min, l_max, b_min, b_max).')
 	parser.add_argument('--model', '-m', type=str, default='piecewise',
 	                                     choices=('piecewise', 'cloud'),
 	                                     help='Line-of-sight extinction model to use.')
@@ -171,7 +173,7 @@ def main():
 	
 	# Load in line-of-sight data
 	fnames = args.input
-	los_coll = maptools.los_collection(fnames)
+	los_coll = maptools.los_collection(fnames, bounds=args.bounds)
 	
 	
 	# Get upper limit on E(B-V)

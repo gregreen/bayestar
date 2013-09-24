@@ -603,9 +603,9 @@ def test_proj():
 	nest = True
 	clip = True
 	size = (1000, 1000)
-	proj = Cartesian_projection()
-	l_cent = 0.
-	b_cent = 0.
+	proj = EckertIV_projection()
+	l_cent = 135.
+	b_cent = 54.
 	
 	n_pix = hp.pixelfunc.nside2npix(nside)
 	pix_idx = np.arange(n_pix)#[4*n_pix/12:5*n_pix/12]
