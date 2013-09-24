@@ -313,6 +313,13 @@ int main(int argc, char **argv) {
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);
 		
+		// Tag output pixel with HEALPix nside and index
+		stringstream group_name;
+		group_name << "/" << *it;
+		H5Utils::add_watermark<uint32_t>(output_fname, group_name.str(), "nside", stellar_data.nside);
+		H5Utils::add_watermark<uint64_t>(output_fname, group_name.str(), "healpix_index", stellar_data.healpix_index);
+		
+		
 		// Filter based on convergence and lnZ
 		assert(conv.size() == lnZ.size());
 		vector<bool> keep;
@@ -368,11 +375,6 @@ int main(int argc, char **argv) {
 				sample_los_extinction(output_fname, *it, los_options, params, verbosity);
 			}
 		}
-		
-		stringstream group_name;
-		group_name << "/" << *it;
-		H5Utils::add_watermark<uint32_t>(output_fname, group_name.str(), "nside", stellar_data.nside);
-		H5Utils::add_watermark<uint64_t>(output_fname, group_name.str(), "healpix_index", stellar_data.healpix_index);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		t_tot = (t_end.tv_sec - t_start.tv_sec) + 1.e-9 * (t_end.tv_nsec - t_start.tv_nsec);
