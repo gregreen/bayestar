@@ -627,21 +627,11 @@ class job_completion_counter:
 		else:
 			raise ValueError("Unrecognized method: '%s'" % method)
 		
-		#for k in xrange(4):
-		#	print k, np.sum(comp_map == k)
-		#print np.sum(self.star)
-		#print np.sum(self.cloud)
-		#print np.sum(self.los)
-		#print np.sum((self.cloud & self.los).astype('u4'))
-		
-		print 'reducing'
 		nside, pix_idx, val = reduce_to_single_res(self.pix_idx, self.nside, comp_map)
 		
-		print 'rasterizing'
 		img, bounds = hputils.rasterize_map(pix_idx, val, nside, size,
 		                                    nest=True, clip=True, proj=proj,
 		                                    l_cent=l_cent, b_cent=b_cent)
-		print 'done'
 		
 		return img, bounds
 
