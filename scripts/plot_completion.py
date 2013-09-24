@@ -30,7 +30,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 from mpl_toolkits.axes_grid1 import ImageGrid
 
-import argparse, sys, time
+import argparse, sys, time, glob
 
 import healpy as hp
 import h5py
@@ -71,10 +71,10 @@ def main():
 	parser = argparse.ArgumentParser(prog='plot_completion.py',
 	                                 description='Represent competion of Bayestar job as a rasterized map.',
 	                                 add_help=True)
-	parser.add_argument('--infiles', '-i', type=str, nargs='+', required=True,
-	                                       help='Bayestar input files.')
-	parser.add_argument('--outfiles', '-o', type=str, nargs='+', required=True,
-	                                       help='Bayestar output files.')
+	parser.add_argument('--infiles', '-i', type=str, required=True,
+	                                       help='Bayestar input files (enclose in quotations).')
+	parser.add_argument('--outfiles', '-o', type=str, required=True,
+	                                       help='Bayestar output files (enclose in quotations).')
 	parser.add_argument('--plot-fname', '-plt', type=str, required=True,
 	                                       help='Output filename for plot.')
 	parser.add_argument('--figsize', '-fs', type=int, nargs=2, default=(8, 4),
@@ -115,7 +115,8 @@ def main():
 	
 	l_cent, b_cent = args.center_lb
 	
-	size = (int(args.figsize[0] * 0.8 * args.dpi), int(args.figsize[1] * 0.8 * args.dpi))
+	size = (int(args.figsize[0] * 0.8 * args.dpi),
+	        int(args.figsize[1] * 0.8 * args.dpi))
 	
 	# Matplotlib settings
 	mplib.rc('text', usetex=True)
@@ -131,20 +132,31 @@ def main():
 	t_start = time.time()
 	
 	while time.time() - t_start < 3600. * args.maxtime:
+		# Generate list of input and output files
+		infiles = glob.glob(args.infiles)
+		outfiles = glob.glob(args.outfiles)
+		
+		print '%d input files found.' % (len(infiles))
+		print '%d output files found.' % (len(outfiles))
+		
 		# Load information on completion
-		completion = maptools.job_completion_counter(args.infiles, args.outfiles)
+		completion = maptools.job_completion_counter(infiles, outfiles)
 		
-		# Plot completion
-		pix_identifiers = []
-		nside_max = np.max(completion.nside)
+		print 'Input and output files loaded.'
 		
-		fig = plt.figure(figsize=args.figsize, dpi=args.dpi)
-		ax = fig.add_subplot(1,1,1)
+		# Rasterize completion map
+		print 'Rasterizing completion map...'
 		
 		img, bounds = completion.rasterize(size, method=args.method,
 		                                         proj=proj,
 		                                         l_cent=l_cent,
 		                                         b_cent=b_cent)
+		
+		# Plot completion
+		print 'Plotting ...'
+		
+		fig = plt.figure(figsize=args.figsize, dpi=args.dpi)
+		ax = fig.add_subplot(1,1,1)
 		
 		ax.imshow(img.T, extent=bounds, vmin=0, vmax=3,
 		                 aspect='auto', origin='lower', interpolation='nearest')
@@ -163,17 +175,18 @@ def main():
 		ax.set_title(r'$\mathrm{Completion \ as \ of \ %s}$' % (timestr), fontsize=16)
 		
 		# Allow user to determine healpix index
-		pix_identifiers.append(PixelIdentifier(ax, nside_max, nest=True, proj=proj))
+		#pix_identifiers = []
+		#nside_max = np.max(completion.nside)
+		#pix_identifiers.append(PixelIdentifier(ax, nside_max, nest=True, proj=proj))
 		
 		# Save figure
 		fig.savefig(args.plot_fname, dpi=args.dpi)
 		plt.close(fig)
+		del img
 		
-		print timestr
+		print 'Time: %s' % timestr
 		print 'Sleeping ...'
 		print ''
-		
-		del img
 		
 		time.sleep(3600. * args.interval)
 	
