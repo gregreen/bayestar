@@ -246,6 +246,7 @@ class los_collection:
 		self.los_delta_EBV = np.exp(self.los_delta_lnEBV)
 		self.los_EBV = np.cumsum(self.los_delta_EBV, axis=2)
 		self.los_mu_anchor = np.linspace(self.DM_min, self.DM_max, self.n_slices)
+		self.los_dmu = np.diff(self.los_mu_anchor)[0]
 	
 	def get_nside_levels(self):
 		'''
@@ -372,9 +373,30 @@ class los_collection:
 		
 		return EBV_interp
 	
+	def est_dEBV_pctile(self, pctile, delta_mu=0.1,
+	                          fit='piecewise'):
+		'''
+		Estimate the requested percentile of
+		
+		    dE(B-V) / dDM
+		
+		over the whole map.
+		
+		Use the distance modulus step <delta_mu>
+		to estimate the derivative.
+		'''
+		
+		if fit == 'piecewise':
+			return np.percentile(self.los_delta_EBV, pctile) / self.los_dmu
+		elif fit == 'cloud':
+			return np.percentile(self.cloud_delta_EBV, pctile) / delta_mu
+		else:
+			raise ValueError('Unrecognized fit type: "%s"' % fit)
+	
 	def gen_EBV_map(self, mu, fit='piecewise',
 	                          method='median',
-	                          mask_sigma=None):
+	                          mask_sigma=None,
+	                          delta_mu=None):
 		'''
 		Returns an array of E(B-V) evaluated at
 		distance modulus mu, with
@@ -417,15 +439,27 @@ class los_collection:
 		else:
 			raise ValueError('Unrecognized fit type: "%s"' % fit)
 		
+		# Calculate rate of reddening (dEBV/dDM), if requested
+		if delta_mu != None:
+			if fit == 'piecewise':
+				EBV -= self.calc_piecewise_EBV(mu-delta_mu)
+			elif fit == 'cloud':
+				EBV -= self.calc_cloud_EBV(mu-delta_mu)
+			
+			EBV /= delta_mu
+		
+		# Mask regions with high uncertainty
 		if mask_sigma != None:
 			sigma = self.take_measure(EBV, 'sigma')
 			mask_idx = (sigma > mask_sigma)
 		
+		# Reduce EBV in each pixel to one value
 		EBV = self.take_measure(EBV, method)
 		
 		if mask_sigma != None:
 			EBV[mask_idx] = np.nan
 		
+		# Reduce to one HEALPix nside resolution
 		mask = self.los_mask
 		pix_idx = self.pix_idx[mask]
 		nside = self.nside[mask]
@@ -457,7 +491,8 @@ class los_collection:
 	
 	def rasterize(self, mu, size,
 	                    method='median', fit='piecewise',
-	                    mask_sigma=None, clip=True,
+	                    mask_sigma=None, delta_mu=None,
+	                    clip=True,
 	                    proj=hputils.Cartesian_projection(),
 	                    l_cent=0., b_cent=0.):
 		'''
@@ -500,7 +535,8 @@ class los_collection:
 		
 		nside, pix_idx, EBV = self.gen_EBV_map(mu, fit=fit,
 		                                       method=method,
-		                                       mask_sigma=mask_sigma)
+		                                       mask_sigma=mask_sigma,
+		                                       delta_mu=delta_mu)
 		
 		img, bounds = hputils.rasterize_map(pix_idx, EBV, nside, size,
 		                                    nest=True, clip=clip, proj=proj,

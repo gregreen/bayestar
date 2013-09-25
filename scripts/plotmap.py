@@ -30,7 +30,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 from mpl_toolkits.axes_grid1 import ImageGrid
 
-import argparse, sys
+import argparse, os, sys, time
 
 import healpy as hp
 import h5py
@@ -109,14 +109,24 @@ class PixelIdentifier:
 
 
 def plotter_worker(los_coll, dist_q,
-                   figsize, dpi, model, method, mask,
-                   proj, l_cent, b_cent, bounds, EBV_max,
+                   figsize, dpi, size,
+                   model, method, mask,
+                   proj, l_cent, b_cent, bounds,
+                   EBV_max, delta_mu,
                    outfname):
+	# Reseed random number generator
+	t = time.time()
+	t_after_dec = int(1.e9*(t - np.floor(t)))
+	seed = np.bitwise_xor([t_after_dec], [os.getpid()])
+	
+	np.random.seed(seed=seed)
+	
+	# Generate images
 	while True:
 		try:
 			n, mu = dist_q.get_nowait()
 			
-			print 'Plotting mu = %.2f (image %d) ...' % (mu, n)
+			print 'Plotting mu = %.2f (image %d) ...' % (mu, n+1)
 			
 			fig = plt.figure(figsize=figsize, dpi=dpi)
 			ax = fig.add_subplot(1,1,1)
@@ -125,6 +135,7 @@ def plotter_worker(los_coll, dist_q,
 			img, bounds = los_coll.rasterize(mu, size, fit=model,
 			                                           method=method,
 			                                           mask_sigma=mask,
+			                                           delta_mu=delta_mu,
 			                                           proj=proj,
 			                                           l_cent=l_cent,
 			                                           b_cent=b_cent)
@@ -161,7 +172,6 @@ def plotter_worker(los_coll, dist_q,
 			return
 
 
-
 def main():
 	parser = argparse.ArgumentParser(prog='plotmap.py',
 	                                 description='Generate a map of E(B-V) from bayestar output.',
@@ -172,6 +182,9 @@ def main():
 	parser.add_argument('--dists', '-d', type=float, nargs=3,
 	                                     default=(4., 19., 21),
 	                                     help='DM min, DM max, # of distance slices.')
+	parser.add_argument('--delta-mu', '-dmu', type=float, default=None,
+	                                     help='Difference in DM used to estimate rate of\n'
+	                                          'reddening (default: None, i.e. calculate cumulative reddening).')
 	parser.add_argument('--figsize', '-fs', type=int, nargs=2, default=(8, 4),
 	                                     help='Figure size (in inches).')
 	parser.add_argument('--dpi', '-dpi', type=float, default=200,
@@ -187,7 +200,7 @@ def main():
 	                                     choices=('piecewise', 'cloud'),
 	                                     help='Line-of-sight extinction model to use.')
 	parser.add_argument('--mask', '-msk', type=float, default=None,
-	                                     help=r'Hide parts of map where sigma_{E(B-V)} is greater than given value')
+	                                     help=r'Hide parts of map where sigma_{E(B-V)} is greater than given value.')
 	parser.add_argument('--method', '-mtd', type=str, default='median',
 	                                     choices=('median', 'mean', 'best', 'sample', 'sigma' , '5th', '95th'),
 	                                     help='Measure of E(B-V) to plot.')
@@ -243,12 +256,20 @@ def main():
 	if method == 'sample':
 		method_tmp = 'median'
 	
-	nside_tmp, pix_idx_tmp, EBV = los_coll.gen_EBV_map(mu_plot[-1],
-	                                                   fit=args.model,
-	                                                   method=method_tmp,
-	                                                   mask_sigma=args.mask)
-	idx = np.isfinite(EBV)
-	EBV_max = np.percentile(EBV[idx], 95.)
+	EBV_max = None
+	
+	if args.delta_mu == None:
+		nside_tmp, pix_idx_tmp, EBV = los_coll.gen_EBV_map(mu_plot[-1],
+		                                                   fit=args.model,
+		                                                   method=method_tmp,
+		                                                   mask_sigma=args.mask,
+		                                                   delta_mu=args.delta_mu)
+		idx = np.isfinite(EBV)
+		EBV_max = np.percentile(EBV[idx], 95.)
+		
+	else:
+		EBV_max = los_coll.est_dEBV_pctile(95., delta_mu=args.delta_mu,
+		                                        fit=args.model)
 	
 	mask = args.mask
 	
@@ -278,15 +299,16 @@ def main():
 	for n,mu in enumerate(mu_plot):
 		dist_q.put((n, mu))
 	
-	# Spawn worker processes
+	# Spawn worker processes to plot images
 	procs = []
 	
 	for i in xrange(args.processes):
 		p = multiprocessing.Process(target=plotter_worker,
 		                            args=(los_coll, dist_q,
-		                            args.figsize, args.dpi,
-		                            args.model, args.method, mask,
-		                            proj, l_cent, b_cent, args.bounds, EBV_max,
+		                            args.figsize, args.dpi, size,
+		                            args.model, method, mask,
+		                            proj, l_cent, b_cent, args.bounds,
+		                            EBV_max, args.delta_mu,
 		                            outfname)
 		                           )
 		
