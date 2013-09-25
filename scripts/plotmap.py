@@ -178,12 +178,22 @@ def main():
 	
 	
 	# Get upper limit on E(B-V)
+	method_tmp = method
+	
+	if method == 'sample':
+		method_tmp = 'median'
+	
 	nside_tmp, pix_idx_tmp, EBV = los_coll.gen_EBV_map(mu_plot[-1],
 	                                                   fit=args.model,
-	                                                   method=method,
+	                                                   method=method_tmp,
 	                                                   mask_sigma=args.mask)
 	idx = np.isfinite(EBV)
 	EBV_max = np.percentile(EBV[idx], 90.)
+	
+	mask = args.mask
+	
+	if method == 'sample':
+		mask = None
 	
 	print 'EBV_max = %.3f' % EBV_max
 	
@@ -211,7 +221,7 @@ def main():
 		# Plot E(B-V)
 		img, bounds = los_coll.rasterize(mu, size, fit=args.model,
 		                                           method=method,
-		                                           mask_sigma=args.mask,
+		                                           mask_sigma=mask,
 		                                           proj=proj,
 		                                           l_cent=l_cent,
 		                                           b_cent=b_cent)
