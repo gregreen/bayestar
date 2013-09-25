@@ -54,6 +54,22 @@ def pix2lb(nside, ipix, nest=True, use_negative_l=False):
 	
 	return l, b
 
+def pix2lb_scalar(nside, ipix, nest=True, use_negative_l=False):
+	'''
+	Convert pixel index to (l, b).
+	
+	Takes scalar input (no arrays).
+	'''
+	
+	theta, phi = hp.pixelfunc.pix2ang(nside, ipix, nest=nest)
+	
+	l = 180./np.pi * phi
+	b = 90. - 180./np.pi * theta
+	
+	if l > 180.:
+		l -= 360.
+	
+	return l, b
 
 def wrap_longitude(lon, delta_lon, degrees=True):
 	'''

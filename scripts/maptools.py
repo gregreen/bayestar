@@ -138,14 +138,14 @@ class los_collection:
 		for name,item in f.iteritems():
 			# Load pixel position
 			try:
-				pix_idx_tmp = item.attrs['healpix_index'][0]
-				nside_tmp = item.attrs['nside'][0]
+				pix_idx_tmp = int(item.attrs['healpix_index'][0])
+				nside_tmp = int(item.attrs['nside'][0])
 			except:
 				continue
 			
 			# Check if pixel is in bounds
 			if bounds != None:
-				l, b = pix2lb(nside_tmp, pix_idx_tmp, nest=True)
+				l, b = hputils.pix2lb_scalar(nside_tmp, pix_idx_tmp, nest=True)
 				
 				if (     (l < bounds[0]) or (l > bounds[1])
 				      or (b < bounds[2]) or (b > bounds[3])  ):

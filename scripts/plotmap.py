@@ -166,7 +166,8 @@ def main():
 	
 	l_cent, b_cent = args.center_lb
 	
-	size = (args.figsize[0] * 0.8 * args.dpi, args.figsize[1] * 0.8 * args.dpi)
+	size = (int(args.figsize[0] * 0.8 * args.dpi),
+	        int(args.figsize[1] * 0.8 * args.dpi))
 	
 	mu_plot = np.linspace(args.dists[0], args.dists[1], args.dists[2])
 	
@@ -228,7 +229,7 @@ def main():
 		
 		ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
 		ax.xaxis.set_minor_locator(AutoMinorLocator())
-		ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+		ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
 		ax.yaxis.set_minor_locator(AutoMinorLocator())
 		
 		# Title
