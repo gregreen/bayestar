@@ -25,6 +25,7 @@
 import numpy as np
 
 import matplotlib as mplib
+mplib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 from mpl_toolkits.axes_grid1 import ImageGrid
@@ -33,6 +34,8 @@ import argparse, sys
 
 import healpy as hp
 import h5py
+
+from multiprocessing import Process, Queue, Lock
 
 import hputils, maptools
 
@@ -104,13 +107,67 @@ class PixelIdentifier:
 		print '(%.2f, %.2f) -> %d' % (l, b, pix_idx)
 
 
+def plotter_worker(los_coll, dist_q,
+                   figsize, dpi, model, method, mask,
+                   proj, l_cent, b_cent, bounds, EBV_max,
+                   outfname):
+	while True:
+		try:
+			n, mu = dist_q.get_nowait()
+			
+			print 'Plotting mu = %.2f (image %d) ...' % (mu, n)
+			
+			fig = plt.figure(figsize=figsize, dpi=dpi)
+			ax = fig.add_subplot(1,1,1)
+			
+			# Plot E(B-V)
+			img, bounds = los_coll.rasterize(mu, size, fit=model,
+			                                           method=method,
+			                                           mask_sigma=mask,
+			                                           proj=proj,
+			                                           l_cent=l_cent,
+			                                           b_cent=b_cent)
+			
+			img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
+			
+			# Colorbar
+			fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.88)
+			cax = fig.add_axes([0.9, 0.12, 0.03, 0.76])
+			cb = fig.colorbar(img, cax=cax)
+			
+			# Labels, ticks, etc.
+			ax.set_xlabel(r'$\ell$', fontsize=16)
+			ax.set_ylabel(r'$b$', fontsize=16)
+			
+			ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
+			ax.xaxis.set_minor_locator(AutoMinorLocator())
+			ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
+			ax.yaxis.set_minor_locator(AutoMinorLocator())
+			
+			# Title
+			d = 10.**(mu/5. - 2.)
+			ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu, d), fontsize=16)
+			
+			# Save figure
+			if outfname != None:
+				full_fname = '%s.%s.%s.%.5d.png' % (outfname, model, method, n)
+				fig.savefig(full_fname, dpi=dpi)
+			
+			plt.close(fig)
+			del img
+			
+		except Queue.Empty:
+			return
+
+
+
 def main():
 	parser = argparse.ArgumentParser(prog='plotmap.py',
 	                                 description='Generate a map of E(B-V) from bayestar output.',
 	                                 add_help=True)
 	parser.add_argument('input', type=str, nargs='+', help='Bayestar output files.')
 	parser.add_argument('--output', '-o', type=str, help='Output filename for plot.')
-	parser.add_argument('--show', '-sh', action='store_true', help='Show plot.')
+	#parser.add_argument('--show', '-sh', action='store_true', help='Show plot.')
 	parser.add_argument('--dists', '-d', type=float, nargs=3,
 	                                     default=(4., 19., 21),
 	                                     help='DM min, DM max, # of distance slices.')
@@ -133,6 +190,8 @@ def main():
 	parser.add_argument('--method', '-mtd', type=str, default='median',
 	                                     choices=('median', 'mean', 'best', 'sample', 'sigma' , '5th', '95th'),
 	                                     help='Measure of E(B-V) to plot.')
+	parser.add_argument('--processes', '-proc', type=int, default=1,
+	                                     help='# of processes to spawn.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -188,7 +247,7 @@ def main():
 	                                                   method=method_tmp,
 	                                                   mask_sigma=args.mask)
 	idx = np.isfinite(EBV)
-	EBV_max = np.percentile(EBV[idx], 90.)
+	EBV_max = np.percentile(EBV[idx], 95.)
 	
 	mask = args.mask
 	
@@ -212,55 +271,32 @@ def main():
 	pix_identifiers = []
 	nside_max = los_coll.get_nside_levels()[-1]
 	
-	for i,mu in enumerate(mu_plot):
-		print 'Plotting mu = %.2f (%d of %d) ...' % (mu, i+1, len(mu_plot))
-		
-		fig = plt.figure(figsize=args.figsize, dpi=args.dpi)
-		ax = fig.add_subplot(1,1,1)
-		
-		# Plot E(B-V)
-		img, bounds = los_coll.rasterize(mu, size, fit=args.model,
-		                                           method=method,
-		                                           mask_sigma=mask,
-		                                           proj=proj,
-		                                           l_cent=l_cent,
-		                                           b_cent=b_cent)
-		
-		img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
-		
-		# Colorbar
-		fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.88)
-		cax = fig.add_axes([0.9, 0.12, 0.03, 0.76])
-		cb = fig.colorbar(img, cax=cax)
-		
-		# Labels, ticks, etc.
-		ax.set_xlabel(r'$\ell$', fontsize=16)
-		ax.set_ylabel(r'$b$', fontsize=16)
-		
-		ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
-		ax.xaxis.set_minor_locator(AutoMinorLocator())
-		ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
-		ax.yaxis.set_minor_locator(AutoMinorLocator())
-		
-		# Title
-		d = 10.**(mu/5. - 2.)
-		ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu, d), fontsize=16)
-		
-		# Allow user to determine healpix index
-		pix_identifiers.append(PixelIdentifier(ax, nside_max, nest=True, proj=proj))
-		
-		# Save figure
-		if outfname != None:
-			full_fname = '%s.%s.%s.%.5d.png' % (outfname, args.model, args.method, i)
-			fig.savefig(full_fname, dpi=args.dpi)
-		
-		if not args.show:
-			plt.close(fig)
-			del img
+	# Set up queue for workers to pull from
+	dist_q = Queue.Queue()
 	
+	for n,mu in enumerate(mu_plot):
+		dist_q.put((n, mu))
 	
-	if args.show:
-		plt.show()
+	# Spawn worker processes
+	procs = []
+	
+	for i in xrange(args.processes):
+		p = Process(target=plotter_worker,
+		            args=(los_coll, dist_q,
+		                  args.figsize, args.dpi,
+		                  args.model, args.method, mask,
+		                  proj, l_cent, b_cent, args.bounds, EBV_max,
+		                  outfname)
+		           )
+		
+		procs.append(p)
+		p.start()
+	
+	for p in procs:
+		p.join()
+	
+	#if args.show:
+	#	plt.show()
 	
 	
 	return 0
