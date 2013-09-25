@@ -35,7 +35,8 @@ import argparse, sys
 import healpy as hp
 import h5py
 
-from multiprocessing import Process, Queue, Lock
+import multiprocessing
+import Queue
 
 import hputils, maptools
 
@@ -272,7 +273,7 @@ def main():
 	nside_max = los_coll.get_nside_levels()[-1]
 	
 	# Set up queue for workers to pull from
-	dist_q = Queue.Queue()
+	dist_q = multiprocessing.Queue()
 	
 	for n,mu in enumerate(mu_plot):
 		dist_q.put((n, mu))
@@ -281,13 +282,13 @@ def main():
 	procs = []
 	
 	for i in xrange(args.processes):
-		p = Process(target=plotter_worker,
-		            args=(los_coll, dist_q,
-		                  args.figsize, args.dpi,
-		                  args.model, args.method, mask,
-		                  proj, l_cent, b_cent, args.bounds, EBV_max,
-		                  outfname)
-		           )
+		p = multiprocessing.Process(target=plotter_worker,
+		                            args=(los_coll, dist_q,
+		                            args.figsize, args.dpi,
+		                            args.model, args.method, mask,
+		                            proj, l_cent, b_cent, args.bounds, EBV_max,
+		                            outfname)
+		                           )
 		
 		procs.append(p)
 		p.start()
