@@ -25,6 +25,10 @@
 import os, sys, argparse
 from os.path import abspath
 
+import matplotlib as mplib
+mplib.use('Agg')
+import matplotlib.pyplot as plt
+
 import healpy as hp
 import numpy as np
 import pyfits
@@ -33,8 +37,6 @@ import h5py
 import lsd
 
 import iterators
-
-import matplotlib.pyplot as plt
 
 
 def lb2pix(nside, l, b, nest=True):
@@ -59,6 +61,7 @@ def adaptive_subdivide(pix_idx, nside, obj,
 		sub_pix_idx = lb2pix(nside*2, obj['l'], obj['b'], nest=True)
 		
 		# Check that all pixels have more than minimum # of pixels
+		'''
 		over_threshold = True
 		
 		for i in xrange(4 * pix_idx, 4 * pix_idx + 4):
@@ -70,6 +73,7 @@ def adaptive_subdivide(pix_idx, nside, obj,
 		
 		if not over_threshold:
 			return [(nside, pix_idx, obj)]
+		'''
 		
 		# Return subdivided pixel
 		ret = []
@@ -224,6 +228,8 @@ def main():
 	                    help='Min. # of passbands with detection.')
 	parser.add_argument('--n-det', type=int, default=4,
 	                    help='Min. # of detections.')
+	parser.add_argument('-w', '--n-workers', type=int, default=5,
+	                    help='# of workers for LSD to use.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -352,7 +358,8 @@ def main():
 	                                      reducer,
 	                                      (subdivider, values.nside_min, n_stars_max, values.min_stars, values.nside_max)],
 	                                      #group_by_static_cell=True,
-	                                      bounds=query_bounds):
+	                                      bounds=query_bounds,
+	                                      nworkers=values.n_workers):
 		# Filter out pixels that have too few stars
 		if len(obj) < values.min_stars:
 			N_pix_too_sparse += 1
