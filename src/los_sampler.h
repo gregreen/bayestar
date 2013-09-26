@@ -149,8 +149,9 @@ public:
 
 // Sample piecewise-linear model
 
-void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
-                           uint64_t healpix_index, int verbosity=1);
+void sample_los_extinction(const std::string& out_fname, const std::string& group_name,
+                           TMCMCOptions &options, TLOSMCMCParams &params,
+                           int verbosity=1);
 
 double lnp_los_extinction(const double *const Delta_EBV, unsigned int N_regions, TLOSMCMCParams &params);
 
@@ -177,9 +178,9 @@ double step_one_Delta_EBV(double *const _X, double *const _Y, unsigned int _N, g
 
 
 // Sample cloud model
-
-void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
-                                  unsigned int N_clouds, uint64_t healpix_index, int verbosity=1);
+void sample_los_extinction_clouds(const std::string& out_fname, const std::string& group_name,
+                                  TMCMCOptions &options, TLOSMCMCParams &params,
+                                  unsigned int N_clouds, int verbosity=1);
 
 double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams& params);
 

@@ -47,7 +47,7 @@ include_directories("${PROJECT_BINARY_DIR}/src")
 IF(NOT CMAKE_COMPILER_IS_GNUCXX)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ipo -axHOST -no-prec-div ")
 ELSE(NOT CMAKE_COMPILER_IS_GNUCXX)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 ") #-ffast-math ")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -ffast-math ")
 ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
 
 #

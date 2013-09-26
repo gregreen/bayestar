@@ -268,9 +268,9 @@ int main(int argc, char **argv) {
 	omp_set_num_threads(N_threads);
 	
 	// Get list of pixels in input file
-	vector<unsigned int> healpix_index;
-	get_input_pixels(input_fname, healpix_index);
-	cout << "# " << healpix_index.size() << " pixels in input file." << endl << endl;
+	vector<string> pix_name;
+	get_input_pixels(input_fname, pix_name);
+	cout << "# " << pix_name.size() << " pixels in input file." << endl << endl;
 	
 	// Remove the output file
 	remove(output_fname.c_str());
@@ -282,14 +282,15 @@ int main(int argc, char **argv) {
 	double t_tot, t_star;
 	unsigned int pixel_list_no = 0;
 	
-	for(vector<unsigned int>::iterator it = healpix_index.begin(); it != healpix_index.end(); ++it, pixel_list_no++) {
+	for(vector<string>::iterator it = pix_name.begin(); it != pix_name.end(); ++it, pixel_list_no++) {
 		clock_gettime(CLOCK_MONOTONIC, &t_start);
 		
-		cout << "# Healpix pixel " << *it << " (" << pixel_list_no + 1 << " of " << healpix_index.size() << ")" << endl;
+		cout << "# Pixel: " << *it << " (" << pixel_list_no + 1 << " of " << pix_name.size() << ")" << endl;
 		
 		TStellarData stellar_data(input_fname, *it, err_floor);
 		TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
 		
+		cout << "HEALPix index: " << stellar_data.healpix_index << " (nside = " << stellar_data.nside << ")" << endl;
 		cout << "# (l, b) = " << stellar_data.l << ", " << stellar_data.b << endl;
 		if(SFDPrior) { cout << "# E(B-V)_SFD = " << stellar_data.EBV << endl; }
 		cout << "# " << stellar_data.star.size() << " stars in pixel" << endl;
@@ -311,6 +312,13 @@ int main(int argc, char **argv) {
 		}
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);
+		
+		// Tag output pixel with HEALPix nside and index
+		stringstream group_name;
+		group_name << "/" << *it;
+		H5Utils::add_watermark<uint32_t>(output_fname, group_name.str(), "nside", stellar_data.nside);
+		H5Utils::add_watermark<uint64_t>(output_fname, group_name.str(), "healpix_index", stellar_data.healpix_index);
+		
 		
 		// Filter based on convergence and lnZ
 		assert(conv.size() == lnZ.size());
@@ -357,20 +365,16 @@ int main(int argc, char **argv) {
 			TLOSMCMCParams params(&img_stack, lnZ_filtered, p0, N_runs, N_threads, N_regions, EBV_max);
 			if(SFDsubpixel) { params.set_subpixel_mask(subpixel); }
 			if(N_clouds != 0) {
-				sample_los_extinction_clouds(output_fname, cloud_options, params, N_clouds, *it, verbosity);
+				sample_los_extinction_clouds(output_fname, *it, cloud_options, params, N_clouds, verbosity);
 			}
 			if(N_regions != 0) {
 				params.gen_guess_covariance(1.);	// Covariance matrix for guess has (anti-)correlation length of 1 distance bin
 				if(disk_prior) {
 					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, verbosity);
 				}
-				sample_los_extinction(output_fname, los_options, params, *it, verbosity);
+				sample_los_extinction(output_fname, *it, los_options, params, verbosity);
 			}
 		}
-		
-		stringstream group_name;
-		group_name << "/pixel " << *it;
-		H5Utils::add_watermark<uint64_t>(output_fname, group_name.str(), "nside", stellar_data.nside);
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		t_tot = (t_end.tv_sec - t_start.tv_sec) + 1.e-9 * (t_end.tv_nsec - t_start.tv_nsec);

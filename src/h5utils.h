@@ -62,6 +62,9 @@ namespace H5Utils {
 	bool add_watermark<double>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const double &value);
 	
 	template<>
+	bool add_watermark<uint32_t>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const uint32_t &value);
+	
+	template<>
 	bool add_watermark<uint64_t>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const uint64_t &value);
 	
 	template<>

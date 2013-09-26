@@ -25,6 +25,10 @@
 import os, sys, argparse
 from os.path import abspath
 
+import matplotlib as mplib
+mplib.use('Agg')
+import matplotlib.pyplot as plt
+
 import healpy as hp
 import numpy as np
 import pyfits
@@ -34,7 +38,59 @@ import lsd
 
 import iterators
 
-import matplotlib.pyplot as plt
+
+def lb2pix(nside, l, b, nest=True):
+	theta = np.pi/180. * (90. - b)
+	phi = np.pi/180. * l
+	
+	return hp.pixelfunc.ang2pix(nside, theta, phi, nest=nest)
+
+def pix2lb(nside, ipix, nest=True):
+	theta, phi = hp.pixelfunc.pix2ang(nside, ipix, nest=True)
+	
+	l = 180./np.pi * phi
+	b = 90. - 180./np.pi * theta
+	
+	return l, b
+
+
+def adaptive_subdivide(pix_idx, nside, obj,
+                    n_stars_max, n_stars_min=10, nside_max=2048):
+	# Subdivide pixel
+	if (len(obj) > n_stars_max[nside]) and (nside < nside_max):
+		sub_pix_idx = lb2pix(nside*2, obj['l'], obj['b'], nest=True)
+		
+		# Check that all pixels have more than minimum # of pixels
+		'''
+		over_threshold = True
+		
+		for i in xrange(4 * pix_idx, 4 * pix_idx + 4):
+			idx = (sub_pix_idx == i)
+			
+			if np.sum(idx) < n_stars_min:
+				over_threshold = False
+				break
+		
+		if not over_threshold:
+			return [(nside, pix_idx, obj)]
+		'''
+		
+		# Return subdivided pixel
+		ret = []
+		
+		for i in xrange(4 * pix_idx, 4 * pix_idx + 4):
+			idx = (sub_pix_idx == i)
+			
+			tmp = adaptive_subdivide(i, nside*2, obj[idx],
+			                         n_stars_max, n_stars_min, nside_max)
+			
+			for pix in tmp:
+				ret.append(pix)
+		
+		return ret
+		
+	else:
+		return [(nside, pix_idx, obj)]
 
 
 def mapper(qresult, nside, nest, bounds):
@@ -49,12 +105,12 @@ def mapper(qresult, nside, nest, bounds):
 		# Group together stars having same index
 		for pix_index, block_indices in iterators.index_by_key(pix_indices):
 			# Filter out pixels by bounds
-			if bounds != None:
-				theta_0, phi_0 = hp.pix2ang(nside, pix_index, nest=nest)
-				l_0 = 180./np.pi * phi_0
-				b_0 = 90. - 180./np.pi * theta_0
-				if (l_0 < bounds[0]) or (l_0 > bounds[1]) or (b_0 < bounds[2]) or (b_0 > bounds[3]):
-					continue
+			#if bounds != None:
+			#	theta_0, phi_0 = hp.pix2ang(nside, pix_index, nest=nest)
+			#	l_0 = 180./np.pi * phi_0
+			#	b_0 = 90. - 180./np.pi * theta_0
+			#	if (l_0 < bounds[0]) or (l_0 > bounds[1]) or (b_0 < bounds[2]) or (b_0 > bounds[3]):
+			#		continue
 			
 			yield (pix_index, obj[block_indices])
 
@@ -62,6 +118,11 @@ def mapper(qresult, nside, nest, bounds):
 def reducer(keyvalue):
 	pix_index, obj = keyvalue
 	obj = lsd.colgroup.fromiter(obj, blocks=True)
+	
+	# Scale errors
+	err_scale = 1.3
+	err_floor = 0.02
+	obj['err'] = np.sqrt((err_scale * obj['err'])**2. + err_floor**2.)
 	
 	# Find stars with bad detections
 	mask_zero_mag = (obj['mean'] == 0.)
@@ -76,11 +137,27 @@ def reducer(keyvalue):
 	obj['err'][mask_zero_mag] = 1.e10
 	
 	# Combine and apply the masks
-	mask_detect = np.sum(obj['mean'], axis=1).astype(np.bool)
-	mask_informative = (np.sum(obj['err'] > 1.e10, axis=1) < 3).astype(np.bool)
-	mask_keep = np.logical_and(mask_detect, mask_informative)
+	#mask_detect = np.sum(obj['mean'], axis=1).astype(np.bool)
+	#mask_informative = (np.sum(obj['err'] > 1.e10, axis=1) < 3).astype(np.bool)
+	#mask_keep = np.logical_and(mask_detect, mask_informative)
 	
-	yield (pix_index, obj[mask_keep])
+	#yield (pix_index, obj[mask_keep])
+	
+	yield (pix_index, obj)
+
+
+def subdivider(keyvalue, nside, n_stars_max, n_stars_min, nside_max):
+	pix_index, obj = keyvalue
+	obj = lsd.colgroup.fromiter(obj, blocks=True)
+	
+	# Adaptively subdivide pixel
+	ret = adaptive_subdivide(pix_index, nside, obj,
+                             n_stars_max, n_stars_min, nside_max)
+	
+	for subpixel in ret:
+		sub_nside, sub_idx, sub_obj = subpixel
+		
+		yield ((sub_nside, sub_idx), sub_obj)
 
 
 def start_file(base_fname, index):
@@ -95,7 +172,7 @@ def to_file(f, pix_index, nside, nest, EBV, data):
 		f = h5py.File(fname, 'a')
 		close_file = True
 	
-	ds_name = '/photometry/pixel %d' % pix_index
+	ds_name = '/photometry/pixel %d-%d' % (nside, pix_index)
 	ds = f.create_dataset(ds_name, data.shape, data.dtype, chunks=True,
 	                      compression='gzip', compression_opts=9)
 	ds[:] = data[:]
@@ -131,8 +208,12 @@ def main():
 	           description='Generate bayestar input files from PanSTARRS data.',
 	           add_help=True)
 	parser.add_argument('out', type=str, help='Output filename.')
-	parser.add_argument('-n', '--nside', type=int, default=512,
-	                    help='Healpix nside parameter (default: 512).')
+	parser.add_argument('-nmin', '--nside-min', type=int, default=512,
+	                    help='Lowest resolution in healpix nside parameter (default: 512).')
+	parser.add_argument('-nmax', '--nside-max', type=int, default=512,
+	                    help='Lowest resolution in healpix nside parameter (default: 512).')
+	parser.add_argument('-rt', '--res-thresh', type=int, nargs='+', default=None,
+	                    help='Maximum # of pixels for each healpix resolution (from lowest to highest).')
 	parser.add_argument('-b', '--bounds', type=float, nargs=4, default=None,
 	                    help='Restrict pixels to region enclosed by: l_min, l_max, b_min, b_max.')
 	parser.add_argument('-min', '--min-stars', type=int, default=1,
@@ -143,14 +224,12 @@ def main():
 	                    help='Only select objects identified in the SDSS catalog as stars.')
 	parser.add_argument('-ext', '--maxAr', type=float, default=None,
 	                    help='Maximum allowed A_r.')
-	parser.add_argument('-r', '--ring', action='store_true',
-	                    help='Use healpix ring ordering scheme (default: nested).')
-	parser.add_argument('-vis', '--visualize', action='store_true',
-	                    help='Show number of stars in each pixel when query is done')
 	parser.add_argument('--n-bands', type=int, default=4,
 	                    help='Min. # of passbands with detection.')
 	parser.add_argument('--n-det', type=int, default=4,
 	                    help='Min. # of detections.')
+	parser.add_argument('-w', '--n-workers', type=int, default=5,
+	                    help='# of workers for LSD to use.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -161,10 +240,48 @@ def main():
 	if nPointlike == 0:
 		nPointlike = 1
 	
+	# Handle adaptive pixelization parameters
+	base_2_choices = [2**n for n in xrange(15)]
+	if values.nside_min not in base_2_choices:
+		raise ValueError('--nside-min is not a small power of two.')
+	elif values.nside_max not in base_2_choices:
+		raise ValueError('--nside-max is not a small power of two.')
+	elif values.nside_max < values.nside_min:
+		raise ValueError('--nside-max is less than --nside-min.')
+	
+	n_stars_max = None
+	n_pixels_at_res = None
+	nside_options = None
+	
+	if values.nside_min == values.nside_max:
+		n_stars_max = {values.nside_max: 1}
+		n_pixels_at_res = {values.nside_max: 0}
+		nside_options = [values.nside_options]
+	else:
+		n_stars_max = {}
+		n_pixels_at_res = {}
+		nside_options = []
+		
+		nside = values.nside_min
+		k = 0
+		
+		while nside < values.nside_max:
+			n_stars_max[nside] = values.res_thresh[k]
+			n_pixels_at_res[nside] = 0
+			nside_options.append(nside)
+			
+			nside *= 2
+			k += 1
+		
+		n_stars_max[values.nside_max] = 1
+		n_pixels_at_res[values.nside_max] = 0
+		nside_options.append(values.nside_max)
+	
 	# Determine the query bounds
 	query_bounds = None
 	if values.bounds != None:
-		pix_scale = hp.pixelfunc.nside2resol(values.nside) * 180. / np.pi
+		pix_scale = hp.pixelfunc.nside2resol(values.nside_min) * 180. / np.pi
+		query_bounds = []
 		query_bounds.append(max([0., values.bounds[0] - 3.*pix_scale]))
 		query_bounds.append(min([360., values.bounds[1] + 3.*pix_scale]))
 		query_bounds.append(max([-90., values.bounds[2] - 3.*pix_scale]))
@@ -209,11 +326,6 @@ def main():
 	
 	query = db.query(query)
 	
-	# Initialize map to store number of stars in each pixel
-	pix_map = None
-	if values.visualize:
-		pix_map = np.zeros(12 * values.nside**2, dtype=np.uint64)
-	
 	# Initialize stats on pixels, # of stars, etc.
 	l_min = np.inf
 	l_max = -np.inf
@@ -224,6 +336,10 @@ def main():
 	N_pix = 0
 	N_min = np.inf
 	N_max = -np.inf
+	
+	N_in_pixel = []
+	N_pix_too_sparse = 0
+	N_pix_out_of_bounds = 0
 	
 	fnameBase = abspath(values.out)
 	fnameSuffix = 'h5'
@@ -237,12 +353,31 @@ def main():
 	nInFile = 0
 	
 	# Write each pixel to the same file
-	nest = (not values.ring)
-	for (pix_index, obj) in query.execute([(mapper, values.nside, nest, values.bounds), reducer],
+	nest = True
+	for (pix_info, obj) in query.execute([(mapper, values.nside_min, nest, values.bounds),
+	                                      reducer,
+	                                      (subdivider, values.nside_min, n_stars_max, values.min_stars, values.nside_max)],
 	                                      #group_by_static_cell=True,
-	                                      bounds=query_bounds):
+	                                      bounds=query_bounds,
+	                                      nworkers=values.n_workers):
+		# Filter out pixels that have too few stars
 		if len(obj) < values.min_stars:
+			N_pix_too_sparse += 1
+			
 			continue
+		
+		nside, pix_index = pix_info
+		
+		# Filter out pixels that are outside of bounds
+		l_center, b_center = pix2lb(nside, pix_index, nest=nest)
+		
+		if values.bounds != None:
+			if (     (l_center < values.bounds[0])
+			      or (l_center > values.bounds[1]) 
+			      or (b_center < values.bounds[2]) 
+			      or (b_center > values.bounds[3]) ):
+				N_pix_out_of_bounds += 1
+				continue
 		
 		# Prepare output for pixel
 		outarr = np.empty(len(obj), dtype=[('obj_id','u8'),
@@ -269,16 +404,15 @@ def main():
 			nFiles += 1
 		
 		# Write to file
-		gal_lb = to_file(f, pix_index, values.nside, nest, EBV, outarr)
+		gal_lb = to_file(f, pix_index, nside, nest, EBV, outarr)
 		
 		# Update stats
 		N_pix += 1
 		stars_in_pix = len(obj)
 		N_stars += stars_in_pix
 		nInFile += stars_in_pix
-		
-		if values.visualize:
-			pix_max[pix_index] += N_stars
+		N_in_pixel.append(stars_in_pix)
+		n_pixels_at_res[nside] += 1
 		
 		if gal_lb[0] < l_min:
 			l_min = gal_lb[0]
@@ -303,12 +437,30 @@ def main():
 		f.close()
 	
 	if N_pix != 0:
+		N_in_pixel = np.array(N_in_pixel)
 		print '# of stars in footprint: %d.' % N_stars
 		print '# of pixels in footprint: %d.' % N_pix
 		print 'Stars per pixel:'
 		print '    min: %d' % N_min
-		print '    mean: %d' % (N_stars / N_pix)
+		print '    5%%: %d' % (np.percentile(N_in_pixel, 5.))
+		print '    50%%: %d' % (np.percentile(N_in_pixel, 50.))
+		print '    mean: %d' % (float(N_stars) / float(N_pix))
+		print '    95%%: %d' % (np.percentile(N_in_pixel, 95.))
 		print '    max: %d' % N_max
+		print '# of pixels at each nside resolution:'
+		
+		for nside in nside_options:
+			area_per_pix = hp.pixelfunc.nside2pixarea(nside, degrees=True)
+			#area_per_pix = 4.*np.pi * (180./np.pi)**2. / (12. * nside**2.)
+			area = n_pixels_at_res[nside] * area_per_pix
+			print '    %d: %d (%.2f deg^2)' % (nside, n_pixels_at_res[nside], area)
+		
+		pct_sparse = 100. * float(N_pix_too_sparse) / float(N_pix_too_sparse + N_pix)
+		print '# of pixels too sparse: %d (%.3f %%)' % (N_pix_too_sparse, pct_sparse)
+		
+		pct_out_of_bounds = 100. * float(N_pix_out_of_bounds) / float(N_pix_out_of_bounds + N_pix)
+		print '# of pixels out of bounds: %d (%.3f %%)' % (N_pix_out_of_bounds, pct_out_of_bounds)
+		
 		print '# of files: %d.' % nFiles
 	else:
 		print 'No pixels in specified bounds with sufficient # of stars.'
@@ -318,12 +470,6 @@ def main():
 		print 'Bounds of included pixel centers:'
 		print '\t(l_min, l_max) = (%.3f, %.3f)' % (l_min, l_max)
 		print '\t(b_min, b_max) = (%.3f, %.3f)' % (b_min, b_max)
-	
-	# Show footprint of stored pixels on sky
-	if values.visualize:
-		hp.visufunc.mollview(map=np.log(pix_map), nest=nest,
-		                     title=r'# of stars', coord='G', xsize=5000)
-		plt.show()
 	
 	return 0
 

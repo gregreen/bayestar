@@ -965,11 +965,16 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ, dou
 
 void TChainWriteBuffer::write(const std::string& fname, const std::string& group, const std::string& chain, const std::string& meta) {
 	// DEBUG:
-	//std::cerr << "group = " << group << std::endl;
+	std::cerr << "fname = " << fname << std::endl;
+	std::cerr << "group = " << group << std::endl;
+	std::cerr << "chain = " << chain << std::endl;
 	
+	std::cerr << "Opening file" << std::endl;
 	H5::H5File* h5file = H5Utils::openFile(fname);
+	std::cerr << "Opening group" << std::endl;
 	H5::Group* h5group = H5Utils::openGroup(h5file, group);
 	
+	std::cerr << "Creating dataspace" << std::endl;
 	// Dataset properties: optimized for reading/writing entire buffer at once
 	int rank = 3;
 	hsize_t dim[3] = {length_, nSamples_+2, nDim_};
@@ -980,7 +985,7 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
 	
-	//std::cerr << "dataset = " << chain << std::endl;
+	std::cerr << "dataset = " << chain << std::endl;
 	
 	H5::DataSet* dataset = NULL;
 	try {
@@ -991,7 +996,7 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 		throw;
 	}
 	
-	//std::cerr << "Writing chain ..." << std::endl;
+	std::cerr << "Writing chain ..." << std::endl;
 	
 	dataset->write(buf, H5::PredType::NATIVE_FLOAT);
 	
@@ -1013,19 +1018,19 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 		//	}
 		//}
 		
-		//std::cerr << "Writing convergence ..." << std::endl;
+		std::cerr << "Writing convergence ..." << std::endl;
 		
 		H5::DataSpace convSpace(1, &(dim[0]));
 		H5::Attribute convAtt = dataset->createAttribute("converged", H5::PredType::NATIVE_CHAR, convSpace);
 		convAtt.write(H5::PredType::NATIVE_CHAR, reinterpret_cast<char*>(converged));
 		
-		//std::cerr << "Writing evidence ..." << std::endl;
+		std::cerr << "Writing evidence ..." << std::endl;
 		
 		H5::DataSpace lnZSpace(1, &(dim[0]));
 		H5::Attribute lnZAtt = dataset->createAttribute("ln(Z)", H5::PredType::NATIVE_FLOAT, lnZSpace);
 		lnZAtt.write(H5::PredType::NATIVE_FLOAT, lnZ);
 		
-		//std::cerr << "Done." << std::endl;
+		std::cerr << "Done." << std::endl;
 		
 		delete[] converged;
 		delete[] lnZ;

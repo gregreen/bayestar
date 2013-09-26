@@ -26,13 +26,11 @@
 #include "data.h"
 
 
-TStellarData::TStellarData(const std::string& infile, uint32_t _healpix_index, double err_floor)
-	: healpix_index(_healpix_index)
+TStellarData::TStellarData(const std::string& infile, std::string _pix_name, double err_floor)
+	: pix_name(_pix_name)
 {
 	std::string group = "photometry";
-	std::stringstream dset;
-	dset << "pixel " << healpix_index;
-	load(infile, group, dset.str(), err_floor);
+	load(infile, group, pix_name, err_floor);
 	if(EBV <= 0.) {
 		EBV = 4.;
 	} else {
@@ -50,6 +48,10 @@ TStellarData::TStellarData(uint64_t _healpix_index, uint32_t _nside, bool _neste
 	l = _l;
 	b = _b;
 	EBV = -1.;
+	
+	std::stringstream tmp_name;
+	tmp_name << "pixel " << nside << "-" << healpix_index;
+	pix_name = tmp_name.str();
 }
 
 
@@ -224,22 +226,31 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	// Fix magnitude limits
 	for(int n=0; n<nbands; n++) {
 		float tmp;
+		float maglim_replacement = 25.;
+		
+		// Find the 95th percentile of valid magnitude limits
 		std::vector<float> maglimit;
 		for(hsize_t i=0; i<length; i++) {
 			tmp = data_buf[i].maglimit[n];
-			if((tmp > 10.) && (tmp < 40.)) {
+			
+			if((tmp > 10.) && (tmp < 40.) && (!isnan(tmp))) {
 				maglimit.push_back(tmp);
 			}
 		}
-		std::sort(maglimit.begin(), maglimit.end());
+		
+		//std::sort(maglimit.begin(), maglimit.end());
 		if(maglimit.size() != 0) {
-			size_t medIdx = maglimit.size() / 2;
-			tmp = maglimit[medIdx];
-		} else {
-			tmp = 23.;
+			maglim_replacement = percentile(maglimit, 95.);
 		}
+		
+		// Replace missing magnitude limits with the 95th percentile magnitude limit
 		for(hsize_t i=0; i<length; i++) {
-			data_buf[i].maglimit[n] = tmp;
+			tmp = data_buf[i].maglimit[n];
+			
+			if(!((tmp > 10.) && (tmp < 40.)) || isnan(tmp)) {
+				//std::cout << i << ", " << n << ":  " << tmp << std::endl;
+				data_buf[i].maglimit[n] = maglim_replacement;
+			}
 		}
 	}
 	
@@ -631,17 +642,16 @@ void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model,
 
 
 
-herr_t fetch_pixel_index(hid_t loc_id, const char *name, void *opdata) {
-	std::vector<unsigned int> *healpix_index = reinterpret_cast<std::vector<unsigned int>*>(opdata);
+herr_t fetch_pixel_name(hid_t loc_id, const char *name, void *opdata) {
+	std::vector<std::string> *pix_name = reinterpret_cast<std::vector<std::string>*>(opdata);
 	
-	std::stringstream group_name;
-	group_name << name;
+	std::string group_name(name);
+	//group_name << name;
 	
-	std::string tmp_str;
-	unsigned int tmp_int;
+	//std::string tmp_name;
 	try {
-		group_name >> tmp_str >> tmp_int;
-		healpix_index->push_back(tmp_int);
+		//group_name >> tmp_name;
+		pix_name->push_back(group_name);
 	} catch(...) {
 		// pass
 	}
@@ -649,10 +659,10 @@ herr_t fetch_pixel_index(hid_t loc_id, const char *name, void *opdata) {
 	return 0;
 }
 
-void get_input_pixels(std::string fname, std::vector<unsigned int> &healpix_index) {
+void get_input_pixels(std::string fname, std::vector<std::string> &pix_name) {
 	H5::H5File *file = H5Utils::openFile(fname, H5Utils::READ);
 	
-	file->iterateElems("/photometry/", NULL, fetch_pixel_index, reinterpret_cast<void*>(&healpix_index));
+	file->iterateElems("/photometry/", NULL, fetch_pixel_name, reinterpret_cast<void*>(&pix_name));
 	
 	delete file;
 }

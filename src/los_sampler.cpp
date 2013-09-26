@@ -31,8 +31,9 @@
  *  Discrete cloud model
  */
 
-void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
-                                  unsigned int N_clouds, uint64_t healpix_index, int verbosity) {
+void sample_los_extinction_clouds(const std::string& out_fname, const std::string& group_name,
+                                  TMCMCOptions &options, TLOSMCMCParams &params,
+                                  unsigned int N_clouds, int verbosity) {
 	timespec t_start, t_write, t_end;
 	clock_gettime(CLOCK_MONOTONIC, &t_start);
 	
@@ -157,13 +158,13 @@ void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, 
 	//group_name << "/los clouds";
 	//chain.save(out_fname, group_name.str(), 0, "Delta mu, Delta E(B-V)", 3, 100, converged);
 	
-	std::stringstream group_name;
-	group_name << "/pixel " << healpix_index;
+	std::stringstream group_name_full;
+	group_name_full << "/" << group_name;
 	TChain chain = sampler.get_chain();
 	
 	TChainWriteBuffer writeBuffer(ndim, 100, 1);
 	writeBuffer.add(chain, converged, std::numeric_limits<double>::quiet_NaN(), GR_transf.data());
-	writeBuffer.write(out_fname, group_name.str(), "clouds");
+	writeBuffer.write(out_fname, group_name_full.str(), "clouds");
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
 	
@@ -355,8 +356,9 @@ void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r,
  *  Piecewise-linear line-of-sight model
  */
 
-void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
-                           uint64_t healpix_index, int verbosity) {
+void sample_los_extinction(const std::string& out_fname, const std::string& group_name,
+                           TMCMCOptions &options, TLOSMCMCParams &params,
+                           int verbosity) {
 	timespec t_start, t_write, t_end;
 	clock_gettime(CLOCK_MONOTONIC, &t_start);
 	
@@ -662,16 +664,16 @@ void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCM
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_write);
 	
-	std::stringstream group_name;
-	group_name << "/pixel " << healpix_index;
+	std::stringstream group_name_full;
+	group_name_full << "/" << group_name;
 	TChain chain = sampler.get_chain();
 	
 	TChainWriteBuffer writeBuffer(ndim, 500, 1);
 	writeBuffer.add(chain, converged, std::numeric_limits<double>::quiet_NaN(), GR_transf.data());
-	writeBuffer.write(out_fname, group_name.str(), "los");
+	writeBuffer.write(out_fname, group_name_full.str(), "los");
 	
 	std::stringstream los_group_name;
-	los_group_name << group_name.str() << "/los";
+	los_group_name << group_name_full.str() << "/los";
 	H5Utils::add_watermark<double>(out_fname, los_group_name.str(), "DM_min", params.img_stack->rect->min[1]);
 	H5Utils::add_watermark<double>(out_fname, los_group_name.str(), "DM_max", params.img_stack->rect->max[1]);
 	
