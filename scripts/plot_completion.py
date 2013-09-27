@@ -172,7 +172,9 @@ def main():
 		
 		# Title
 		timestr = time.strftime('%m.%d-%H:%M:%S')
-		ax.set_title(r'$\mathrm{Completion \ as \ of \ %s}$' % (timestr), fontsize=16)
+		pct_complete = completion.get_pct_complete()
+		ax.set_title(r'$\mathrm{Completion \ as \ of \ %s \ (%.2f \ \%%)}$' % (timestr, pct_complete),
+		             fontsize=16)
 		
 		# Allow user to determine healpix index
 		#pix_identifiers = []

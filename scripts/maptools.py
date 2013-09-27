@@ -592,9 +592,12 @@ class job_completion_counter:
 			cloud_tmp = ('clouds' in keys)
 			los_tmp = ('los' in keys)
 			
-			#print keys
-			
 			self.completion_dict[(nside_tmp, pix_idx_tmp)] = (star_tmp, cloud_tmp, los_tmp)
+			
+			# Update number of stars completed
+			if los_tmp:
+				nstars_tmp = self.nstars_dict[(nside_tmp, pix_idx_tmp)]
+				self.nstars_complete += nstars_tmp
 		
 		f.close()
 	
@@ -619,16 +622,22 @@ class job_completion_counter:
 			try:
 				pix_idx_tmp = item.attrs['healpix_index']
 				nside_tmp = item.attrs['nside']
+				nstars_tmp = item.size
 			except:
 				continue
 			
 			self.completion_dict[(nside_tmp, pix_idx_tmp)] = (0, 0, 0)
+			self.nstars_dict[(nside_tmp, pix_idx_tmp)] = nstars_tmp
+			self.nstars_input += nstars_tmp
 		
 		f.close()
 	
 	def load_completion(self, infnames, outfnames):
 		# Information of completeness of jobs
 		self.completion_dict = {}
+		self.nstars_dict = {}
+		self.nstars_input = 0
+		self.nstars_complete = 0
 		
 		# Load information from input and output files
 		for fname in infnames:
@@ -654,6 +663,9 @@ class job_completion_counter:
 		self.star = completion[:,0]
 		self.cloud = completion[:,1]
 		self.los = completion[:,2]
+	
+	def get_pct_complete(self):
+		return 100. * float(self.nstars_complete) / float(self.nstars_input)
 	
 	def rasterize(self, size, method='both',
 	                          proj=hputils.Cartesian_projection(),
