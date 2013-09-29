@@ -63,15 +63,19 @@ def plot_EBV(ax, img, bounds, **kwargs):
 	img_res = ax.imshow(img.T, **kwargs)
 	
 	# Neutrally color masked regions
-	kwargs['vmin'] = 0.
-	kwargs['vmax'] = 1.
+	kwargs['vmin'] = None
+	kwargs['vmax'] = None
+	kwargs['cmap'] = None
 	mask = np.isnan(img.T)
 	shape = (img.shape[1], img.shape[0], 4)
 	mask_img = np.zeros(shape, dtype='f8')
-	mask_img[:,:,1] = 0.4
-	mask_img[:,:,2] = 1.
-	mask_img[:,:,3] = 0.65 * mask.astype('f8')
-	ax.imshow(mask_img, **kwargs)
+	mask_img[:,:,0] = 0.30
+	mask_img[:,:,1] = 0.70
+	mask_img[:,:,2] = 0.90
+	mask_img[:,:,3] = 0.95 * mask.astype('f8')
+	#ax.imshow(mask_img, **kwargs)
+	ax.imshow(mask_img, origin='lower', aspect='auto',
+	                    interpolation='nearest',extent=bounds)
 	
 	#xlim = ax.get_xlim()
 	#ax.set_xlim(xlim[1], xlim[0])
@@ -108,12 +112,68 @@ class PixelIdentifier:
 		print '(%.2f, %.2f) -> %d' % (l, b, pix_idx)
 
 
-def plotter_worker(los_coll, dist_q,
-                   figsize, dpi, size,
-                   model, method, mask,
-                   proj, l_cent, b_cent, bounds,
-                   EBV_max, delta_mu,
-                   outfname):
+def plotter_worker(img_q, lock,
+                   n_rasterizers,
+                   figsize, dpi,
+                   EBV_max, outfname):
+	
+	n_finished = 0
+	
+	# Plot images
+	while True:
+		n, mu, img = img_q.get()
+		
+		# Count number of rasterizer workers that have finished
+		# processing their queue
+		if n == 'FINISHED':
+			n_finished += 1
+			
+			if n_finished >= n_rasterizers:
+				return
+			else:
+				continue
+		
+		# Plot this image
+		print 'Plotting mu = %.2f (image %d) ...' % (mu, n+1)
+		
+		fig = plt.figure(figsize=figsize, dpi=dpi)
+		ax = fig.add_subplot(1,1,1)
+		
+		img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
+		
+		# Colorbar
+		fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.88)
+		cax = fig.add_axes([0.9, 0.12, 0.03, 0.76])
+		cb = fig.colorbar(img, cax=cax)
+		
+		# Labels, ticks, etc.
+		ax.set_xlabel(r'$\ell$', fontsize=16)
+		ax.set_ylabel(r'$b$', fontsize=16)
+		
+		ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
+		ax.xaxis.set_minor_locator(AutoMinorLocator())
+		ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
+		ax.yaxis.set_minor_locator(AutoMinorLocator())
+		
+		# Title
+		d = 10.**(mu/5. - 2.)
+		ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu, d), fontsize=16)
+		
+		# Save figure
+		if outfname != None:
+			full_fname = '%s.%s.%s.%.5d.png' % (outfname, model, method, n)
+			fig.savefig(full_fname, dpi=dpi)
+		
+		plt.close(fig)
+		del img
+
+
+def rasterizer_worker(dist_q, img_q,
+                      los_coll,
+                      figsize, dpi, size,
+                      model, method, mask,
+                      proj, l_cent, b_cent, bounds,
+                      delta_mu):
 	# Reseed random number generator
 	t = time.time()
 	t_after_dec = int(1.e9*(t - np.floor(t)))
@@ -126,12 +186,7 @@ def plotter_worker(los_coll, dist_q,
 		try:
 			n, mu = dist_q.get_nowait()
 			
-			print 'Plotting mu = %.2f (image %d) ...' % (mu, n+1)
-			
-			fig = plt.figure(figsize=figsize, dpi=dpi)
-			ax = fig.add_subplot(1,1,1)
-			
-			# Plot E(B-V)
+			# Rasterize E(B-V)
 			img, bounds = los_coll.rasterize(mu, size, fit=model,
 			                                           method=method,
 			                                           mask_sigma=mask,
@@ -140,35 +195,14 @@ def plotter_worker(los_coll, dist_q,
 			                                           l_cent=l_cent,
 			                                           b_cent=b_cent)
 			
-			img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
-			
-			# Colorbar
-			fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.88)
-			cax = fig.add_axes([0.9, 0.12, 0.03, 0.76])
-			cb = fig.colorbar(img, cax=cax)
-			
-			# Labels, ticks, etc.
-			ax.set_xlabel(r'$\ell$', fontsize=16)
-			ax.set_ylabel(r'$b$', fontsize=16)
-			
-			ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
-			ax.xaxis.set_minor_locator(AutoMinorLocator())
-			ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
-			ax.yaxis.set_minor_locator(AutoMinorLocator())
-			
-			# Title
-			d = 10.**(mu/5. - 2.)
-			ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu, d), fontsize=16)
-			
-			# Save figure
-			if outfname != None:
-				full_fname = '%s.%s.%s.%.5d.png' % (outfname, model, method, n)
-				fig.savefig(full_fname, dpi=dpi)
-			
-			plt.close(fig)
-			del img
+			# Put image on queue
+			img_q.put((n, mu, img))
 			
 		except Queue.Empty:
+			img_q.put('FINISHED')
+			
+			print 'Rasterizer finished.'
+			
 			return
 
 
@@ -293,30 +327,93 @@ def main():
 	pix_identifiers = []
 	nside_max = los_coll.get_nside_levels()[-1]
 	
-	# Set up queue for workers to pull from
+	# Set up queue for rasterizer workers to pull from
 	dist_q = multiprocessing.Queue()
 	
 	for n,mu in enumerate(mu_plot):
 		dist_q.put((n, mu))
 	
+	# Set up results queue for rasterizer workers
+	img_q = multiprocessing.Queue()
+	
 	# Spawn worker processes to plot images
+	n_rasterizers = args.processes
 	procs = []
 	
-	for i in xrange(args.processes):
-		p = multiprocessing.Process(target=plotter_worker,
-		                            args=(los_coll, dist_q,
-		                            args.figsize, args.dpi, size,
-		                            args.model, method, mask,
-		                            proj, l_cent, b_cent, args.bounds,
-		                            EBV_max, args.delta_mu,
-		                            outfname)
+	for i in xrange(n_rasterizers):
+		p = multiprocessing.Process(target=rasterizer_worker,
+		                            args=(dist_q, img_q,
+		                                  los_coll,
+		                                  args.figsize, args.dpi, size,
+		                                  args.model, method, mask,
+		                                  proj, l_cent, b_cent, args.bounds,
+		                                  args.delta_mu)
 		                           )
 		
 		procs.append(p)
 		p.start()
 	
+	# Plot and save results
+	n_rast_finished = 0
+	n_img_finished = 0
+	
+	while True:
+		q_in = img_q.get()
+		
+		# Count number of rasterizer workers that have finished
+		# processing their queue
+		if q_in == 'FINISHED':
+			n_rast_finished += 1
+			
+			if n_rast_finished >= n_rasterizers:
+				break
+			else:
+				continue
+		
+		n, mu, img = q_in
+		
+		# Plot this image
+		print 'Plotting mu = %.2f (%d of %d) ...' % (mu,
+		                                             n_img_finished+1,
+		                                             mu_plot.size)
+		
+		fig = plt.figure(figsize=args.figsize, dpi=args.dpi)
+		ax = fig.add_subplot(1,1,1)
+		
+		img = plot_EBV(ax, img, args.bounds, vmin=0., vmax=EBV_max)
+		
+		# Colorbar
+		fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.88)
+		cax = fig.add_axes([0.9, 0.12, 0.03, 0.76])
+		cb = fig.colorbar(img, cax=cax)
+		
+		# Labels, ticks, etc.
+		ax.set_xlabel(r'$\ell$', fontsize=16)
+		ax.set_ylabel(r'$b$', fontsize=16)
+		
+		ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
+		ax.xaxis.set_minor_locator(AutoMinorLocator())
+		ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
+		ax.yaxis.set_minor_locator(AutoMinorLocator())
+		
+		# Title
+		d = 10.**(mu/5. - 2.)
+		ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu, d), fontsize=16)
+		
+		# Save figure
+		if outfname != None:
+			full_fname = '%s.%s.%s.%.5d.png' % (outfname, args.model, method, n)
+			fig.savefig(full_fname, dpi=args.dpi)
+		
+		plt.close(fig)
+		del img
+		
+		n_img_finished += 1
+	
 	for p in procs:
 		p.join()
+	
+	print 'Done.'
 	
 	#if args.show:
 	#	plt.show()

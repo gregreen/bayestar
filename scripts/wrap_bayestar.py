@@ -23,16 +23,17 @@ def write_infile(filename, mag, err, maglimit,
 	
 	f = h5py.File(filename, access_mode)
 	
+	nside = 512
+	nest = True
 	pixIdx = 1
-	ds_name = '/photometry/pixel %d' % pixIdx
+	
+	ds_name = '/photometry/pixel %d-%d' % (nside, pixIdx)
 	ds = f.create_dataset(ds_name, data.shape, data.dtype, chunks=True,
 	                      compression='gzip', compression_opts=9)
 	ds[:] = data[:]
 	
 	gal_lb = np.array([l, b], dtype='f8')
 	
-	nside = 512
-	nest = True
 	EBV = EBV_guess
 	att_f8 = np.array([EBV], dtype='f8')
 	att_u8 = np.array([pixIdx], dtype='u8')
@@ -69,15 +70,16 @@ def write_true_params(filename, DM, EBV, Mr, FeH,
 	f = h5py.File(filename, access_mode)
 	
 	pixIdx = 1
-	ds_name = '/parameters/pixel %d' % pixIdx
+	nside = 512
+	nest = True
+	
+	ds_name = '/parameters/pixel %d-%d' % (nside, pixIdx)
 	ds = f.create_dataset(ds_name, data.shape, data.dtype, chunks=True,
 	                      compression='gzip', compression_opts=9)
 	ds[:] = data[:]
 	
 	gal_lb = np.array([l, b], dtype='f8')
 	
-	nside = 512
-	nest = True
 	EBV = 0.
 	att_f8 = np.array([EBV], dtype='f8')
 	att_u8 = np.array([pixIdx], dtype='u8')
