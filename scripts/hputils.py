@@ -533,6 +533,183 @@ def rasterize_map(pix_idx, pix_val,
 	return img, bounds
 
 
+def latlon_lines(ls, bs,
+                 l_spacing=1., b_spacing=1.,
+                 proj=Cartesian_projection(),
+                 l_cent=0., b_cent=0.,
+                 bounds=None, xy_bounds=None):
+	'''
+	Return the x- and y- positions of points along a grid of parallels
+	and meridians.
+	'''
+	
+	# Construct a set of points along the meridians and parallels
+	l = []
+	b = []
+	
+	l_row = np.arange(-180., 180.+l_spacing/2., l_spacing)
+	b_row = np.ones(l_row.size)
+	
+	for b_val in bs:
+		b.append(b_val * b_row)
+		l.append(l_row)
+	
+	b_row = np.arange(-90., 90.+b_spacing/2., b_spacing)
+	l_row = np.ones(b_row.size)
+	
+	for l_val in ls:
+		l.append(l_val * l_row)
+		b.append(b_row)
+	
+	l = np.hstack(l)
+	b = np.hstack(b)
+	
+	# Rotate coordinate system to center (l_0, b_0)
+	if (l_cent != 0.) | (b_cent != 0.):
+		b, l = Euler_rotation_ang(b, l, -l_cent, b_cent, 0.,
+		                                        degrees=True)
+	
+	lam = 180. - l
+	
+	# Project to (x, y)
+	x, y = proj.proj(np.pi/180. * b, np.pi/180. * lam)
+	
+	# Scale (x, y) to display bounds
+	if (bounds != None) and (xy_bounds != None):
+		x_scale = (bounds[1] - bounds[0]) / (xy_bounds[1] - xy_bounds[0])
+		y_scale = (bounds[3] - bounds[2]) / (xy_bounds[3] - xy_bounds[2])
+		
+		x = bounds[0] + (x - xy_bounds[0]) * x_scale
+		y = bounds[2] + (y - xy_bounds[2]) * y_scale
+	
+	return x, y
+
+
+def rasterize_map(pix_idx, pix_val,
+                  nside, size,
+                  nest=True, clip=True,
+                  proj=Cartesian_projection(),
+                  l_cent=0., b_cent=0.,
+                  l_lines=None, b_lines=None,
+                  l_spacing=1., b_spacing=1.):
+	'''
+	Rasterize a healpix map.
+	'''
+	
+	pix_scale = 180./np.pi * hp.nside2resol(nside)
+	
+	# Determine pixel centers
+	l_0, b_0 = pix2lb(nside, pix_idx, nest=nest, use_negative_l=True)
+	
+	# Rotate coordinate system to center (l_0, b_0)
+	if (l_cent != 0.) | (b_cent != 0.):
+		b_0, l_0 = Euler_rotation_ang(b_0, l_0, -l_cent, b_cent, 0.,
+		                                        degrees=True)
+		#l_0 = np.mod(l_0, 360.)
+	
+	lam_0 = 180. - l_0
+	
+	# Determine display-space bounds
+	shift = [(0., 0.), (1., 0.), (0., 1.), (-1., 0.), (0., -1.)]
+	x_min, x_max, y_min, y_max = [], [], [], []
+	
+	#for (s_x, s_y) in shift:
+	for s_x in np.linspace(-pix_scale, pix_scale, 3):
+		for s_y in np.linspace(-pix_scale, pix_scale, 3):
+			lam, b = shift_lon_lat(lam_0, b_0, 0.75*s_x, 0.75*s_y, clip=True)
+			
+			x_0, y_0 = proj.proj(np.pi/180. * b, np.pi/180. * lam)
+			
+			x_min.append(np.min(x_0))
+			x_max.append(np.max(x_0))
+			y_min.append(np.min(y_0))
+			y_max.append(np.max(y_0))
+	
+	x_min = np.min(x_min)
+	x_max = np.max(x_max)
+	y_min = np.min(y_min)
+	y_max = np.max(y_max)
+	
+	# Make grid of display-space pixels
+	x_size, y_size = size
+	
+	x, y = np.mgrid[0:x_size, 0:y_size].astype(np.float32) + 0.5
+	x = x_min + (x_max - x_min) * x / float(x_size)
+	y = y_min + (y_max - y_min) * y / float(y_size)
+	
+	# Convert display-space pixels to (l, b)
+	b, lam, mask = proj.inv(x, y)
+	l = 180. - 180./np.pi * lam
+	b *= 180./np.pi
+	
+	# Rotate back to original (l, b)-space
+	if (l_cent != 0.) | (b_cent != 0.):
+		b, l = Euler_rotation_ang(b, l, -l_cent, b_cent, 0.,
+		                                degrees=True, inverse=True)
+	
+	# Determine bounds in (l, b)-space
+	#if clip:
+	#l_min, l_max = np.min(l[~mask]), np.max(l[~mask])
+	#b_min, b_max = np.min(b[~mask]), np.max(b[~mask])
+	#else:
+	#	l_min, l_max = np.min(l), np.max(l)
+	#	b_min, b_max = np.min(b), np.max(b)
+	
+	# Convert (l, b) to healpix indices
+	disp_idx = lb2pix(nside, l, b, nest=nest)
+	
+	# Generate full map
+	n_pix = hp.pixelfunc.nside2npix(nside)
+	pix_idx_full = np.arange(n_pix)
+	pix_val_full = np.empty(n_pix, dtype='f8')
+	pix_val_full[:] = np.nan
+	pix_val_full[pix_idx] = pix_val[:]
+	
+	# Grab pixel values
+	img = None
+	good_idx = None
+	
+	if len(pix_val.shape) == 1:
+		img = pix_val_full[disp_idx]
+		
+		if clip:
+			img[mask] = np.nan
+		
+		good_idx = np.isfinite(img)
+		
+		img.shape = (x_size, y_size)
+		
+	elif len(pix_val.shape) == 2:
+		img = pix_val[:,disp_idx]
+		
+		if clip:
+			img[:,mask] = np.nan
+		
+		good_idx = np.any(np.isfinite(img), axis=0)
+		
+		img.shape = (img.shape[0], x_size, y_size)
+		
+	else:
+		raise Exception('pix_val must be either 1- or 2-dimensional.')
+	
+	l_min, l_max = np.min(l[good_idx]), np.max(l[good_idx])
+	b_min, b_max = np.min(b[good_idx]), np.max(b[good_idx])
+	
+	bounds = (l_max, l_min, b_min, b_max)
+	xy_bounds = (x_min, x_max, y_min, y_max)
+	
+	if (l_lines != None) and (b_lines != None):
+		x, y = latlon_lines(l_lines, b_lines,
+		                    l_spacing=l_spacing, b_spacing=b_spacing,
+		                    proj=proj,
+		                    l_cent=l_cent, b_cent=b_cent,
+		                    bounds=bounds, xy_bounds=xy_bounds)
+		
+		return img, bounds, x, y
+	else:
+		return img, bounds, xy_bounds
+
+
 def test_Mollweide():
 	proj = Mollweide_projection()
 	
@@ -618,10 +795,10 @@ def test_proj():
 	nside = 128
 	nest = True
 	clip = True
-	size = (1000, 1000)
-	proj = EckertIV_projection()
-	l_cent = 135.
-	b_cent = 54.
+	size = (2000, 1000)
+	proj = Hammer_projection()
+	l_cent = 37.
+	b_cent = 75.
 	
 	n_pix = hp.pixelfunc.nside2npix(nside)
 	pix_idx = np.arange(n_pix)#[4*n_pix/12:5*n_pix/12]
@@ -633,14 +810,18 @@ def test_proj():
 	fig = plt.figure()
 	ax = fig.add_subplot(1,1,1)
 	
-	# Rasterize map
-	img, bounds = rasterize_map(pix_idx, pix_val,
-	                            nside, size,
-	                            nest=nest, clip=clip,
-	                            proj=proj,
-	                            l_cent=l_cent, b_cent=b_cent)
+	# Generate grid lines
+	ls = np.linspace(-180., 180., 13)
+	bs = np.linspace(-90., 90., 7)[1:-1]
 	
-	print bounds
+	# Rasterize map
+	img, bounds, x, y = rasterize_map(pix_idx, pix_val,
+	                                  nside, size,
+	                                  nest=nest, clip=clip,
+	                                  proj=proj,
+	                                  l_cent=l_cent, b_cent=b_cent,
+	                                  l_lines=ls, b_lines=bs,
+	                                  l_spacing=2., b_spacing=2.)
 	
 	cimg = ax.imshow(img.T, extent=bounds,
 	                 origin='lower', interpolation='nearest',
@@ -650,6 +831,16 @@ def test_proj():
 	fig.subplots_adjust(left=0.10, right=0.90, bottom=0.20, top=0.90)
 	cax = fig.add_axes([0.10, 0.10, 0.80, 0.05])
 	fig.colorbar(cimg, cax=cax, orientation='horizontal')
+	
+	#x, y = latlon_lines(ls, bs,
+	#                    proj=proj,
+	#                    l_cent=l_cent, b_cent=b_cent,
+	#                    bounds=bounds, xy_bounds=xy_bounds)
+	
+	xlim = ax.get_xlim()
+	ylim = ax.get_ylim()
+	
+	ax.scatter(x, y, c='k', s=1, alpha=0.25)
 	
 	plt.show()
 

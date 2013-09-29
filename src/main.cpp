@@ -145,6 +145,8 @@ int main(int argc, char **argv) {
 	unsigned int N_runs = 4;
 	unsigned int N_threads = 1;
 	
+	bool clobber = false;
+	
 	int verbosity = 0;
 	
 	
@@ -191,6 +193,8 @@ int main(int argc, char **argv) {
 		("runs", po::value<unsigned int>(&N_runs), "# of times to run each chain (to check for non-convergence) (default: 4)")
 		("threads", po::value<unsigned int>(&N_threads), "# of threads to run on (default: 1)")
 		
+		("clobber", "Overwrite existing output. Otherwise, will only process pixels with incomplete output.")
+		
 		("verbosity", po::value<int>(&verbosity), "Level of verbosity (0 = minimal, 2 = highest)")
 	;
 	po::positional_options_description pd;
@@ -208,6 +212,8 @@ int main(int argc, char **argv) {
 	if(vm.count("disk-prior")) { disk_prior = true; }
 	if(vm.count("SFD-prior")) { SFDPrior = true; }
 	if(vm.count("SFD-subpixel")) { SFDsubpixel = true; }
+	if(vm.count("clobber")) { clobber = true; }
+	
 	
 	// Convert error floor to mags
 	err_floor /= 1000.;
@@ -273,7 +279,10 @@ int main(int argc, char **argv) {
 	cout << "# " << pix_name.size() << " pixels in input file." << endl << endl;
 	
 	// Remove the output file
-	remove(output_fname.c_str());
+	if(clobber) {
+		remove(output_fname.c_str());
+	}
+	
 	H5::Exception::dontPrint();
 	
 	// Run each pixel
@@ -290,10 +299,109 @@ int main(int argc, char **argv) {
 		TStellarData stellar_data(input_fname, *it, err_floor);
 		TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
 		
-		cout << "HEALPix index: " << stellar_data.healpix_index << " (nside = " << stellar_data.nside << ")" << endl;
+		cout << "# HEALPix index: " << stellar_data.healpix_index << " (nside = " << stellar_data.nside << ")" << endl;
 		cout << "# (l, b) = " << stellar_data.l << ", " << stellar_data.b << endl;
 		if(SFDPrior) { cout << "# E(B-V)_SFD = " << stellar_data.EBV << endl; }
 		cout << "# " << stellar_data.star.size() << " stars in pixel" << endl;
+		
+		
+		// Check if this pixel has already been fully processed
+		if(!clobber) {
+			bool process_pixel = false;
+			
+			H5::H5File *out_file = H5Utils::openFile(output_fname, H5Utils::READ | H5Utils::WRITE | H5Utils::DONOTCREATE);
+			
+			if(out_file == NULL) {
+				process_pixel = true;
+				
+				//cout << "File does not exist" << endl;
+			} else {
+				//cout << "File exists" << endl;
+				//stringstream group_name;
+				//group_name << stellar_data.healpix_index;
+				//group_name << stellar_data.nside << "-" << stellar_data.healpix_index;
+				
+				H5::Group *pix_group = H5Utils::openGroup(out_file, *it, H5Utils::READ | H5Utils::WRITE | H5Utils::DONOTCREATE);
+				
+				if(pix_group == NULL) {
+					process_pixel = true;
+				} else {
+					//cout << "Group exists" << endl;
+					
+					if(!H5Utils::dataset_exists("stellar chains", pix_group)) {
+						process_pixel = true;
+					} else {
+						if(saveSurfs) {
+							if(!H5Utils::dataset_exists("stellar pdfs", pix_group)) {
+								process_pixel = true;
+							}
+						}
+						
+						if(!process_pixel) {
+							if(N_clouds != 0) {
+								if(!H5Utils::dataset_exists("clouds", pix_group)) {
+									process_pixel = true;
+								}
+							}
+						}
+						
+						if(!process_pixel) {
+							if(N_regions != 0) {
+								if(!H5Utils::dataset_exists("los", pix_group)) {
+									process_pixel = true;
+								}
+							}
+						}
+					}
+					
+					// If pixel is missing data, remove all existing data, so that it can be regenerated
+					/*if(process_pixel) {
+						try {
+							pix_group->unlink("stellar chains");
+						} catch(H5::GroupIException unlink_err) {
+							cout << "Could not remove 'stellar chains'" << endl;
+						}
+						
+						try {
+							pix_group->unlink("stellar pdfs");
+						} catch(H5::GroupIException unlink_err) {
+							cout << "Could not remove 'stellar pdfs'" << endl;
+						}
+						
+						try {
+							pix_group->unlink("clouds");
+						} catch(H5::GroupIException unlink_err) {
+							cout << "Could not remove 'clouds'" << endl;
+						}
+						
+						try {
+							pix_group->unlink("los");
+						} catch(H5::GroupIException unlink_err) {
+							cout << "Could not remove 'los'" << endl;
+						}
+					}*/
+					
+					delete pix_group;
+					
+					// If pixel is missing data, remove it, so that it can be regenerated
+					if(process_pixel) {
+						try {
+							out_file->unlink(*it);
+						} catch(H5::FileIException unlink_err) {
+							cout << "Unable to remove group: '" << *it << "'" << endl;
+						}
+					}
+				}
+				
+				delete out_file;
+			}
+			
+			if(!process_pixel) {
+				cout << "# Pixel is already present in output. Skipping." << endl << endl;
+				
+				continue;	// All information is already present in output file
+			}
+		}
 		
 		// Prepare data structures for stellar parameters
 		TImgStack img_stack(stellar_data.star.size());
@@ -316,9 +424,11 @@ int main(int argc, char **argv) {
 		// Tag output pixel with HEALPix nside and index
 		stringstream group_name;
 		group_name << "/" << *it;
-		H5Utils::add_watermark<uint32_t>(output_fname, group_name.str(), "nside", stellar_data.nside);
-		H5Utils::add_watermark<uint64_t>(output_fname, group_name.str(), "healpix_index", stellar_data.healpix_index);
 		
+		try {
+			H5Utils::add_watermark<uint32_t>(output_fname, group_name.str(), "nside", stellar_data.nside);
+			H5Utils::add_watermark<uint64_t>(output_fname, group_name.str(), "healpix_index", stellar_data.healpix_index);
+		} catch(H5::AttributeIException err_att_exists) { }
 		
 		// Filter based on convergence and lnZ
 		assert(conv.size() == lnZ.size());
@@ -399,16 +509,19 @@ int main(int argc, char **argv) {
 	/*
 	 *  Add additional metadata to output file
 	 */
-	
-	string watermark = GIT_BUILD_VERSION;
-	H5Utils::add_watermark<string>(output_fname, "/", "bayestar git commit", watermark);
+	try {
+		string watermark = GIT_BUILD_VERSION;
+		H5Utils::add_watermark<string>(output_fname, "/", "bayestar git commit", watermark);
+	} catch(H5::AttributeIException err_att_exists) { }
 	
 	stringstream commandline_args;
 	for(int i=0; i<argc; i++) {
 		commandline_args << argv[i] << " ";
 	}
-	string commandline_args_str(commandline_args.str());
-	H5Utils::add_watermark<string>(output_fname, "/", "commandline invocation", commandline_args_str);
+	try {
+		string commandline_args_str(commandline_args.str());
+		H5Utils::add_watermark<string>(output_fname, "/", "commandline invocation", commandline_args_str);
+	} catch(H5::AttributeIException err_att_exists) { }
 	
 	
 	/*
