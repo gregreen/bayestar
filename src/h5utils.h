@@ -49,6 +49,12 @@ namespace H5Utils {
 	H5::Attribute openAttribute(H5::Group* group, const std::string &name, H5::StrType &strtype, H5::DataSpace &dspace);
 	H5::Attribute openAttribute(H5::DataSet* dataset, const std::string &name, H5::StrType &strtype, H5::DataSpace &dspace);
 	
+	bool group_exists(const std::string &name, H5::H5File* file);
+	bool group_exists(const std::string &name, H5::Group* group);
+	
+	bool dataset_exists(const std::string &name, H5::H5File* file);
+	bool dataset_exists(const std::string &name, H5::Group* group);
+	
 	template<class T>
 	bool add_watermark(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const T &value);
 	

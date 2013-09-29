@@ -172,6 +172,54 @@ H5::Attribute H5Utils::openAttribute(H5::DataSet* dataset, const std::string& na
 	}
 }
 
+/*
+ * 
+ * Check existence of datasets, groups
+ * 
+ */
+
+bool H5Utils::group_exists(const std::string& name, H5::H5File* file) {
+	try {
+		file->openGroup(name);
+	} catch(H5::FileIException err_gp_does_not_exist) {
+		return false;
+	}
+	
+	return true;
+}
+
+bool H5Utils::group_exists(const std::string& name, H5::Group* group) {
+	try {
+		group->openGroup(name);
+	} catch(H5::GroupIException err_gp_does_not_exist) {
+		return false;
+	}
+	
+	return true;
+}
+
+bool H5Utils::dataset_exists(const std::string& name, H5::H5File* file) {
+	try {
+		file->openDataSet(name);
+	} catch(H5::FileIException err_dset_does_not_exist) {
+		return false;
+	}
+	
+	return true;
+}
+
+bool H5Utils::dataset_exists(const std::string& name, H5::Group* group) {
+	try {
+		group->openDataSet(name);
+	} catch(H5::GroupIException err_dset_does_not_exist) {
+		return false;
+	}
+	
+	return true;
+}
+
+
+
 
 
 /*
