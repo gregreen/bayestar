@@ -93,6 +93,8 @@ def main():
 	                                       help='Generate a picture every X hours.')
 	parser.add_argument('--maxtime', '-max', type=float, default=24.,
 	                                       help='Number of hours to continue monitoring job completion.')
+	parser.add_argument('--incomplete-log', '-log', type=str, default=None,
+	                                       help='Log file that will contain names of input files that have not been completely processed.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -144,13 +146,21 @@ def main():
 		
 		print 'Input and output files loaded.'
 		
+		# Generate grid lines
+		ls = np.linspace(-180., 180., 13)
+		bs = np.linspace(-90., 90., 7)[1:-1]
+		
 		# Rasterize completion map
 		print 'Rasterizing completion map...'
 		
-		img, bounds = completion.rasterize(size, method=args.method,
-		                                         proj=proj,
-		                                         l_cent=l_cent,
-		                                         b_cent=b_cent)
+		img, bounds, x, y = completion.rasterize(size, method=args.method,
+		                                               proj=proj,
+		                                               l_cent=l_cent,
+		                                               b_cent=b_cent,
+		                                               l_lines=ls,
+		                                               b_lines=bs,
+		                                               l_spacing=1.,
+		                                               b_spacing=1.)
 		
 		# Plot completion
 		print 'Plotting ...'
@@ -160,6 +170,15 @@ def main():
 		
 		ax.imshow(img.T, extent=bounds, vmin=0, vmax=3,
 		                 aspect='auto', origin='lower', interpolation='nearest')
+		
+		# Grid lines
+		xlim = ax.get_xlim()
+		ylim = ax.get_ylim()
+		
+		ax.scatter(x, y, s=1., c='k', alpha=0.20)
+		
+		ax.set_xlim(xlim)
+		ax.set_ylim(ylim)
 		
 		# Labels, ticks, etc.
 		ax.set_xlabel(r'$\ell$', fontsize=16)
@@ -185,6 +204,14 @@ def main():
 		fig.savefig(args.plot_fname, dpi=args.dpi)
 		plt.close(fig)
 		del img
+		
+		# Write names of input files that have not been completely processed
+		incomplete_infnames = completion.get_incomplete_inputs(method=args.method)
+		txt = ['%s\n' % fname for fname in incomplete_infnames]
+		
+		f = open(abspath(args.incomplete_log), 'w')
+		f.write(txt)
+		f.close()
 		
 		print 'Time: %s' % timestr
 		print 'Sleeping ...'

@@ -596,7 +596,7 @@ class job_completion_counter:
 			
 			# Update number of stars completed
 			if los_tmp:
-				nstars_tmp = self.nstars_dict[(nside_tmp, pix_idx_tmp)]
+				nstars_tmp, infname_tmp = self.att_dict[(nside_tmp, pix_idx_tmp)]
 				self.nstars_complete += nstars_tmp
 		
 		f.close()
@@ -627,7 +627,7 @@ class job_completion_counter:
 				continue
 			
 			self.completion_dict[(nside_tmp, pix_idx_tmp)] = (0, 0, 0)
-			self.nstars_dict[(nside_tmp, pix_idx_tmp)] = nstars_tmp
+			self.att_dict[(nside, pix_idx_tmp)] = (nstars_tmp, infname)
 			self.nstars_input += nstars_tmp
 		
 		f.close()
@@ -635,7 +635,7 @@ class job_completion_counter:
 	def load_completion(self, infnames, outfnames):
 		# Information of completeness of jobs
 		self.completion_dict = {}
-		self.nstars_dict = {}
+		self.att_dict = {}
 		self.nstars_input = 0
 		self.nstars_complete = 0
 		
@@ -663,6 +663,30 @@ class job_completion_counter:
 		self.star = completion[:,0]
 		self.cloud = completion[:,1]
 		self.los = completion[:,2]
+	
+	def get_incomplete_inputs(self, method='both'):
+		if method == 'star':
+			comp_map = self.star[:]
+		elif method == 'cloud':
+			comp_map = self.star & self.cloud
+		elif method == 'piecewise':
+			comp_map = self.star & self.los
+		elif method == 'both':
+			comp_map = self.star & self.cloud & self.los
+		else:
+			raise ValueError("Unrecognized completion method: '%s'" % method)
+		
+		# Determine which input files have been completely processed
+		incomplete = []
+		
+		for k,(nside,idx) in enumerate(zip(self.nside, self.pix_idx)):
+			if not comp_map[k]:
+				nstars_tmp, infname_tmp = self.att_dict[(nside, idx)]
+				incomplete.append(infname_tmp)
+		
+		incomplete = np.array(incomplete)
+		
+		return np.unique(incomplete)
 	
 	def get_pct_complete(self):
 		return 100. * float(self.nstars_complete) / float(self.nstars_input)
