@@ -59,6 +59,18 @@ def plot_EBV(ax, img, bounds, **kwargs):
 	kwargs['extent'] = bounds
 	kwargs['cmap'] = 'binary'
 	
+	'''
+	# Background color
+	shape = (img.shape[1], img.shape[0], 4)
+	back_img = np.zeros(shape, dtype='f8')
+	back_img[:,:,0] = 0.60
+	back_img[:,:,1] = 0.80
+	back_img[:,:,2] = 0.95
+	back_img[:,:,3] = 0.50
+	ax.imshow(back_img, origin='lower', aspect='auto',
+	                    interpolation='nearest', extent=bounds)
+	'''
+	
 	# Plot image in B&W
 	img_res = ax.imshow(img.T, **kwargs)
 	
@@ -69,13 +81,13 @@ def plot_EBV(ax, img, bounds, **kwargs):
 	mask = np.isnan(img.T)
 	shape = (img.shape[1], img.shape[0], 4)
 	mask_img = np.zeros(shape, dtype='f8')
-	mask_img[:,:,0] = 0.30
-	mask_img[:,:,1] = 0.70
-	mask_img[:,:,2] = 0.90
+	mask_img[:,:,0] = 0.60
+	mask_img[:,:,1] = 0.80
+	mask_img[:,:,2] = 0.95
 	mask_img[:,:,3] = 0.95 * mask.astype('f8')
 	#ax.imshow(mask_img, **kwargs)
 	ax.imshow(mask_img, origin='lower', aspect='auto',
-	                    interpolation='nearest',extent=bounds)
+	                    interpolation='nearest', extent=bounds)
 	
 	#xlim = ax.get_xlim()
 	#ax.set_xlim(xlim[1], xlim[0])
@@ -160,9 +172,11 @@ def plotter_worker(img_q, lock,
 		ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu, d), fontsize=16)
 		
 		# Save figure
-		if outfname != None:
-			full_fname = '%s.%s.%s.%.5d.png' % (outfname, model, method, n)
-			fig.savefig(full_fname, dpi=dpi)
+		full_fname = '%s.%s.%s.%.5d.png' % (outfname, model, method, n)
+		
+		lock.acquire()
+		fig.savefig(full_fname, dpi=dpi)
+		lock.release()
 		
 		plt.close(fig)
 		del img
@@ -187,20 +201,100 @@ def rasterizer_worker(dist_q, img_q,
 			n, mu = dist_q.get_nowait()
 			
 			# Rasterize E(B-V)
-			img, bounds = los_coll.rasterize(mu, size, fit=model,
-			                                           method=method,
-			                                           mask_sigma=mask,
-			                                           delta_mu=delta_mu,
-			                                           proj=proj,
-			                                           l_cent=l_cent,
-			                                           b_cent=b_cent)
+			img, bounds, xy_bounds = los_coll.rasterize(mu, size,
+			                                                fit=model,
+			                                                method=method,
+			                                                mask_sigma=mask,
+			                                                delta_mu=delta_mu,
+			                                                proj=proj,
+			                                                l_cent=l_cent,
+			                                                b_cent=b_cent)
 			
 			# Put image on queue
-			img_q.put((n, mu, img))
+			img_q.put((n, mu, img, bounds, xy_bounds))
 			
 		except Queue.Empty:
 			img_q.put('FINISHED')
 			
+			print 'Rasterizer finished.'
+			
+			return
+
+def rasterizer_plotter_worker(dist_q, lock,
+                              los_coll,
+                              figsize, dpi, size,
+                              model, method, mask,
+                              proj, l_cent, b_cent, bounds,
+                              delta_mu, EBV_max,
+                              outfname):
+	# Reseed random number generator
+	t = time.time()
+	t_after_dec = int(1.e9*(t - np.floor(t)))
+	seed = np.bitwise_xor([t_after_dec], [os.getpid()])
+	
+	np.random.seed(seed=seed)
+	
+	first_img = True
+	
+	# Generate images
+	while True:
+		try:
+			n, mu = dist_q.get_nowait()
+			
+			# Rasterize E(B-V)
+			img, bounds, xy_bounds = los_coll.rasterize(mu, size,
+			                                                fit=model,
+			                                                method=method,
+			                                                mask_sigma=mask,
+			                                                delta_mu=delta_mu,
+			                                                proj=proj,
+			                                                l_cent=l_cent,
+			                                                b_cent=b_cent)
+			
+			# Plot this image
+			print 'Plotting mu = %.2f (image %d) ...' % (mu, n+1)
+			
+			fig = plt.figure(figsize=figsize, dpi=dpi)
+			ax = fig.add_subplot(1,1,1)
+			
+			img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
+			
+			# Colorbar
+			fig.subplots_adjust(bottom=0.12, left=0.12,
+			                    right=0.89, top=0.88)
+			cax = fig.add_axes([0.9, 0.12, 0.03, 0.76])
+			cb = fig.colorbar(img, cax=cax)
+			
+			# Labels, ticks, etc.
+			ax.set_xlabel(r'$\ell$', fontsize=16)
+			ax.set_ylabel(r'$b$', fontsize=16)
+			
+			ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
+			ax.xaxis.set_minor_locator(AutoMinorLocator())
+			ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
+			ax.yaxis.set_minor_locator(AutoMinorLocator())
+			
+			# Title
+			d = 10.**(mu/5. - 2.)
+			ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu, d),
+			             fontsize=16)
+			
+			# Save figure
+			full_fname = '%s.%s.%s.%.5d.png' % (outfname, model, method, n)
+			
+			if first_img:
+				lock.acquire()
+				fig.savefig(full_fname, dpi=dpi)
+				lock.release()
+				
+				first_img = False
+			else:
+				fig.savefig(full_fname, dpi=dpi)
+			
+			plt.close(fig)
+			del img
+			
+		except Queue.Empty:
 			print 'Rasterizer finished.'
 			
 			return
@@ -281,7 +375,8 @@ def main():
 	
 	# Load in line-of-sight data
 	fnames = args.input
-	los_coll = maptools.los_collection(fnames, bounds=args.bounds)
+	los_coll = maptools.los_collection(fnames, bounds=args.bounds,
+	                                           processes=args.processes)
 	
 	
 	# Get upper limit on E(B-V)
@@ -335,12 +430,14 @@ def main():
 	
 	# Set up results queue for rasterizer workers
 	img_q = multiprocessing.Queue()
+	lock = multiprocessing.Lock()
 	
 	# Spawn worker processes to plot images
 	n_rasterizers = args.processes
 	procs = []
 	
 	for i in xrange(n_rasterizers):
+		'''
 		p = multiprocessing.Process(target=rasterizer_worker,
 		                            args=(dist_q, img_q,
 		                                  los_coll,
@@ -349,10 +446,25 @@ def main():
 		                                  proj, l_cent, b_cent, args.bounds,
 		                                  args.delta_mu)
 		                           )
-		
+		'''
+		p = multiprocessing.Process(target=rasterizer_plotter_worker,
+		                            args=(dist_q, lock,
+		                                  los_coll,
+		                                  args.figsize, args.dpi, size,
+		                                  args.model, method, mask,
+		                                  proj, l_cent, b_cent, args.bounds,
+		                                  args.delta_mu, EBV_max,
+		                                  outfname)
+		                           )
 		procs.append(p)
+	
+	for p in procs:
 		p.start()
 	
+	for p in procs:
+		p.join()
+	
+	'''
 	# Plot and save results
 	n_rast_finished = 0
 	n_img_finished = 0
@@ -370,7 +482,7 @@ def main():
 			else:
 				continue
 		
-		n, mu, img = q_in
+		n, mu, img, bounds, xy_bounds = q_in
 		
 		# Plot this image
 		print 'Plotting mu = %.2f (%d of %d) ...' % (mu,
@@ -380,7 +492,7 @@ def main():
 		fig = plt.figure(figsize=args.figsize, dpi=args.dpi)
 		ax = fig.add_subplot(1,1,1)
 		
-		img = plot_EBV(ax, img, args.bounds, vmin=0., vmax=EBV_max)
+		img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
 		
 		# Colorbar
 		fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.88)
@@ -412,6 +524,7 @@ def main():
 	
 	for p in procs:
 		p.join()
+	'''
 	
 	print 'Done.'
 	

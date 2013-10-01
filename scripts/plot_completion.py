@@ -31,6 +31,7 @@ from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 from mpl_toolkits.axes_grid1 import ImageGrid
 
 import argparse, sys, time, glob
+from os.path import expanduser, abspath
 
 import healpy as hp
 import h5py
@@ -175,7 +176,7 @@ def main():
 		xlim = ax.get_xlim()
 		ylim = ax.get_ylim()
 		
-		ax.scatter(x, y, s=1., c='k', alpha=0.20)
+		ax.scatter(x, y, s=0.5, c='k', alpha=0.10)
 		
 		ax.set_xlim(xlim)
 		ax.set_ylim(ylim)
@@ -206,12 +207,19 @@ def main():
 		del img
 		
 		# Write names of input files that have not been completely processed
-		incomplete_infnames = completion.get_incomplete_inputs(method=args.method)
-		txt = ['%s\n' % fname for fname in incomplete_infnames]
-		
-		f = open(abspath(args.incomplete_log), 'w')
-		f.write(txt)
-		f.close()
+		if args.incomplete_log != None:
+			incomplete_infnames = completion.get_incomplete_inputs(method=args.method)
+			
+			n_incomplete = len(incomplete_infnames)
+			n_infiles = len(infiles)
+			
+			print '%d of %d input files processed.' % (n_infiles-n_incomplete, n_infiles)
+			
+			txt = '\n'.join([str(fname) for fname in incomplete_infnames])
+			
+			f = open(abspath(args.incomplete_log), 'w')
+			f.write(txt)
+			f.close()
 		
 		print 'Time: %s' % timestr
 		print 'Sleeping ...'

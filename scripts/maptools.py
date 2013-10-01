@@ -30,6 +30,9 @@ import matplotlib.pyplot as plt
 import healpy as hp
 import h5py
 
+import multiprocessing
+import Queue
+
 import hputils
 
 
@@ -66,6 +69,121 @@ def reduce_to_single_res(pix_idx, nside, pix_val):
 	return nside_max, pix_idx_exp, pix_val_exp
 
 
+def los_coll_load_file_worker(fname_q, output_q, bounds):
+	# Data on pixels
+	pix_idx = []
+	nside = []
+	
+	cloud_delta_mu = []
+	cloud_delta_lnEBV = []
+	cloud_mask = []
+	
+	los_delta_lnEBV = []
+	los_mask = []
+	
+	# Process input files from queue
+	while True:
+		fname = fname_q.get()
+		
+		if fname != 'STOP':
+			print 'Loading %s ...' % fname
+			
+			f = None
+			
+			try:
+				f = h5py.File(fname, 'r')
+			except:
+				raise IOError('Unable to open %s.' % fname)
+			
+			# Load each pixel
+			
+			for name,item in f.iteritems():
+				# Load pixel position
+				try:
+					pix_idx_tmp = int(item.attrs['healpix_index'][0])
+					nside_tmp = int(item.attrs['nside'][0])
+				except:
+					continue
+				
+				# Check if pixel is in bounds
+				if bounds != None:
+					l, b = hputils.pix2lb_scalar(nside_tmp, pix_idx_tmp, nest=True)
+					
+					if (     (l < bounds[0]) or (l > bounds[1])
+					      or (b < bounds[2]) or (b > bounds[3])  ):
+						continue
+				
+				pix_idx.append(pix_idx_tmp)
+				nside.append(nside_tmp)
+				
+				# Load cloud fit
+				try:
+					cloud_samples_tmp = item['clouds'][:, 1:, 1:]
+					tmp, n_cloud_samples, n_clouds = cloud_samples_tmp.shape
+					n_clouds /= 2
+					
+					cloud_delta_mu.append(cloud_samples_tmp[:, :, :n_clouds])
+					cloud_delta_lnEBV.append(cloud_samples_tmp[:, :, n_clouds:])
+					cloud_mask.append(True)
+					
+				except:
+					cloud_mask.append(False)
+				
+				# Load piecewise-linear fit
+				try:
+					los_samples_tmp = item['los'][:, 1:, 1:]
+					tmp, n_los_samples, n_slices = los_samples_tmp.shape
+					
+					DM_min = item['los'].attrs['DM_min']
+					DM_max = item['los'].attrs['DM_max']
+					
+					los_delta_lnEBV.append(los_samples_tmp)
+					los_mask.append(True)
+					
+				except:
+					los_mask.append(False)
+			
+			f.close()
+			fname_q.task_done()
+			
+		else:
+			output = None
+			
+			try:
+				# Combine pixel information
+				pix_idx = np.array(pix_idx).astype('i8')
+				nside = np.array(nside)
+				
+				# Combine cloud fits
+				cloud_mask = np.array(cloud_mask).astype(np.bool)
+				cloud_delta_mu = np.concatenate(cloud_delta_mu, axis=0)
+				cloud_delta_lnEBV = np.concatenate(cloud_delta_lnEBV, axis=0)
+				
+				# Combine piecewise-linear fits
+				los_mask = np.array(los_mask).astype(np.bool)
+				los_delta_lnEBV = np.concatenate(los_delta_lnEBV, axis=0)
+				
+				# Calculate derived information
+				cloud_mu_anchor = np.cumsum(cloud_delta_mu, axis=2)
+				cloud_delta_EBV = np.exp(cloud_delta_lnEBV)
+				
+				los_delta_EBV = np.exp(los_delta_lnEBV)
+				los_EBV = np.cumsum(los_delta_EBV, axis=2)
+				
+				output = (pix_idx, nside,
+				          cloud_mask, cloud_mu_anchor, cloud_delta_EBV,
+				          los_mask, los_delta_EBV, los_EBV, DM_min, DM_max)
+				
+			except:
+				pass
+			
+			output_q.put(output)
+			
+			print 'Worker done.'
+			fname_q.task_done()
+			
+			return
+
 class los_collection:
 	'''
 	Loads line-of-sight fits from Bayestar
@@ -73,7 +191,8 @@ class los_collection:
 	requested distances.
 	'''
 	
-	def __init__(self, fnames, bounds=None):
+	def __init__(self, fnames, bounds=None,
+	                           processes=1):
 		'''
 		fnames is a list of Bayestar output files
 		containing line-of-sight fit information.
@@ -109,7 +228,111 @@ class los_collection:
 		self.DM_max = None
 		
 		# Load files
-		self.load_files(fnames, bounds=bounds)
+		if processes == 1:
+			self.load_files(fnames, bounds=bounds)
+		elif processes > 1:
+			self.load_files_parallel(fnames, processes=processes,
+			                                 bounds=bounds)
+		else:
+			raise ValueError('# of processes must be positive.')
+	
+	def load_files_parallel(self, fnames, processes=5, bounds=None):
+		'''
+		Loads data on the line-of-sight fits from a set
+		of Bayestar output files, using multiple processes to
+		speed up the process.
+		
+		Do not load pixels whose centers are outside of the range set
+		by <bounds>, where
+		
+		    bounds = [l_min, l_max, b_min, b_max]
+		
+		If <bounds> is None, then all pixels are loaded.
+		'''
+		
+		# Spawn a set of processes to load data from files
+		fname_q = multiprocessing.JoinableQueue()
+		
+		for fname in fnames:
+			fname_q.put(fname)
+		
+		output_q = multiprocessing.Queue()
+		
+		procs = []
+		
+		for i in xrange(processes):
+			p = multiprocessing.Process(target=los_coll_load_file_worker,
+			                            args=(fname_q, output_q, bounds))
+			p.daemon = True
+			procs.append(p)
+			
+			fname_q.put('STOP')
+		
+		for p in procs:
+			p.start()
+		
+		#for p in procs:
+		#	p.join()
+		
+		fname_q.join()
+		
+		# Combine output from processes
+		pix_idx = []
+		nside = []
+		
+		cloud_mask = []
+		cloud_mu_anchor = []
+		cloud_delta_EBV = []
+		
+		los_mask = []
+		los_delta_EBV = []
+		los_EBV = []
+		
+		DM_min, DM_max = None, None
+		
+		for n in xrange(processes):
+			print 'Getting information from process %d ...' % (n + 1)
+			
+			ret = output_q.get()
+			
+			if ret != None:
+				pix_idx.append(ret[0])
+				nside.append(ret[1])
+				
+				cloud_mask.append(ret[2])
+				cloud_mu_anchor.append(ret[3])
+				cloud_delta_EBV.append(ret[4])
+				
+				los_mask.append(ret[5])
+				los_delta_EBV.append(ret[6])
+				los_EBV.append(ret[7])
+				
+				DM_min = ret[8]
+				DM_max = ret[9]
+		
+		print 'Concatening output from workers ...'
+		
+		self.pix_idx = np.hstack(pix_idx)
+		self.nside = np.hstack(nside)
+		
+		self.cloud_mask = np.hstack(cloud_mask)
+		self.cloud_mu_anchor = np.concatenate(cloud_mu_anchor, axis=0)
+		self.cloud_delta_EBV = np.concatenate(cloud_delta_EBV, axis=0)
+		
+		self.los_mask = np.hstack(los_mask)
+		self.los_delta_EBV = np.concatenate(los_delta_EBV, axis=0)
+		self.los_EBV = np.concatenate(los_EBV, axis=0)
+		
+		self.DM_min = DM_min
+		self.DM_max = DM_max
+		
+		# Additional useful information
+		tmp, self.n_los_samples, self.n_slices = self.los_delta_EBV.shape
+		tmp, self.n_cloud_samples, self.n_clouds = self.cloud_delta_EBV.shape
+		self.n_clouds /= 2
+		
+		self.los_mu_anchor = np.linspace(self.DM_min, self.DM_max, self.n_slices)
+		self.los_dmu = np.diff(self.los_mu_anchor)[0]
 	
 	def load_file_indiv(self, fname, bounds=None):
 		'''
@@ -494,7 +717,9 @@ class los_collection:
 	                    mask_sigma=None, delta_mu=None,
 	                    clip=True,
 	                    proj=hputils.Cartesian_projection(),
-	                    l_cent=0., b_cent=0.):
+	                    l_cent=0., b_cent=0.,
+	                    l_lines=None, b_lines=None,
+	                    l_spacing=1., b_spacing=1.):
 		'''
 		Rasterize the map, returning an image of the specified size.
 		
@@ -538,11 +763,13 @@ class los_collection:
 		                                       mask_sigma=mask_sigma,
 		                                       delta_mu=delta_mu)
 		
-		img, bounds = hputils.rasterize_map(pix_idx, EBV, nside, size,
-		                                    nest=True, clip=clip, proj=proj,
-		                                    l_cent=l_cent, b_cent=b_cent)
+		ret = hputils.rasterize_map(pix_idx, EBV, nside, size,
+		                            nest=True, clip=clip, proj=proj,
+		                            l_cent=l_cent, b_cent=b_cent,
+		                            l_lines=l_lines, b_lines=b_lines,
+		                            l_spacing=l_spacing, b_spacing=b_spacing)
 		
-		return img, bounds
+		return ret
 
 
 class job_completion_counter:
@@ -627,7 +854,7 @@ class job_completion_counter:
 				continue
 			
 			self.completion_dict[(nside_tmp, pix_idx_tmp)] = (0, 0, 0)
-			self.att_dict[(nside, pix_idx_tmp)] = (nstars_tmp, infname)
+			self.att_dict[(nside_tmp, pix_idx_tmp)] = (nstars_tmp, infname)
 			self.nstars_input += nstars_tmp
 		
 		f.close()
@@ -693,7 +920,9 @@ class job_completion_counter:
 	
 	def rasterize(self, size, method='both',
 	                          proj=hputils.Cartesian_projection(),
-	                          l_cent=0., b_cent=0.):
+	                          l_cent=0., b_cent=0.,
+	                          l_lines=None, b_lines=None,
+	                          l_spacing=1., b_spacing=1.):
 		'''
 		Rasterize the completion map, returning an image of the specified size.
 		
@@ -731,11 +960,13 @@ class job_completion_counter:
 		
 		nside, pix_idx, val = reduce_to_single_res(self.pix_idx, self.nside, comp_map)
 		
-		img, bounds = hputils.rasterize_map(pix_idx, val, nside, size,
-		                                    nest=True, clip=True, proj=proj,
-		                                    l_cent=l_cent, b_cent=b_cent)
+		ret = hputils.rasterize_map(pix_idx, val, nside, size,
+		                            nest=True, clip=True, proj=proj,
+		                            l_cent=l_cent, b_cent=b_cent,
+		                            l_lines=l_lines, b_lines=b_lines,
+		                            l_spacing=l_spacing, b_spacing=b_spacing)
 		
-		return img, bounds
+		return ret
 
 
 def test_load():
