@@ -312,8 +312,11 @@ class los_collection:
 		
 		print 'Concatening output from workers ...'
 		
-		self.pix_idx = np.hstack(pix_idx)
-		self.nside = np.hstack(nside)
+		try:
+			self.pix_idx = np.hstack(pix_idx)
+			self.nside = np.hstack(nside)
+		except IndexError:
+			raise Exception('Input files do not contain pixels in requested bounds.')
 		
 		self.cloud_mask = np.hstack(cloud_mask)
 		self.cloud_mu_anchor = np.concatenate(cloud_mu_anchor, axis=0)
