@@ -420,11 +420,11 @@ def Euler_rotation_ang(theta, phi, alpha, beta, gamma,
 	return t, p
 
 
-def rasterize_map(pix_idx, pix_val,
-                  nside, size,
-                  nest=True, clip=True,
-                  proj=Cartesian_projection(),
-                  l_cent=0., b_cent=0.):
+def rasterize_map_old(pix_idx, pix_val,
+                      nside, size,
+                      nest=True, clip=True,
+                      proj=Cartesian_projection(),
+                      l_cent=0., b_cent=0.):
 	'''
 	Rasterize a healpix map.
 	'''

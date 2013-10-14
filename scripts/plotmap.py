@@ -310,6 +310,10 @@ def main():
 	parser.add_argument('--dists', '-d', type=float, nargs=3,
 	                                     default=(4., 19., 21),
 	                                     help='DM min, DM max, # of distance slices.')
+	parser.add_argument('--dist-step', '-ds', type=str, default='log',
+	                                     choices=('log', 'linear'),
+	                                     help='Step logarithmically in distance (linearly in\n'
+	                                          'distance modulus) or linearly in distance.')
 	parser.add_argument('--delta-mu', '-dmu', type=float, default=None,
 	                                     help='Difference in DM used to estimate rate of\n'
 	                                          'reddening (default: None, i.e. calculate cumulative reddening).')
@@ -370,7 +374,14 @@ def main():
 	size = (int(args.figsize[0] * 0.8 * args.dpi),
 	        int(args.figsize[1] * 0.8 * args.dpi))
 	
-	mu_plot = np.linspace(args.dists[0], args.dists[1], args.dists[2])
+	mu_plot = None
+	if args.dist_step == 'log':
+		mu_plot = np.linspace(args.dists[0], args.dists[1], args.dists[2])
+	else:
+		d_0 = 10.**(args.dists[0] / 5. + 1.)
+		d_1 = 10.**(args.dists[1] / 5. + 1.)
+		d_plot = np.linspace(d_0, d_1, args.dists[2])
+		mu_plot = 5. * (np.log10(d_plot) - 1.)
 	
 	
 	# Load in line-of-sight data
@@ -492,7 +503,7 @@ def main():
 		fig = plt.figure(figsize=args.figsize, dpi=args.dpi)
 		ax = fig.add_subplot(1,1,1)
 		
-		img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
+		img = plot_EBV(ax, img, bounds, vmin=-EBV_max, vmax=EBV_max)
 		
 		# Colorbar
 		fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.88)

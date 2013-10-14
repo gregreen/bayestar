@@ -24,6 +24,7 @@
 
 import numpy as np
 import healpy as hp
+import h5py
 
 import hputils
 import maptools
@@ -347,11 +348,11 @@ class map_resampler:
     def __init__(self, fnames, bounds=None,
                                processes=1,
                                n_neighbors=32,
-                               corr_length_core=0.5,
+                               corr_length_core=0.25,
                                corr_length_tail=1.,
-                               max_corr=0.05,
-                               tail_weight=0.1,
-                               dist_floor=0.5):
+                               max_corr=1.,
+                               tail_weight=0.,
+                               dist_floor=0.1):
         
         self.n_neighbors = n_neighbors
         
@@ -404,6 +405,7 @@ class map_resampler:
         self.neighbor_dist = np.einsum('ij,k->ijk', self.neighbor_ang_dist, self.bin_dist)
         self.neighbor_dist = np.sqrt(self.neighbor_dist * self.neighbor_dist + dist_floor * dist_floor)
         self.neighbor_corr = self.corr_of_dist(self.neighbor_dist)
+        #self.neighbor_corr = self.hard_sphere_corr(self.neighbor_dist, self.corr_length_core)
         
         #print ''
         #print 'dist:'
@@ -415,9 +417,14 @@ class map_resampler:
         
         # Set initial state
         print 'Randomizing initial state ...'
-        self.randomize()
+        self.beta = 1.
         self.chain = []
+        self.randomize()
+        self.log_state()
         self.update_order = np.arange(self.n_pix)
+    
+    def set_temperature(self, T):
+        self.beta = 1. / T
     
     def corr_of_dist(self, d):
     	core = np.exp(-0.5 * (d/self.corr_length_core)**2)
@@ -425,10 +432,17 @@ class map_resampler:
     	
     	return self.max_corr * ((1. - self.tail_weight) * core + self.tail_weight * tail)
     
+    def hard_sphere_corr(self, d, d_max):
+        return self.corr_max * (d < d_max)
+    
     def randomize(self):
         self.sel_idx = np.random.randint(self.n_samples, size=self.n_pix)
     
     def update_pixel(self, idx):
+        '''
+        Update one pixel, using a Gibbs step.
+        '''
+        
         n_idx = self.neighbor_idx[idx, :]
         delta = self.delta[idx, :, :]  # (sample, slice)
         n_delta = self.delta[n_idx, self.sel_idx[n_idx], :]  # (neighbor, slice)
@@ -438,36 +452,62 @@ class map_resampler:
         #print n_delta.shape
         #print n_corr.shape
         
-        p = np.exp(0.5 * np.einsum('ij,nj->i', delta, n_delta * n_corr))
+        p = np.einsum('ij,nj->i', delta, n_delta * n_corr)
+        p -= np.einsum('ij,nj->i', delta*delta, n_corr)
+        p -= np.sum(n_delta*n_delta * n_corr)
         
-        if idx == 5:
+        p = np.exp(0.5 * self.beta * p)
+        
+        #p = np.exp(0.5 * np.einsum('ij,nj->i', delta, n_delta * n_corr))
+        p /= np.sum(p)
+        
+        if idx == 0:
         	#print delta
         	#print n_delta
-        	#print n_corr
-        	p_norm = np.sort(p / np.sum(p))[::-1]
+        	print self.neighbor_dist[idx, :, :]
+        	print n_corr
         	#print p_norm
-        	print np.min(p_norm), np.percentile(p_norm, 5.), np.median(p_norm), np.percentile(p_norm, 95.), np.max(p_norm)
+        	print np.min(p), np.percentile(p, 5.), np.median(p), np.percentile(p, 95.), np.max(p)
         
-        P = np.cumsum(p) / np.sum(p)
-        
+        P = np.cumsum(p)
         new_sample = np.sum(P < np.random.random())
         
         self.sel_idx[idx] = new_sample
     
     def round_robin(self):
+        '''
+        Update all pixels in a random order and add
+        the resulting state to the chain.
+        '''
+        
         np.random.shuffle(self.update_order)
         
         for n in self.update_order:
             self.update_pixel(n)
         
-        print self.sel_idx[:5]
+        self.log_state()
         
-        self.chain.append(self.sel_idx)
+        print self.sel_idx[:5]
+        print np.array(self.chain)[:,0]
+        print ''
     
     def clear_chain(self):
         self.chain = []
     
+    def log_state(self):
+        '''
+        Add the current state of the map to the chain.
+        '''
+        
+        self.chain.append(self.sel_idx.copy())
+    
     def save_resampled(self, fname, n_samples=None):
+        '''
+        Save the resampled map to an HDF5 file, with
+        one dataset containing the map samples, and
+        another dataset containing the pixel locations.
+        '''
+        
         n_chain = len(self.chain)
         
         if n_samples == None:
@@ -475,18 +515,58 @@ class map_resampler:
         elif n_samples > n_chain:
             n_samples = n_chain
         
-        chain_idx = np.arange(n_chain)[:n_samples]
+        # Pick a set of samples to return
+        chain_idx = np.arange(n_chain)
+        #np.random.shuffle(chain_idx)
+        #chain_idx = chain_idx[:n_samples]
         
+        print chain_idx.shape
         
+        # Translate chain sample indices to pixel sample indices
+        sample_idx = np.array(self.chain)[chain_idx]
         
+        print sample_idx.shape
+        
+        # Create a data cube with the chosen samples
+        #   (sample, pixel, slice)
+        data = np.empty((n_chain, self.n_pix, self.n_slices), dtype='f8')
+        
+        m = np.arange(self.n_pix)
+        
+        print data.shape
+        
+        print self.los_coll.los_delta_EBV.shape
+        
+        for n,idx in enumerate(sample_idx):
+            data[n, :, :] = self.los_coll.los_delta_EBV[m, idx, :]
+        
+        # Store locations to a record array
+        loc = np.empty(self.n_pix, dtype=[('nside', 'i4'), ('pix_idx', 'i8')])
+        loc['nside'][:] = self.nside
+        loc['pix_idx'][:] = self.pix_idx
+        
+        # Write to file
         f = h5py.File(fname, 'w')
-        dset = f.create_dataset('Delta_EBV')
+        
+        dset = f.create_dataset('/Delta_EBV', data.shape, 'f4',
+                                             chunks=(2, data.shape[1], data.shape[2]),
+                                             compression='gzip',
+                                             compression_opts=9)
+        dset[:,:,:] = data[:,:,:]
+        
+        dset.attrs['DM_min'] = self.los_coll.DM_min
+        dset.attrs['DM_max'] = self.los_coll.DM_max
+        
+        dset = f.create_dataset('/location', loc.shape, loc.dtype,
+                                            compression='gzip', compression_opts=9)
+        dset[:] = loc[:]
+        
         f.close()
 
 
 def test_map_resampler():
-    n_steps = 100
-    n_neighbors = 36
+    n_steps = 1000
+    n_neighbors = 12
     processes = 4
     bounds = [60., 80., -5., 5.]
     
@@ -504,12 +584,65 @@ def test_map_resampler():
         print 'step %d' % n
         
         resampler.round_robin()
+    
+    outfname = '/n/home09/ggreen/projects/bayestar/output/resample_test_4.h5'
+    resampler.save_resampled(outfname)
+
+def test_plot_resampled_map():
+    infname = '/n/home09/ggreen/projects/bayestar/output/resample_test_4.h5'
+    plot_fname = '/nfs_pan1/www/ggreen/maps/l70/resampled_4'
+    size = (2000, 2000)
+    
+    # Load in chain
+    f = h5py.File(infname, 'r')
+    
+    loc = f['/location'][:]
+    chain = f['/Delta_EBV'][:,:,:] # (sample, pixel, slice)
+    
+    DM_min = f['/Delta_EBV'].attrs['DM_min']
+    DM_max = f['/Delta_EBV'].attrs['DM_max']
+    
+    f.close()
+    
+    nside = loc[:]['nside']
+    pix_idx = loc[:]['pix_idx']
+    
+    # Rasterize each sample and plot
+    import matplotlib.pyplot as plt
+    
+    for n,sample in enumerate(chain):
+        print 'Plotting sample %d ...' % n
+        pix_val = np.sum(sample[:, :12], axis=1)
+        
+    	nside_max, pix_idx_exp, pix_val_exp = maptools.reduce_to_single_res(pix_idx,
+                                                                            nside,
+                                                                            pix_val)
+        
+        
+        img, bounds, xy_bounds = hputils.rasterize_map(pix_idx_exp, pix_val_exp,
+                                                       nside_max, size)
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(1,1,1)
+        
+        ax.imshow(img.T, extent=bounds, origin='lower', aspect='auto',
+                                      interpolation='nearest')
+        
+        fname = '%s.%.5d.png' % (plot_fname, n)
+        fig.savefig(fname, dpi=300)
+        
+        plt.close(fig)
+        del img
+    
+    print 'Done.'
+
 
 def main():
     #test_gc_dist()
     #test_find_neighbors_adaptive_res()
     
     test_map_resampler()
+    test_plot_resampled_map()
     
     return 0
 

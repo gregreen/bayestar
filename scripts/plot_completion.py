@@ -202,6 +202,7 @@ def main():
 		#pix_identifiers.append(PixelIdentifier(ax, nside_max, nest=True, proj=proj))
 		
 		# Save figure
+		print 'Saving plot ...'
 		fig.savefig(args.plot_fname, dpi=args.dpi)
 		plt.close(fig)
 		del img
