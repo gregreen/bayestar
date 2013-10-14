@@ -314,8 +314,11 @@ class los_collection:
 		
 		print 'Concatening output from workers ...'
 		
-		self.pix_idx = np.hstack(pix_idx)
-		self.nside = np.hstack(nside)
+		try:
+			self.pix_idx = np.hstack(pix_idx)
+			self.nside = np.hstack(nside)
+		except IndexError:
+			raise Exception('Input files do not contain pixels in requested bounds.')
 		
 		self.cloud_mask = np.hstack(cloud_mask)
 		self.cloud_mu_anchor = np.concatenate(cloud_mu_anchor, axis=0)
@@ -658,7 +661,8 @@ class los_collection:
 	def gen_EBV_map(self, mu, fit='piecewise',
 	                          method='median',
 	                          mask_sigma=None,
-	                          delta_mu=None):
+	                          delta_mu=None,
+	                          reduce_nside=True):
 		'''
 		Returns an array of E(B-V) evaluated at
 		distance modulus mu, with
@@ -721,14 +725,18 @@ class los_collection:
 		if mask_sigma != None:
 			EBV[mask_idx] = np.nan
 		
-		# Reduce to one HEALPix nside resolution
-		mask = self.los_mask
-		pix_idx = self.pix_idx[mask]
-		nside = self.nside[mask]
-		
-		nside, pix_idx, EBV = reduce_to_single_res(pix_idx, nside, EBV)
-		
-		return nside, pix_idx, EBV
+		if reduce_nside:
+			# Reduce to one HEALPix nside resolution
+			mask = self.los_mask
+			pix_idx = self.pix_idx[mask]
+			nside = self.nside[mask]
+			
+			nside, pix_idx, EBV = reduce_to_single_res(pix_idx, nside, EBV)
+			
+			return nside, pix_idx, EBV
+			
+		else:
+			return self.nside, self.pix_idx, EBV
 	
 	def take_measure(self, EBV, method):
 		if method == 'median':
@@ -832,7 +840,7 @@ class job_completion_counter:
 		Looks to see which pixels are finished in a job
 		'''
 		
-		#print 'Loading %s ...' % outfname
+		print 'Loading %s ...' % outfname
 		
 		f = None
 		
@@ -872,7 +880,7 @@ class job_completion_counter:
 		Looks to see which pixels are in an input file.
 		'''
 		
-		#print 'Loading %s ...' % infname
+		print 'Loading %s ...' % infname
 		
 		f = None
 		
@@ -1006,6 +1014,266 @@ class job_completion_counter:
 		                            l_spacing=l_spacing, b_spacing=b_spacing)
 		
 		return ret
+
+
+def input_attributes_load_file_worker(fname_q, output_q, bounds):
+	# Data on pixels
+	pix_idx = []
+	nside = []
+	
+	n_stars = []
+	SFD = []
+	
+	# Process input files from queue
+	while True:
+		fname = fname_q.get()
+		
+		if fname != 'STOP':
+			print 'Loading %s ...' % fname
+			
+			f = None
+			
+			try:
+				f = h5py.File(fname, 'r')
+			except:
+				raise IOError('Unable to open %s.' % fname)
+			
+			# Load each pixel
+			
+			for name,item in f['/photometry'].iteritems():
+				# Load pixel position
+				#try:
+				pix_idx_tmp = int(item.attrs['healpix_index'])
+				nside_tmp = int(item.attrs['nside'])
+				#except:
+				#	continue
+				
+				# Check if pixel is in bounds
+				if bounds != None:
+					l, b = hputils.pix2lb_scalar(nside_tmp, pix_idx_tmp, nest=True)
+					
+					if (     (l < bounds[0]) or (l > bounds[1])
+					      or (b < bounds[2]) or (b > bounds[3])  ):
+						continue
+				
+				pix_idx.append(pix_idx_tmp)
+				nside.append(nside_tmp)
+				
+				n_stars.append(int(len(item)))
+				SFD.append(float(item.attrs['EBV']))
+			
+			f.close()
+			fname_q.task_done()
+			
+		else:
+			output = None
+			
+			try:
+				# Combine pixel locations
+				pix_idx = np.array(pix_idx).astype('i8')
+				nside = np.array(nside)
+				
+				# Combine pixel attributes
+				n_stars = np.array(n_stars).astype('i4')
+				SFD = np.array(SFD)
+				
+				output = (pix_idx, nside,
+				          n_stars, SFD)
+				
+			except:
+				pass
+			
+			output_q.put(output)
+			
+			print 'Worker done.'
+			fname_q.task_done()
+			
+			return
+
+class input_attributes:
+	'''
+	Loads pixel attributes from Bayestar input files.
+	'''
+	
+	def __init__(self, fnames, bounds=None,
+	                           processes=1):
+		'''
+		fnames is a list of Bayestar input files.
+		
+		
+		Do not load pixels whose centers are outside of the range set
+		by <bounds>, where
+		
+		    bounds = [l_min, l_max, b_min, b_max]
+		
+		If <bounds> is None, then all pixels are loaded.
+		'''
+		
+		# Pixel locations
+		self.pix_idx = []
+		self.nside = []
+		
+		# Attributes
+		self.n_stars = []
+		self.SFD = []
+		
+		# Load files
+		if processes == 1:
+			self.load_files(fnames, bounds=bounds)
+		elif processes > 1:
+			self.load_files_parallel(fnames, processes=processes,
+			                                 bounds=bounds)
+		else:
+			raise ValueError('# of processes must be positive.')
+	
+	def load_files_parallel(self, fnames, processes=5, bounds=None):
+		'''
+		Loads pixel attributes from Bayestar input files, using
+		multiple processes to speed up the process.
+		
+		Do not load pixels whose centers are outside of the range set
+		by <bounds>, where
+		
+		    bounds = [l_min, l_max, b_min, b_max]
+		
+		If <bounds> is None, then all pixels are loaded.
+		'''
+		
+		# Spawn a set of processes to load data from files
+		fname_q = multiprocessing.JoinableQueue()
+		
+		for fname in fnames:
+			fname_q.put(fname)
+		
+		output_q = multiprocessing.Queue()
+		
+		procs = []
+		
+		for i in xrange(processes):
+			p = multiprocessing.Process(target=input_attributes_load_file_worker,
+			                            args=(fname_q, output_q, bounds))
+			p.daemon = True
+			procs.append(p)
+			
+			fname_q.put('STOP')
+		
+		for p in procs:
+			p.start()
+		
+		#for p in procs:
+		#	p.join()
+		
+		fname_q.join()
+		
+		# Combine output from processes
+		pix_idx = []
+		nside = []
+		
+		n_stars = []
+		SFD = []
+		
+		for n in xrange(processes):
+			print 'Getting information from process %d ...' % (n + 1)
+			
+			ret = output_q.get()
+			
+			if ret != None:
+				pix_idx.append(ret[0])
+				nside.append(ret[1])
+				
+				n_stars.append(ret[2])
+				SFD.append(ret[3])
+		
+		print 'Concatening output from workers ...'
+		
+		try:
+			self.pix_idx = np.hstack(pix_idx)
+			self.nside = np.hstack(nside)
+		except IndexError:
+			raise Exception('Input files do not contain pixels in requested bounds.')
+		
+		self.n_stars = np.hstack(n_stars)
+		self.SFD = np.hstack(SFD)
+	
+	def load_file_indiv(self, fname, bounds=None):
+		'''
+		Loads pixel attributes from Bayestar input files.
+		
+		Do not load pixels whose centers are outside of the range set
+		by <bounds>, where
+		
+		    bounds = [l_min, l_max, b_min, b_max]
+		
+		If <bounds> is None, then all pixels are loaded.
+		'''
+		
+		print 'Loading %s ...' % fname
+		
+		f = None
+		
+		try:
+			f = h5py.File(fname, 'r')
+		except:
+			raise IOError('Unable to open %s.' % fname)
+		
+		# Load each pixel
+		
+		for name,item in f['/photometry'].iteritems():
+			# Load pixel position
+			try:
+				pix_idx_tmp = int(item.attrs['healpix_index'])
+				nside_tmp = int(item.attrs['nside'])
+			except:
+				continue
+			
+			# Check if pixel is in bounds
+			if bounds != None:
+				l, b = hputils.pix2lb_scalar(nside_tmp, pix_idx_tmp, nest=True)
+				
+				if (     (l < bounds[0]) or (l > bounds[1])
+				      or (b < bounds[2]) or (b > bounds[3])  ):
+					continue
+			
+			self.pix_idx.append(pix_idx_tmp)
+			self.nside.append(nside_tmp)
+			
+			self.n_stars.append(int(len(item)))
+			self.SFD.append(float(item.attrs['EBV']))
+		
+		f.close()
+	
+	def load_files(self, fnames, bounds=None):
+		'''
+		Loads pixel attributes from a set
+		of Bayestar input files.
+		
+		Do not load pixels whose centers are outside of the range set
+		by <bounds>, where
+		
+		    bounds = [l_min, l_max, b_min, b_max]
+		
+		If <bounds> is None, then all pixels are loaded.
+		'''
+		
+		# Create a giant lists of info from all pixels
+		for fname in fnames:
+			self.load_file_indiv(fname, bounds=bounds)
+		
+		# Pixel location
+		self.pix_idx = np.array(self.pix_idx).astype('i8')
+		self.nside = np.array(self.nside)
+		
+		# Pixel attributes
+		self.n_stars = np.array(self.n_stars).astype('i4')
+		self.SFD = np.array(self.SFD)
+	
+	def get_nside_levels(self):
+		'''
+		Returns the unique nside values present in the
+		map.
+		'''
+		
+		return np.unique(self.nside)
 
 
 def test_load():
