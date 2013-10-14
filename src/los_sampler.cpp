@@ -1467,7 +1467,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	for(int i=0; i<N_regions+1; i++) {
 		log_Delta_EBV_prior[i] += log_norm;
 		
-		// FLoor on log(Delta EBV) prior
+		// Floor on log(Delta EBV) prior
 		if(log_Delta_EBV_prior[i] < -8.) { log_Delta_EBV_prior[i] = -8.; }
 		
 		Delta_EBV_prior[i] = exp(log_Delta_EBV_prior[i]);

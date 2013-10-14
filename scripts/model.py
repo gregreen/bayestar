@@ -320,8 +320,8 @@ class TGalacticModel:
         
         log_Delta_EBV += np.log(norm)
         
-        idx = (log_Delta_EBV < -6.)
-        log_Delta_EBV[idx] = -6.
+        idx = (log_Delta_EBV < -8.)
+        log_Delta_EBV[idx] = -8.
         
         return DM, log_Delta_EBV, sigma, mean_Delta_EBV, norm
 

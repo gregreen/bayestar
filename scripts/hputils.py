@@ -797,8 +797,8 @@ def test_proj():
 	clip = True
 	size = (2000, 1000)
 	proj = Hammer_projection()
-	l_cent = 37.
-	b_cent = 75.
+	l_cent = 25.
+	b_cent = 35.
 	
 	n_pix = hp.pixelfunc.nside2npix(nside)
 	pix_idx = np.arange(n_pix)#[4*n_pix/12:5*n_pix/12]

@@ -30,6 +30,8 @@ import matplotlib.pyplot as plt
 import healpy as hp
 import h5py
 
+import os
+
 import multiprocessing
 import Queue
 
@@ -470,6 +472,43 @@ class los_collection:
 		self.los_EBV = np.cumsum(self.los_delta_EBV, axis=2)
 		self.los_mu_anchor = np.linspace(self.DM_min, self.DM_max, self.n_slices)
 		self.los_dmu = np.diff(self.los_mu_anchor)[0]
+	
+	def save_unified(self, fname):
+		'''
+		Save line-of-sight information to single file.
+		'''
+		
+		f = h5py.File(fname)
+		
+		# Locations
+		dtype = [('nside', 'i4'), ('healpix_index', 'i8'),
+		         ('piecewise_mask', 'u1'), ('cloud_mask', 'u1')]
+		dset = f.create_dataset('/locations', self.nside.shape,
+		                                      dtype=dtype,
+		                                      compression='gzip',
+		                                      compression_opts=9)
+		dset['nside'][:] = self.nside[:]
+		dset['healpix_index'][:] = self.pix_idx[:]
+		dset['piecewise_mask'][:] = self.los_mask[:]
+		dset['cloud_mask'][:] = self.cloud_mask[:]
+		
+		# Piecewise model
+		dset = f.create_dataset('/piecewise', self.los_delta_lnEBV.shape,
+		                                      dtype='f8',
+		                                      compression='gzip',
+		                                      compression_opts=9)
+		dset[:] = self.los_delta_lnEBV[:]
+		dset.attrs['DM_min'] = self.DM_min
+		dset.attrs['DM_max'] = self.DM_max
+		
+		# Cloud model
+		dset = f.create_dataset('/cloud', self.cloud_delta_lnEBV.shape,
+		                                  dtype='f8',
+		                                  compression='gzip',
+		                                  compression_opts=9)
+		dset[:] = self.cloud_delta_lnEBV[:]
+		
+		f.close()
 	
 	def get_nside_levels(self):
 		'''
@@ -1018,6 +1057,176 @@ def test_load():
 	fig.colorbar(cimg, cax=cax, orientation='horizontal')
 	
 	plt.show()
+
+
+def n_pix_from_infiles(infiles):
+	'''
+	Return the number of pixels in a set of Bayestar input files.
+	'''
+	
+	n_pixels = 0
+	
+	for fname in infiles:
+		f = h5py.File(fname, 'r')
+		
+		n_pixels += len(f['/photometry'].keys())
+		
+		f.close()
+	
+	return n_pixels
+
+
+# Unify Bayestar output files into one file. Can be updated periodically
+# with minimal extra reading (does not re-load files that have not been
+# modified since they were last included in the unified output).
+
+
+def unify_output(infiles, outfiles, unified_fname,
+                 clouds=True, piecewise=True):
+	'''
+	Combine Bayestar output files into one output file, with
+	only one dataset for each type of output.
+	
+	Skip output files which have already been fully included in
+	the unified output files (based on their modification dates).
+	'''
+	
+	# Try to open unified output file. If it does not exist, create a
+	# skeleton file and proceed.
+	
+	f_unified = None
+	n_pix = None
+	mod_time = {}
+	
+	try:
+		f_unified = h5py.File(unified_fname, 'r+')
+		n_pix = f_unified.attrs['n_pix']
+		
+		# Load in previous modification times from unified output file
+		mod_data = f_unified['/modification_time'][:]
+		
+		for name, t in zip(mod_data['out_fname'], mod_data['mod_time']):
+			mod_time[str(name).rstrip()] = t
+		
+	except:
+		n_pix = n_pix_from_infiles(infiles)
+		
+		# Set output file modification times to -1 (never modified)
+		dtype = [('name', 'S100'), ('mod_time', 'f8')]
+		
+		mod_data = np.empty(len(outfiles), dtye='f8')
+		mod_data['out_fname'][:] = out_abspath[:]
+		mod_data['mod_time'][:] = -1.
+		
+		f_unified = h5py.File(unified_fname, 'w')
+		f_unified.attrs['n_pix'] = n_pix
+		
+		# File modification time
+		dset = f_unified.create_dataset('/modification_time',
+		                                (len(infiles)),
+		                                dtype=dtype)
+		dset[:] = mod_data[:]
+	
+	
+	# Determine which files to load
+	out_abspath = [os.path.abspath(s) for s in outfiles]
+	out_abspath = np.array(out_abspath)
+	
+	# Add updated file to queue
+	fname_q = multiprocessing.JoinableQueue()
+	
+	for fname in out_abspath:
+		t_old = mod_time[fname]
+		t_new = os.stat(fname).st_mtime
+		
+		if t_new > t_old + 1.e-5:
+			fname_q.put(fname)
+	
+	# Spawn a set of processes to load data from files
+	output_q = multiprocessing.Queue()
+	
+	procs = []
+	
+	for i in xrange(processes):
+		p = multiprocessing.Process(target=los_coll_load_file_worker,
+		                            args=(fname_q, output_q, bounds))
+		p.daemon = True
+		procs.append(p)
+		
+		fname_q.put('STOP')
+	
+	for p in procs:
+		p.start()
+	
+	fname_q.join()
+	
+	# Combine output from processes
+	pix_idx = []
+	nside = []
+	
+	cloud_mask = []
+	cloud_mu_anchor = []
+	cloud_delta_EBV = []
+	
+	los_mask = []
+	los_delta_EBV = []
+	los_EBV = []
+	
+	DM_min, DM_max = None, None
+	
+	for n in xrange(processes):
+		print 'Getting information from process %d ...' % (n + 1)
+		
+		ret = output_q.get()
+		
+		if ret != None:
+			pix_idx.append(ret[0])
+			nside.append(ret[1])
+			
+			cloud_mask.append(ret[2])
+			cloud_mu_anchor.append(ret[3])
+			cloud_delta_EBV.append(ret[4])
+			
+			los_mask.append(ret[5])
+			los_delta_EBV.append(ret[6])
+			los_EBV.append(ret[7])
+			
+			DM_min = ret[8]
+			DM_max = ret[9]
+	
+	print 'Concatening output from workers ...'
+	
+	pix_idx = np.hstack(pix_idx)
+	nside = np.hstack(nside)
+	
+	cloud_mask = np.hstack(cloud_mask)
+	cloud_mu_anchor = np.concatenate(cloud_mu_anchor, axis=0)
+	cloud_delta_EBV = np.concatenate(cloud_delta_EBV, axis=0)
+	
+	los_mask = np.hstack(los_mask)
+	los_delta_EBV = np.concatenate(los_delta_EBV, axis=0)
+	los_EBV = np.concatenate(los_EBV, axis=0)
+	
+	DM_min = DM_min
+	DM_max = DM_max
+	
+	# Additional useful information
+	tmp, n_los_samples, n_slices = self.los_delta_EBV.shape
+	tmp, n_cloud_samples, n_clouds = self.cloud_delta_EBV.shape
+	n_clouds /= 2
+	
+	los_mu_anchor = np.linspace(self.DM_min, self.DM_max, self.n_slices)
+	los_dmu = np.diff(los_mu_anchor)[0]
+	
+	
+	# Write data to file
+	
+	if not 'stellar chains' in f_unified:
+		dset = f_unified.create_dataset()
+
+
+
+
 
 
 def main():
