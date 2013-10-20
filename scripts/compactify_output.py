@@ -22,7 +22,7 @@
 #  
 #  
 
-import argparse, sys
+import argparse, sys, glob
 
 import maptools
 
@@ -31,8 +31,10 @@ def main():
 	parser = argparse.ArgumentParser(prog='compactify_output.py',
 	                                 description='Store line-of-sight output to one file.',
 	                                 add_help=True)
-	parser.add_argument('input', type=str, nargs='+', help='Bayestar output files.')
+	parser.add_argument('input', type=str, help='Bayestar output files.')
 	parser.add_argument('--output', '-o', type=str, help='Filename for unified output.')
+	parser.add_argument('--bounds', '-b', type=float, nargs=4, default=None,
+	                                     help='Bounds of pixels to plot (l_min, l_max, b_min, b_max).')
 	parser.add_argument('--processes', '-proc', type=int, default=1,
 	                                     help='# of processes to spawn.')
 	if 'python' in sys.argv[0]:
@@ -43,7 +45,7 @@ def main():
 	
 	# Load in line-of-sight data
 	print 'Loading Bayestar output files ...'
-	fnames = args.input
+	fnames = glob.glob(args.input)
 	los_coll = maptools.los_collection(fnames, bounds=args.bounds,
 	                                           processes=args.processes)
 	
