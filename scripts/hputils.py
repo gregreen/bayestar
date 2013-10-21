@@ -710,6 +710,147 @@ def rasterize_map(pix_idx, pix_val,
 		return img, bounds, xy_bounds
 
 
+def MapRasterizer:
+	
+	def __init__(self, nside, pix_idx, img_shape,
+	                   nest=True, clip=True,
+	                   proj=Cartesian_projection(),
+	                   l_cent=0., b_cent=0.):
+		'''
+		
+		'''
+		
+		self.img_shape = img_shape
+		self.clip = clip
+		
+		
+		#
+		# Determine display-space bounds
+		#
+		
+		shift = [(0., 0.), (1., 0.), (0., 1.), (-1., 0.), (0., -1.)]
+		x_min, x_max, y_min, y_max = [], [], [], []
+		
+		nside_unique = np.unique(nside)
+		
+		for n in nside_unique:
+			pix_scale = 180./np.pi * hp.nside2resol(n)
+				
+			# Determine pixel centers
+			idx = (nside == n)
+			l_0, b_0 = pix2lb(n, pix_idx[idx], nest=nest, use_negative_l=True)
+			
+			# Rotate coordinate system to center (l_0, b_0)
+			if (l_cent != 0.) | (b_cent != 0.):
+				b_0, l_0 = Euler_rotation_ang(b_0, l_0, -l_cent, b_cent, 0.,
+				                                        degrees=True)
+			
+			lam_0 = 180. - l_0
+			
+			# Compute bounds for given pixel shift
+			for s_x in np.linspace(-pix_scale, pix_scale, 3):
+				for s_y in np.linspace(-pix_scale, pix_scale, 3):
+					lam, b = shift_lon_lat(lam_0, b_0, 0.75*s_x, 0.75*s_y, clip=True)
+					
+					x_0, y_0 = proj.proj(np.pi/180. * b, np.pi/180. * lam)
+					
+					x_min.append(np.min(x_0))
+					x_max.append(np.max(x_0))
+					y_min.append(np.min(y_0))
+					y_max.append(np.max(y_0))
+					
+					del x_0
+					del y_0
+					del lam
+					del b
+		
+		x_min = np.min(x_min)
+		x_max = np.max(x_max)
+		y_min = np.min(y_min)
+		y_max = np.max(y_max)
+		
+		
+		#
+		# Make grid of display-space pixels
+		#
+		
+		x_size, y_size = img_shape
+		
+		x, y = np.mgrid[0:x_size, 0:y_size].astype(np.float32) + 0.5
+		x = x_min + (x_max - x_min) * x / float(x_size)
+		y = y_min + (y_max - y_min) * y / float(y_size)
+		
+		# Convert display-space pixels to (l, b)
+		b, lam, self.clip_mask = proj.inv(x, y)
+		l = 180. - 180./np.pi * lam
+		b *= 180./np.pi
+		del lam
+		
+		# Rotate back to original (l, b)-space
+		if (l_cent != 0.) | (b_cent != 0.):
+			b, l = Euler_rotation_ang(b, l, -l_cent, b_cent, 0.,
+			                                degrees=True, inverse=True)
+		
+		
+		#
+		# Determine mapping from image index to map index
+		#
+		
+		#image_idx = np.arange(l.size, dtype='i8')
+		input_idx = np.arange(pix_idx.size, dtype='i8')
+		self.map_idx = np.empty(l.size, dtype='i8')
+		self.map_idx[:] = -1
+		
+		for n in nside_unique:
+			idx = (nside == n)
+			
+			# Determine healpix index of each remaining image pixel
+			disp_idx = lb2pix(n, l, b, nest=nest)
+			
+			# Generate full map
+			n_pix = hp.pixelfunc.nside2npix(n)
+			healpix_2_map = np.empty(n_pix, dtype='i8')
+			healpix_2_map[:] = -1
+			healpix_2_map[pix_idx[idx]] = input_idx[idx]
+			
+			# Update map indices
+			map_idx_tmp = healpix_2_map[disp_idx]
+			mask = ~(map_idx_tmp == -1)
+			self.map_idx[mask] = map_idx_tmp[mask]
+			
+			del pix_idx_n
+			del map_idx_tmp
+		
+		self.good_idx = ~(map_idx == -1)
+		self.map_idx = self.map_idx[self.good_idx]
+		
+		l_min, l_max = np.min(l[self.good_idx]), np.max(l[self.good_idx])
+		b_min, b_max = np.min(b[self.good_idx]), np.max(b[self.good_idx])
+		
+		self.bounds = (l_max, l_min, b_min, b_max)
+		self.xy_bounds = (x_min, x_max, y_min, y_max)
+	
+	def rasterize(self, pix_val):
+		# Grab pixel values
+		img = np.empty(self.img_shape[0] * self.img_shape[1], pix_val.dtype)
+		img[:] = np.nan
+		
+		img[self.good_idx] = pix_val[self.map_idx]
+		
+		if clip:
+			img[mask] = np.nan
+		
+		img.shape = (self.img_shape[0], self.img_shape[1])
+		
+		return img
+	
+	def get_lb_bounds(self):
+		return self.lb_bounds
+	
+	def get_xy_bounds(self):
+		return self.xy_bounds
+
+
 def test_Mollweide():
 	proj = Mollweide_projection()
 	

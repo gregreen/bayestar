@@ -1745,6 +1745,14 @@ def unify_output(infiles, outfiles, unified_fname,
 		dset = f_unified.create_dataset()
 
 
+def MapRasterizer:
+	
+	def __init__(self, nside, pix_idx, img_shape):
+		pass
+	
+	def rasterize(pix_val):
+		pass
+
 
 
 
