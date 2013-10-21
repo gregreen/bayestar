@@ -234,6 +234,12 @@ def rasterizer_plotter_worker(dist_q, lock,
 	
 	np.random.seed(seed=seed)
 	
+	# Set up rasterizer
+	rasterizer = los_coll.gen_rasterizer(size, proj=proj,
+	                                           l_cent=l_cent,
+	                                           b_cent=b_cent)
+	bounds = rasterizer.get_lb_bounds()
+	
 	first_img = True
 	
 	# Generate images
@@ -242,6 +248,15 @@ def rasterizer_plotter_worker(dist_q, lock,
 			n, mu = dist_q.get_nowait()
 			
 			# Rasterize E(B-V)
+			tmp, tmp, pix_val = los_coll.gen_EBV_map(mu, fit=model,
+			                                             method=method,
+			                                             mask_sigma=mask,
+			                                             delta_mu=delta_mu,
+			                                             reduce_nside=False)
+			
+			img = rasterizer(pix_val)
+			
+			'''
 			img, bounds, xy_bounds = los_coll.rasterize(mu, size,
 			                                                fit=model,
 			                                                method=method,
@@ -250,6 +265,7 @@ def rasterizer_plotter_worker(dist_q, lock,
 			                                                proj=proj,
 			                                                l_cent=l_cent,
 			                                                b_cent=b_cent)
+			'''
 			
 			# Plot this image
 			print 'Plotting mu = %.2f (image %d) ...' % (mu, n+1)

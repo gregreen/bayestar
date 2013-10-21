@@ -882,7 +882,7 @@ class los_collection:
 		low_mu = self.los_mu_anchor[low_idx]
 		high_mu = self.los_mu_anchor[low_idx+1]
 		
-		print '%.2f < %.2f < %.2f' % (low_mu, mu, high_mu)
+		#print '%.2f < %.2f < %.2f' % (low_mu, mu, high_mu)
 		
 		a = (mu - low_mu) / (high_mu - low_mu)
 		EBV_interp = (1. - a) * self.los_EBV[:,:,low_idx]
@@ -1069,6 +1069,20 @@ class los_collection:
 		                            l_spacing=l_spacing, b_spacing=b_spacing)
 		
 		return ret
+	
+	def gen_rasterizer(self, img_shape,
+	                         clip=True,
+	                         proj=hputils.Cartesian_projection(),
+	                         l_cent=0., b_cent=0.,):
+		'''
+		Return a class that rasterizes a map with the same layout as this
+		los_coll object (same nside and healpix index values). The
+		class which is returned is a MapRasterizer object from hputils.
+		'''
+		
+		return hputils.MapRasterizer(self.nside, self.pix_idx, img_shape,
+		                             clip=clip, proj=proj,
+		                             l_cent=l_cent, b_cent=b_cent)
 
 
 class job_completion_counter:
@@ -1743,15 +1757,6 @@ def unify_output(infiles, outfiles, unified_fname,
 	
 	if not 'stellar chains' in f_unified:
 		dset = f_unified.create_dataset()
-
-
-def MapRasterizer:
-	
-	def __init__(self, nside, pix_idx, img_shape):
-		pass
-	
-	def rasterize(pix_val):
-		pass
 
 
 
