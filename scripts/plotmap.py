@@ -354,6 +354,8 @@ def main():
 	                                     help='Measure of E(B-V) to plot.')
 	parser.add_argument('--processes', '-proc', type=int, default=1,
 	                                     help='# of processes to spawn.')
+	parser.add_argument('--max-samples', '-samp', type=int, default=None,
+	                                     help='Maximum # of MCMC samples to load per pixel (to limit memory usage).')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -403,7 +405,8 @@ def main():
 	# Load in line-of-sight data
 	fnames = args.input
 	los_coll = maptools.los_collection(fnames, bounds=args.bounds,
-	                                           processes=args.processes)
+	                                           processes=args.processes,
+	                                           max_samples=args.max_samples)
 	
 	
 	# Get upper limit on E(B-V)
@@ -435,7 +438,7 @@ def main():
 	print 'EBV_max = %.3f' % EBV_max
 	
 	# Matplotlib settings
-	mplib.rc('text', usetex=True)
+	mplib.rc('text', usetex=False) # TODO: Set to True once LaTeX is fixed on CentOS 6
 	mplib.rc('xtick.major', size=6)
 	mplib.rc('xtick.minor', size=2)
 	mplib.rc('ytick.major', size=6)

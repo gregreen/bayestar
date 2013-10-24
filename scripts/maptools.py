@@ -84,7 +84,7 @@ def put_los_output_on_q(output_q, pix_idx, nside,
 	
 	for x in [cloud_delta_mu, cloud_delta_EBV, los_delta_EBV]:
 		s = x.shape
-		pix_bytes += 2 * s[1] * s[2]
+		pix_bytes += 4 * s[1] * s[2]
 	
 	max_bytes = 1.e9
 	max_pix = int(max_bytes / pix_bytes)
@@ -114,7 +114,7 @@ def put_los_output_on_q(output_q, pix_idx, nside,
 	output_q.put('DONE')
 
 
-def los_coll_load_file_worker(fname_q, output_q, bounds):
+def los_coll_load_file_worker(fname_q, output_q, bounds, max_samples=None):
 	# Data on pixels
 	pix_idx = []
 	nside = []
@@ -153,18 +153,38 @@ def los_coll_load_file_worker(fname_q, output_q, bounds):
 				cloud_mask_tmp = dset['cloud_mask'][:]
 				los_mask_tmp = dset['piecewise_mask'][:]
 				
-				#print 'cloud'
-				dset = f['cloud']
-				tmp, n_cloud_samples, n_clouds = dset.shape
-				n_clouds /= 2
-				cloud_delta_mu_tmp = dset[:, :, :n_clouds].astype('f2')
-				cloud_delta_EBV_tmp = dset[:, :, n_clouds:].astype('f2')
+				cloud_delta_mu_tmp = None
+				cloud_delta_EBV_tmp = None
+				los_EBV_tmp = None
 				
-				#print 'piecewise'
-				dset = f['piecewise']
-				los_EBV_tmp = dset[:, :, :].astype('f2')
-				DM_min = dset.attrs['DM_min']
-				DM_max = dset.attrs['DM_max']
+				if max_samples == None:
+					#print 'cloud'
+					dset = f['cloud']
+					tmp, n_cloud_samples, n_clouds = dset.shape
+					n_clouds /= 2
+					cloud_delta_mu_tmp = dset[:, :, :n_clouds].astype('f4')
+					cloud_delta_EBV_tmp = dset[:, :, n_clouds:].astype('f4')
+					
+					#print 'piecewise'
+					dset = f['piecewise']
+					los_EBV_tmp = dset[:, :, :].astype('f4')
+					DM_min = dset.attrs['DM_min']
+					DM_max = dset.attrs['DM_max']
+					
+				else:
+					#print 'cloud'
+					dset = f['cloud']
+					tmp, n_cloud_samples, n_clouds = dset.shape
+					n_clouds /= 2
+					cloud_delta_mu_tmp = dset[:, :max_samples, :n_clouds].astype('f4')
+					cloud_delta_EBV_tmp = dset[:, :max_samples, n_clouds:].astype('f4')
+					n_cloud_samples = cloud_delta_mu_tmp.shape[1]
+					
+					#print 'piecewise'
+					dset = f['piecewise']
+					los_EBV_tmp = dset[:, :max_samples, :].astype('f4')
+					DM_min = dset.attrs['DM_min']
+					DM_max = dset.attrs['DM_max']
 				
 				# Check which pixels are in bounds
 				if bounds != None:
@@ -373,7 +393,8 @@ class los_collection:
 	'''
 	
 	def __init__(self, fnames, bounds=None,
-	                           processes=1):
+	                           processes=1,
+	                           max_samples=None):
 		'''
 		fnames is a list of Bayestar output files
 		containing line-of-sight fit information.
@@ -413,13 +434,15 @@ class los_collection:
 			self.load_files(fnames, bounds=bounds)
 		elif processes > 1:
 			self.load_files_parallel(fnames, processes=processes,
-			                                 bounds=bounds)
+			                                 bounds=bounds,
+			                                 max_samples=max_samples)
 		else:
 			raise ValueError('# of processes must be positive.')
 		
 		print '%d pixels loaded from %d output files.' % (self.pix_idx.size, len(fnames))
 	
-	def load_files_parallel(self, fnames, processes=5, bounds=None):
+	def load_files_parallel(self, fnames, processes=5,
+	                              bounds=None, max_samples=None):
 		'''
 		Loads data on the line-of-sight fits from a set
 		of Bayestar output files, using multiple processes to
@@ -445,7 +468,9 @@ class los_collection:
 		
 		for i in xrange(processes):
 			p = multiprocessing.Process(target=los_coll_load_file_worker,
-			                            args=(fname_q, output_q, bounds))
+			                            args=(fname_q, output_q,
+			                                  bounds, max_samples)
+			                           )
 			p.daemon = True
 			procs.append(p)
 			
@@ -876,17 +901,22 @@ class los_collection:
 		
 		if low_idx >= self.n_slices - 1:
 			return self.los_EBV[:,:,-1]
-		elif low_idx <= 0:
+		elif low_idx < 0:
 			return self.los_EBV[:,:,0]
 		
 		low_mu = self.los_mu_anchor[low_idx]
 		high_mu = self.los_mu_anchor[low_idx+1]
 		
-		#print '%.2f < %.2f < %.2f' % (low_mu, mu, high_mu)
-		
 		a = (mu - low_mu) / (high_mu - low_mu)
 		EBV_interp = (1. - a) * self.los_EBV[:,:,low_idx]
 		EBV_interp += a * self.los_EBV[:,:,low_idx+1]
+		
+		
+		txt = 'low_idx = %d\n' % low_idx
+		txt += '%.2f < %.2f < %.2f: a = %.2f\n' % (low_mu, mu, high_mu, a)
+		txt += '(1-a) * %.5g + a * %.5g = %.5g\n' % (np.mean(self.los_EBV[:,:,low_idx]), np.mean(self.los_EBV[:,:,low_idx+1]), np.mean(EBV_interp[:,:]))
+		print txt
+		
 		
 		return EBV_interp
 	
