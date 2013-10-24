@@ -710,7 +710,7 @@ def rasterize_map(pix_idx, pix_val,
 		return img, bounds, xy_bounds
 
 
-def MapRasterizer:
+class MapRasterizer:
 	
 	def __init__(self, nside, pix_idx, img_shape,
 	                   nest=True, clip=True,
@@ -722,6 +722,9 @@ def MapRasterizer:
 		
 		self.img_shape = img_shape
 		self.clip = clip
+		self.proj = proj
+		self.l_cent = l_cent
+		self.b_cent = b_cent
 		
 		
 		#
@@ -777,8 +780,8 @@ def MapRasterizer:
 		x_size, y_size = img_shape
 		
 		x, y = np.mgrid[0:x_size, 0:y_size].astype(np.float32) + 0.5
-		x = x_min + (x_max - x_min) * x / float(x_size)
-		y = y_min + (y_max - y_min) * y / float(y_size)
+		x = ( x_min + (x_max - x_min) * x / float(x_size) ).flatten()
+		y = ( y_min + (y_max - y_min) * y / float(y_size) ).flatten()
 		
 		# Convert display-space pixels to (l, b)
 		b, lam, self.clip_mask = proj.inv(x, y)
@@ -816,33 +819,48 @@ def MapRasterizer:
 			# Update map indices
 			map_idx_tmp = healpix_2_map[disp_idx]
 			mask = ~(map_idx_tmp == -1)
+			
 			self.map_idx[mask] = map_idx_tmp[mask]
 			
-			del pix_idx_n
+			del healpix_2_map
 			del map_idx_tmp
 		
-		self.good_idx = ~(map_idx == -1)
+		self.good_idx = ~(self.map_idx == -1)
 		self.map_idx = self.map_idx[self.good_idx]
 		
 		l_min, l_max = np.min(l[self.good_idx]), np.max(l[self.good_idx])
 		b_min, b_max = np.min(b[self.good_idx]), np.max(b[self.good_idx])
 		
-		self.bounds = (l_max, l_min, b_min, b_max)
+		self.lb_bounds = (l_max, l_min, b_min, b_max)
 		self.xy_bounds = (x_min, x_max, y_min, y_max)
 	
 	def rasterize(self, pix_val):
 		# Grab pixel values
-		img = np.empty(self.img_shape[0] * self.img_shape[1], pix_val.dtype)
+		img = np.empty(self.img_shape[0] * self.img_shape[1], dtype='f8')
 		img[:] = np.nan
 		
 		img[self.good_idx] = pix_val[self.map_idx]
 		
-		if clip:
-			img[mask] = np.nan
+		if self.clip:
+			img[self.clip_mask] = np.nan
 		
 		img.shape = (self.img_shape[0], self.img_shape[1])
 		
 		return img
+	
+	def __call__(self, pix_val):
+		return self.rasterize(pix_val)
+	
+	def latlon_lines(self, l_lines, b_lines,
+	                       l_spacing=1., b_spacing=1.):
+	    
+		x, y = latlon_lines(l_lines, b_lines,
+		                    l_spacing=l_spacing, b_spacing=b_spacing,
+		                    proj=self.proj,
+		                    l_cent=self.l_cent, b_cent=self.b_cent,
+		                    bounds=self.lb_bounds, xy_bounds=self.xy_bounds)
+		
+		return x, y
 	
 	def get_lb_bounds(self):
 		return self.lb_bounds
@@ -956,6 +974,19 @@ def test_proj():
 	bs = np.linspace(-90., 90., 7)[1:-1]
 	
 	# Rasterize map
+	print 'Constructing rasterizer ...'
+	nside_arr = nside * np.ones(pix_idx.size, dtype='i4')
+	rasterizer = MapRasterizer(nside_arr, pix_idx, size,
+	                           proj=proj, l_cent=l_cent, b_cent=b_cent,
+	                           nest=nest)
+	
+	print 'Rasterizing map ...'
+	img = rasterizer(pix_val)
+	bounds = rasterizer.get_lb_bounds()
+	x, y = rasterizer.latlon_lines(l_lines=ls, b_lines=bs,
+	                               l_spacing=2., b_spacing=2.)
+	
+	'''
 	img, bounds, x, y = rasterize_map(pix_idx, pix_val,
 	                                  nside, size,
 	                                  nest=nest, clip=clip,
@@ -963,6 +994,7 @@ def test_proj():
 	                                  l_cent=l_cent, b_cent=b_cent,
 	                                  l_lines=ls, b_lines=bs,
 	                                  l_spacing=2., b_spacing=2.)
+	'''
 	
 	cimg = ax.imshow(img.T, extent=bounds,
 	                 origin='lower', interpolation='nearest',
