@@ -225,6 +225,7 @@ def rasterizer_plotter_worker(dist_q, lock,
                               figsize, dpi, size,
                               model, method, mask,
                               proj, l_cent, b_cent, bounds,
+                              l_lines, b_lines,
                               delta_mu, EBV_max,
                               outfname):
 	# Reseed random number generator
@@ -239,6 +240,25 @@ def rasterizer_plotter_worker(dist_q, lock,
 	                                           l_cent=l_cent,
 	                                           b_cent=b_cent)
 	bounds = rasterizer.get_lb_bounds()
+	
+	if (l_lines != None) and (b_lines != None):
+		# Determine label positions
+		l_labels, b_labels = rasterizer.label_locs(l_lines, b_lines, shift_frac=0.04)
+		
+		# Determine grid lines to plot
+		l_lines = np.array(l_lines)
+		
+		idx = (np.abs(l_lines) < 1.e-5)
+		l_lines = l_lines[~idx]
+		l_line_0 = l_lines[idx]
+		
+		idx = (np.abs(b_lines) < 1.e-5)
+		b_lines = b_lines[~idx]
+		b_line_0 = b_lines[idx]
+		
+		x_guides, y_guides = rasterizer.latlon_lines(l_lines, b_lines)
+		x_guides_l0, y_guides_l0 = rasterizer.latlon_lines(l_lines_0, 0., mode='meridians')
+		x_guides_b0, y_guides_b0 = rasterizer.latlon_lines(0., b_lines_0, mode='parallels')
 	
 	first_img = True
 	
@@ -271,7 +291,7 @@ def rasterizer_plotter_worker(dist_q, lock,
 			print 'Plotting mu = %.2f (image %d) ...' % (mu, n+1)
 			
 			fig = plt.figure(figsize=figsize, dpi=dpi)
-			ax = fig.add_subplot(1,1,1)
+			ax = fig.add_subplot(1,1,1, axisbg=(0.6, 0.8, 0.95, 0.95))
 			
 			img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
 			
@@ -282,18 +302,52 @@ def rasterizer_plotter_worker(dist_q, lock,
 			cb = fig.colorbar(img, cax=cax)
 			
 			# Labels, ticks, etc.
-			ax.set_xlabel(r'$\ell$', fontsize=16)
-			ax.set_ylabel(r'$b$', fontsize=16)
+			ax.set_xticks([])
+			ax.set_yticks([])
+			#ax.set_xlabel(r'$\ell$', fontsize=16)
+			#ax.set_ylabel(r'$b$', fontsize=16)
 			
-			ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
-			ax.xaxis.set_minor_locator(AutoMinorLocator())
-			ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
-			ax.yaxis.set_minor_locator(AutoMinorLocator())
+			#ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
+			#ax.xaxis.set_minor_locator(AutoMinorLocator())
+			#ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
+			#ax.yaxis.set_minor_locator(AutoMinorLocator())
 			
 			# Title
 			d = 10.**(mu/5. - 2.)
 			ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu, d),
-			             fontsize=16)
+			             fontsize=18)
+			
+			# Lines of constant l and b
+			xlim = ax.get_xlim()
+			ylim = ax.get_ylim()
+			
+			ax.scatter(x_guides, y_guides, s=0.5, c='b', alpha=0.10)
+			ax.scatter(x_guides_l0, y_guides_l0, s=0.8, c='b', alpha=0.20)
+			ax.scatter(x_guides_b0, y_guides_b0, s=0.8, c='b', alpha=0.20)
+			
+			ax.set_xlim(xlim)
+			ax.set_ylim(ylim)
+			
+			# Label Galactic coordinates
+			if bounds != None:
+				if (bounds[2] > -90.) | (bounds[3] < 90.):
+					for l, (x_0, y_0), (x_1, y_1) in l_labels:
+						ax.text(x_0, y_0, r'$%d$' % l, fontsize=12,
+						                               ha='center',
+						                               va='center')
+						ax.text(x_1, y_1, r'$%d$' % l, fontsize=12,
+						                               ha='center',
+						                               va='center')
+			
+			
+			for b, (x_0, y_0), (x_1, y_1) in b_labels:
+				ax.text(x_0, y_0, r'$%d$' % b, fontsize=12,
+				                               ha='center',
+				                               va='center')
+				ax.text(x_1, y_1, r'$%d$' % b, fontsize=12,
+				                               ha='center',
+				                               va='center')
+			
 			
 			# Save figure
 			full_fname = '%s.%s.%s.%.5d.png' % (outfname, model, method, n)
@@ -356,6 +410,11 @@ def main():
 	                                     help='# of processes to spawn.')
 	parser.add_argument('--max-samples', '-samp', type=int, default=None,
 	                                     help='Maximum # of MCMC samples to load per pixel (to limit memory usage).')
+	parser.add_argument('--l-lines', '-ls', type=float, nargs='+', default=None,
+	                                     help='Galactic longitudes at which to draw lines.')
+	parser.add_argument('--b-lines', '-ls', type=float, nargs='+', default=None,
+	                                     help='Galactic latitudes at which to draw lines.')
+	
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -483,6 +542,7 @@ def main():
 		                                  args.figsize, args.dpi, size,
 		                                  args.model, method, mask,
 		                                  proj, l_cent, b_cent, args.bounds,
+		                                  l_lines, b_lines,
 		                                  args.delta_mu, EBV_max,
 		                                  outfname)
 		                           )

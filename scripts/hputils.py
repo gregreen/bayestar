@@ -537,29 +537,36 @@ def latlon_lines(ls, bs,
                  l_spacing=1., b_spacing=1.,
                  proj=Cartesian_projection(),
                  l_cent=0., b_cent=0.,
-                 bounds=None, xy_bounds=None):
+                 bounds=None, xy_bounds=None,
+                 mode='both'):
 	'''
 	Return the x- and y- positions of points along a grid of parallels
 	and meridians.
 	'''
 	
+	if mode not in ['both', 'parallels', 'meridians']:
+		raise ValueError("Unrecognized mode: '%s'\n"
+		                 "Must be 'both', 'parallels' or 'meridians'" % mode)
+	
 	# Construct a set of points along the meridians and parallels
 	l = []
 	b = []
 	
-	l_row = np.arange(-180., 180.+l_spacing/2., l_spacing)
-	b_row = np.ones(l_row.size)
+	if mode in ['both', 'parallels']:
+		l_row = np.arange(-180., 180.+l_spacing/2., l_spacing)
+		b_row = np.ones(l_row.size)
+		
+		for b_val in bs:
+			b.append(b_val * b_row)
+			l.append(l_row)
 	
-	for b_val in bs:
-		b.append(b_val * b_row)
-		l.append(l_row)
-	
-	b_row = np.arange(-90., 90.+b_spacing/2., b_spacing)
-	l_row = np.ones(b_row.size)
-	
-	for l_val in ls:
-		l.append(l_val * l_row)
-		b.append(b_row)
+	if mode in ['both', 'meridians']:
+		b_row = np.arange(-90., 90.+b_spacing/2., b_spacing)
+		l_row = np.ones(b_row.size)
+		
+		for l_val in ls:
+			l.append(l_val * l_row)
+			b.append(b_row)
 	
 	l = np.hstack(l)
 	b = np.hstack(b)
@@ -711,13 +718,20 @@ def rasterize_map(pix_idx, pix_val,
 
 
 class MapRasterizer:
+	'''
+	A class that rasterizes a multi-resolution HEALPix map with a given
+	set of (nside, pixel index) pairs. Pre-computes mapping between
+	display-space pixels and HEALPix pixels, so that maps with different
+	pixel intensities can be rasterized quickly.
+	'''
 	
 	def __init__(self, nside, pix_idx, img_shape,
 	                   nest=True, clip=True,
 	                   proj=Cartesian_projection(),
 	                   l_cent=0., b_cent=0.):
 		'''
-		
+		Pre-computes mapping between (nside, pix_idx) pairs and
+		display-space pixels.
 		'''
 		
 		self.img_shape = img_shape
@@ -833,8 +847,18 @@ class MapRasterizer:
 		
 		self.lb_bounds = (l_max, l_min, b_min, b_max)
 		self.xy_bounds = (x_min, x_max, y_min, y_max)
+		
+		self.x_scale = (self.lb_bounds[1] - self.lb_bounds[0]) / (self.xy_bounds[1] - self.xy_bounds[0])
+		self.y_scale = (self.lb_bounds[3] - self.lb_bounds[2]) / (self.xy_bounds[3] - self.xy_bounds[2])
 	
 	def rasterize(self, pix_val):
+		'''
+		Rasterize the given HEALpix pixel intensity values.
+		
+		pix_val is assumed to correspond exactly to the nside and
+		pix_idx arrays, in terms of the pixels it represents.
+		'''
+		
 		# Grab pixel values
 		img = np.empty(self.img_shape[0] * self.img_shape[1], dtype='f8')
 		img[:] = np.nan
@@ -852,20 +876,167 @@ class MapRasterizer:
 		return self.rasterize(pix_val)
 	
 	def latlon_lines(self, l_lines, b_lines,
-	                       l_spacing=1., b_spacing=1.):
-	    
+	                       l_spacing=1., b_spacing=1.,
+	                       clip=True, mode='both'):
+		'''
+		Project lines of constant Galactic longitude and latitude to
+		display space (x, y).
+		
+		Inputs:
+		    l_lines    Galactic longitudes at which to place lines.
+		    b_lines    Galactic latitudes at which to place lines.
+		    l_spacing  Longitude spacing between dots in lines.
+		    b_spacing  Latitude spacing between dots in lines.
+		    clip       If True, clip lines to display-space bounds of
+		               the map.
+		
+		Outputs:
+		    x          x-coordinates of dots that comprise lines.
+		    y          y-coordinates of dots that comprise lines.
+		'''
+		
 		x, y = latlon_lines(l_lines, b_lines,
 		                    l_spacing=l_spacing, b_spacing=b_spacing,
 		                    proj=self.proj,
 		                    l_cent=self.l_cent, b_cent=self.b_cent,
-		                    bounds=self.lb_bounds, xy_bounds=self.xy_bounds)
+		                    bounds=self.lb_bounds, xy_bounds=self.xy_bounds,
+		                    mode=mode)
+		
+		if clip:
+			x_idx = (x >= self.lb_bounds[1]) & (x <= self.lb_bounds[0])
+			y_idx = (y >= self.lb_bounds[2]) & (y <= self.lb_bounds[3])
+			idx = x_idx & y_idx
+			
+			return x[idx], y[idx]
 		
 		return x, y
 	
+	def label_locs(self, l_locs, b_locs, shift_frac=0.05):
+		'''
+		Find the locations in display-space (x, y) at which the given
+		l and b labels should be placed.
+		
+		Inputs:
+		    l_locs      List or array containing Galactic longitudes of labels
+		    b_locs      List or array containing Galactic latitudes of labels
+		    shift_frac  Fraction of width/heigh of plot to shift labels
+		                away from the edges of the map by.
+		
+		Outputs:
+		    l_labels  [l, (x_0, y_0), (x_1, y_1)] for each l in l_locs,
+		                  where (x, y) are the positions of the labels.
+		                  There are two label positions given for each
+		                  longitude (in general, one on the top of the
+		                  plot and one on the bottom).
+		    
+		    b_labels  [b, (x_0, y_0), (x_1, y_1)] for each l in b_locs.
+		'''
+		
+		l_labels = []
+		
+		std_dist = shift_frac * np.sqrt(
+		                                  abs(self.lb_bounds[1] - self.lb_bounds[0])
+		                                * abs(self.lb_bounds[3] - self.lb_bounds[2])
+		                               )
+		
+		for l in l_locs:
+			l_arr = np.array([l])
+			b_arr = np.array([0.])
+			x, y = self.latlon_lines(l_arr, b_arr, clip=True, mode='meridians')
+			
+			dx = np.diff(np.hstack([x[-1], x]))
+			dy = np.diff(np.hstack([x[-1], y]))
+			
+			ds = np.sqrt(dx*dx + dy*dy)
+			cut_idx = np.argmax(ds)
+			
+			# Shift label positions off edge of map
+			dx_0, dy_0 = None, None
+			try:
+				dx_0 = -dx[cut_idx+1]
+				dy_0 = -dy[cut_idx+1]
+			except:
+				dx_0 = -dx[0]
+				dy_0 = -dy[0]
+			ds_0 = np.sqrt(dx_0*dx_0 + dy_0*dy_0)
+			
+			dx_0 *= std_dist / ds_0
+			dy_0 *= std_dist / ds_0
+			
+			dx_1 = dx[cut_idx-1]
+			dy_1 = dy[cut_idx-1]
+			ds_1 = np.sqrt(dx_1*dx_1 + dy_1*dy_1)
+			
+			dx_1 *= std_dist / ds_1
+			dy_1 *= std_dist / ds_1
+			
+			x_0, y_0 = x[cut_idx] + dx_0, y[cut_idx] + dy_0
+			x_1, y_1 = x[cut_idx-1] + dx_1, y[cut_idx-1] + dx_0
+			
+			l_labels.append([l, (x_0, y_0),
+			                    (x_1, y_1)])
+		
+		b_labels = []
+		
+		for b in b_locs:
+			b_arr = np.array([b])
+			l_arr = np.array([0.])
+			x, y = self.latlon_lines(l_arr, b_arr, clip=True, mode='parallels')
+			
+			dx = np.diff(np.hstack([x[-1], x]))
+			dy = np.diff(np.hstack([y[-1], y]))
+			
+			ds = np.sqrt(dx*dx + dy*dy)
+			cut_idx = np.argmax(ds)
+			
+			# Shift label positions off edge of map
+			dx_0, dy_0 = None, None
+			try:
+				dx_0 = -dx[cut_idx+1]
+				dy_0 = -dy[cut_idx+1]
+			except:
+				dx_0 = -dx[0]
+				dy_0 = -dy[0]
+			ds_0 = np.sqrt(dx_0*dx_0 + dy_0*dy_0)
+			
+			dx_0 *= std_dist / ds_0
+			dy_0 *= std_dist / ds_0
+			
+			dx_1 = dx[cut_idx-1]
+			dy_1 = dy[cut_idx-1]
+			ds_1 = np.sqrt(dx_1*dx_1 + dy_1*dy_1)
+			
+			dx_1 *= std_dist / ds_1
+			dy_1 *= std_dist / ds_1
+			
+			x_0, y_0 = x[cut_idx] + dx_0, y[cut_idx] + dy_0
+			x_1, y_1 = x[cut_idx-1] + dx_1, y[cut_idx-1] + dy_1
+			
+			b_labels.append([b, (x_0, y_0),
+			                    (x_1, y_1)])
+		
+		return l_labels, b_labels
+	
+	def _scale_disp_coords(self, x, y):
+		x_sc = self.lb_bounds[0] + (x - self.xy_bounds[0]) * self.x_scale
+		y_sc = self.lb_bounds[2] + (y - self.xy_bounds[2]) * self.y_scale
+		
+		return x_sc, y_sc
+	
 	def get_lb_bounds(self):
+		'''
+		Return the bounds of the map in Galactic coordinates:
+		    (l_min, l_max, b_min, b_max)
+		'''
+		
 		return self.lb_bounds
 	
 	def get_xy_bounds(self):
+		'''
+		Return the display-space bounds of the map:
+		    (x_min, x_max, y_min, y_max)
+		'''
+		
 		return self.xy_bounds
 
 
@@ -956,8 +1127,8 @@ def test_proj():
 	clip = True
 	size = (2000, 1000)
 	proj = Hammer_projection()
-	l_cent = 25.
-	b_cent = 35.
+	l_cent = 90.
+	b_cent = 10.
 	
 	n_pix = hp.pixelfunc.nside2npix(nside)
 	pix_idx = np.arange(n_pix)#[4*n_pix/12:5*n_pix/12]
@@ -967,7 +1138,7 @@ def test_proj():
 	# Plot map
 	
 	fig = plt.figure()
-	ax = fig.add_subplot(1,1,1)
+	ax = fig.add_subplot(1,1,1, axisbg=(0.6, 0.8, 0.95, 0.95))
 	
 	# Generate grid lines
 	ls = np.linspace(-180., 180., 13)
@@ -1010,10 +1181,35 @@ def test_proj():
 	#                    l_cent=l_cent, b_cent=b_cent,
 	#                    bounds=bounds, xy_bounds=xy_bounds)
 	
+	
+	# Grid lines
 	xlim = ax.get_xlim()
 	ylim = ax.get_ylim()
 	
 	ax.scatter(x, y, c='k', s=1, alpha=0.25)
+	
+	# Latitude/Longitude labels
+	l_labels, b_labels = rasterizer.label_locs(ls, bs, shift_frac=0.04)
+	
+	for b, (x_0, y_0), (x_1, y_1) in b_labels:
+		#print b, x_0, y_0
+		
+		ax.text(x_0, y_0, r'$%d$' % b, fontsize=12,
+		                               ha='center',
+		                               va='center')
+		ax.text(x_1, y_1, r'$%d$' % b, fontsize=12,
+		                               ha='center',
+		                               va='center')
+	
+	'''
+	for l, (x_0, y_0), (x_1, y_1) in l_labels:
+		ax.text(x_0, y_0, r'$%d$' % l, fontsize=12,
+		                               ha='center',
+		                               va='center')
+		ax.text(x_1, y_1, r'$%d$' % l, fontsize=12,
+		                               ha='center',
+		                               va='center')
+	'''
 	
 	plt.show()
 
