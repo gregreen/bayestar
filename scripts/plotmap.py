@@ -74,6 +74,7 @@ def plot_EBV(ax, img, bounds, **kwargs):
 	# Plot image in B&W
 	img_res = ax.imshow(img.T, **kwargs)
 	
+	'''
 	# Neutrally color masked regions
 	kwargs['vmin'] = None
 	kwargs['vmax'] = None
@@ -88,7 +89,7 @@ def plot_EBV(ax, img, bounds, **kwargs):
 	#ax.imshow(mask_img, **kwargs)
 	ax.imshow(mask_img, origin='lower', aspect='auto',
 	                    interpolation='nearest', extent=bounds)
-	
+	'''
 	#xlim = ax.get_xlim()
 	#ax.set_xlim(xlim[1], xlim[0])
 	
@@ -241,24 +242,40 @@ def rasterizer_plotter_worker(dist_q, lock,
 	                                           b_cent=b_cent)
 	bounds = rasterizer.get_lb_bounds()
 	
+	# Set up grid lines and labels
+	l_labels, b_labels = None, None
+	x_guides, y_guides = None, None
+	x_guides_l0, y_guides_l0 = None, None
+	x_guides_b0, y_guides_b0 = None, None
+	
 	if (l_lines != None) and (b_lines != None):
 		# Determine label positions
 		l_labels, b_labels = rasterizer.label_locs(l_lines, b_lines, shift_frac=0.04)
 		
 		# Determine grid lines to plot
 		l_lines = np.array(l_lines)
+		b_lines = np.array(b_lines)
 		
 		idx = (np.abs(l_lines) < 1.e-5)
+		l_lines_0 = l_lines[idx]
 		l_lines = l_lines[~idx]
-		l_line_0 = l_lines[idx]
 		
 		idx = (np.abs(b_lines) < 1.e-5)
+		b_lines_0 = b_lines[idx]
 		b_lines = b_lines[~idx]
-		b_line_0 = b_lines[idx]
 		
-		x_guides, y_guides = rasterizer.latlon_lines(l_lines, b_lines)
-		x_guides_l0, y_guides_l0 = rasterizer.latlon_lines(l_lines_0, 0., mode='meridians')
-		x_guides_b0, y_guides_b0 = rasterizer.latlon_lines(0., b_lines_0, mode='parallels')
+		x_guides, y_guides = rasterizer.latlon_lines(l_lines, b_lines,
+		                                             l_spacing=0.5, b_spacing=0.5)
+		
+		if l_lines_0.size != 0:
+			x_guides_l0, y_guides_l0 = rasterizer.latlon_lines(l_lines_0, 0.,
+			                                                   mode='meridians',
+			                                                   b_spacing=0.25)
+		
+		if b_lines_0.size != 0:
+			x_guides_b0, y_guides_b0 = rasterizer.latlon_lines(0., b_lines_0,
+			                                                   mode='parallels',
+			                                                   l_spacing=0.25)
 	
 	first_img = True
 	
@@ -296,14 +313,22 @@ def rasterizer_plotter_worker(dist_q, lock,
 			img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
 			
 			# Colorbar
-			fig.subplots_adjust(bottom=0.12, left=0.12,
+			fig.subplots_adjust(bottom=0.05, left=0.05,
 			                    right=0.89, top=0.88)
-			cax = fig.add_axes([0.9, 0.12, 0.03, 0.76])
+			cax = fig.add_axes([0.9, 0.05, 0.03, 0.83])
 			cb = fig.colorbar(img, cax=cax)
+			
+			clabel = r'$\mathrm{E} \left( B - V \right)$'
+			if delta_mu != None:
+				clabel = r'$\mathrm{d} \mathrm{E} \left( B - V \right) / \mathrm{d} \mu$'
+			
+			cb.ax.set_ylabel(clabel, fontsize=24, rotation=270)
+			cb.ax.tick_params(labelsize=20)
 			
 			# Labels, ticks, etc.
 			ax.set_xticks([])
 			ax.set_yticks([])
+			
 			#ax.set_xlabel(r'$\ell$', fontsize=16)
 			#ax.set_ylabel(r'$b$', fontsize=16)
 			
@@ -315,39 +340,57 @@ def rasterizer_plotter_worker(dist_q, lock,
 			# Title
 			d = 10.**(mu/5. - 2.)
 			ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu, d),
-			             fontsize=18)
+			             fontsize=24)
 			
 			# Lines of constant l and b
 			xlim = ax.get_xlim()
 			ylim = ax.get_ylim()
 			
-			ax.scatter(x_guides, y_guides, s=0.5, c='b', alpha=0.10)
-			ax.scatter(x_guides_l0, y_guides_l0, s=0.8, c='b', alpha=0.20)
-			ax.scatter(x_guides_b0, y_guides_b0, s=0.8, c='b', alpha=0.20)
+			ax.scatter(x_guides, y_guides, s=1., c='b', edgecolor='b', alpha=0.10)
+			
+			if x_guides_l0 != None:
+				ax.scatter(x_guides_l0, y_guides_l0, s=3., c='g', edgecolor='g', alpha=0.25)
+			
+			if x_guides_b0 != None:
+				ax.scatter(x_guides_b0, y_guides_b0, s=3., c='g', edgecolor='g', alpha=0.25)
 			
 			ax.set_xlim(xlim)
 			ax.set_ylim(ylim)
 			
 			# Label Galactic coordinates
-			if bounds != None:
-				if (bounds[2] > -90.) | (bounds[3] < 90.):
-					for l, (x_0, y_0), (x_1, y_1) in l_labels:
-						ax.text(x_0, y_0, r'$%d$' % l, fontsize=12,
-						                               ha='center',
-						                               va='center')
-						ax.text(x_1, y_1, r'$%d$' % l, fontsize=12,
-						                               ha='center',
-						                               va='center')
+			if l_lines != None:
+				if bounds != None:
+					if (bounds[2] > -80.) | (bounds[3] < 80.):
+						print bounds
+						
+						for l, (x_0, y_0), (x_1, y_1) in l_labels:
+							ax.text(x_0, y_0, r'$%d$' % l, fontsize=20,
+							                               ha='center',
+							                               va='center')
+							ax.text(x_1, y_1, r'$%d$' % l, fontsize=20,
+							                               ha='center',
+							                               va='center')
 			
-			
-			for b, (x_0, y_0), (x_1, y_1) in b_labels:
-				ax.text(x_0, y_0, r'$%d$' % b, fontsize=12,
-				                               ha='center',
-				                               va='center')
-				ax.text(x_1, y_1, r'$%d$' % b, fontsize=12,
-				                               ha='center',
-				                               va='center')
-			
+			if b_lines != None:
+				for b, (x_0, y_0), (x_1, y_1) in b_labels:
+					ax.text(x_0, y_0, r'$%d$' % b, fontsize=20,
+					                               ha='center',
+					                               va='center')
+					ax.text(x_1, y_1, r'$%d$' % b, fontsize=20,
+					                               ha='center',
+					                               va='center')
+				
+				# Expand axes limits to fit labels
+				xlim = ax.get_xlim()
+				w = xlim[1] - xlim[0]
+				xlim = [xlim[0] - 0.05*w, xlim[1] + 0.05 * w]
+				
+				ylim = ax.get_ylim()
+				h = ylim[1] - ylim[0]
+				ylim = [ylim[0] - 0.05*h, ylim[1] + 0.05 * h]
+				
+				ax.set_xlim(xlim)
+				ax.set_ylim(ylim)
 			
 			# Save figure
 			full_fname = '%s.%s.%s.%.5d.png' % (outfname, model, method, n)
@@ -412,7 +455,7 @@ def main():
 	                                     help='Maximum # of MCMC samples to load per pixel (to limit memory usage).')
 	parser.add_argument('--l-lines', '-ls', type=float, nargs='+', default=None,
 	                                     help='Galactic longitudes at which to draw lines.')
-	parser.add_argument('--b-lines', '-ls', type=float, nargs='+', default=None,
+	parser.add_argument('--b-lines', '-bs', type=float, nargs='+', default=None,
 	                                     help='Galactic latitudes at which to draw lines.')
 	
 	if 'python' in sys.argv[0]:
@@ -526,23 +569,13 @@ def main():
 	procs = []
 	
 	for i in xrange(n_rasterizers):
-		'''
-		p = multiprocessing.Process(target=rasterizer_worker,
-		                            args=(dist_q, img_q,
-		                                  los_coll,
-		                                  args.figsize, args.dpi, size,
-		                                  args.model, method, mask,
-		                                  proj, l_cent, b_cent, args.bounds,
-		                                  args.delta_mu)
-		                           )
-		'''
 		p = multiprocessing.Process(target=rasterizer_plotter_worker,
 		                            args=(dist_q, lock,
 		                                  los_coll,
 		                                  args.figsize, args.dpi, size,
 		                                  args.model, method, mask,
 		                                  proj, l_cent, b_cent, args.bounds,
-		                                  l_lines, b_lines,
+		                                  args.l_lines, args.b_lines,
 		                                  args.delta_mu, EBV_max,
 		                                  outfname)
 		                           )

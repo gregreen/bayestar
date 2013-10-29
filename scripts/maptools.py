@@ -25,6 +25,7 @@
 import numpy as np
 
 import matplotlib as mplib
+mplib.use('Agg')
 import matplotlib.pyplot as plt
 
 import healpy as hp
@@ -727,7 +728,7 @@ class los_collection:
 		'''
 		
 		f = h5py.File(fname, 'w')
-		loaded
+		
 		# Locations
 		print '/locations'
 		dtype = [('nside', 'i4'), ('healpix_index', 'i8'),
@@ -779,6 +780,102 @@ class los_collection:
 		                                  chunks=chunk_shape,
 		                                  compression='gzip',
 		                                  compression_opts=9)
+		dset[:] = data[:]
+		
+		print 'close'
+		f.close()
+	
+	def save_summary(self, fname):
+		'''
+		Save summary line-of-sight information to single file.
+		'''
+		
+		f = h5py.File(fname, 'w')
+		
+		# Locations
+		print '/locations'
+		dtype = [('nside', 'i4'), ('healpix_index', 'i8'),
+		         ('piecewise_mask', 'u1'), ('cloud_mask', 'u1')]
+		
+		data = np.empty(shape=self.nside.shape, dtype=dtype)
+		data['nside'][:] = self.nside[:]
+		data['healpix_index'][:] = self.pix_idx[:]
+		data['piecewise_mask'][:] = self.los_mask[:]
+		data['cloud_mask'][:] = self.cloud_mask[:]
+		
+		dset = f.create_dataset('/locations', data.shape,
+		                                      dtype=dtype,
+		                                      compression='gzip',
+		                                      compression_opts=9)
+		dset[:] = data[:]
+		
+		# Piecewise median
+		print '/piecewise'
+		
+		dtype = [('best', 'f4'),
+		         ('5%', 'f4'),
+		         ('15.87%', 'f4'),
+		         ('median', 'f4'),
+		         ('84.13%', 'f4'),
+		         ('95%', 'f4')]
+		dset_shape = [self.los_EBV.shape[0], self.los_EBV.shape[2]]
+		data = np.empty(dset_shape, dtype=dtype)
+		
+		print 'best'
+		data['best'] = self.los_EBV[:, 0, :]
+		
+		pctiles = [5., 15.87, 50., 84.13, 95.]
+		tmp_data = np.percentile(self.los_EBV[:, 1:, :], pctiles, axis=1)
+		
+		for i,n in enumerate(['5%', '15.87%', 'median', '84.13%', '95%']):
+			print n
+			
+			data[n] = tmp_data[i]
+		
+		'''
+		print 'median'
+		data['median'] = np.median(self.los_EBV[:, 1:, :], axis=1)
+		print '5%%'
+		data['5%%'] = np.percentile(self.los_EBV[:, 1:, :], 5., axis=1)
+		print '15.87%%'
+		data['15.87%%'] = np.percentile(self.los_EBV[:, 1:, :], 15.87, axis=1)
+		print '84.13%%'
+		data['84.13%%'] = np.percentile(self.los_EBV[:, 1:, :], 84.13, axis=1)
+		print '95%%'
+		data['95%%'] = np.percentile(self.los_EBV[:, 1:, :], 95., axis=1)
+		'''
+		
+		print 'dset'
+		chunk_shape = [self.los_EBV.shape[0], 1]
+		chunk_shape[0] = min(chunk_shape[0], 50000)
+		chunk_shape = tuple(chunk_shape)
+		
+		dset = f.create_dataset('/piecewise', dset_shape,
+		                                      dtype=dtype,
+		                                      chunks=chunk_shape,
+		                                      compression='gzip',
+		                                      compression_opts=9)
+		
+		dset[:] = data[:]
+		dset.attrs['DM_min'] = self.DM_min
+		dset.attrs['DM_max'] = self.DM_max
+		
+		# Cloud best
+		print '/cloud_best'
+		shape = (self.cloud_delta_EBV.shape[0], 2*self.n_clouds)
+		data = np.empty(shape, dtype='f4')
+		data[:, :self.n_clouds] = self.cloud_mu_anchor[:, 0, :]
+		data[:, self.n_clouds:] = self.cloud_delta_EBV[:, 0, :]
+		
+		chunk_shape = [self.cloud_delta_EBV.shape[0], self.cloud_delta_EBV.shape[2]]
+		chunk_shape[0] = min(chunk_shape[0], 100000)
+		chunk_shape = tuple(chunk_shape)
+		
+		dset = f.create_dataset('/cloud_best', data.shape,
+		                                       dtype='f4',
+		                                       chunks=chunk_shape,
+		                                       compression='gzip',
+		                                       compression_opts=9)
 		dset[:] = data[:]
 		
 		print 'close'
@@ -911,12 +1008,12 @@ class los_collection:
 		EBV_interp = (1. - a) * self.los_EBV[:,:,low_idx]
 		EBV_interp += a * self.los_EBV[:,:,low_idx+1]
 		
-		
+		'''
 		txt = 'low_idx = %d\n' % low_idx
 		txt += '%.2f < %.2f < %.2f: a = %.2f\n' % (low_mu, mu, high_mu, a)
 		txt += '(1-a) * %.5g + a * %.5g = %.5g\n' % (np.mean(self.los_EBV[:,:,low_idx]), np.mean(self.los_EBV[:,:,low_idx+1]), np.mean(EBV_interp[:,:]))
 		print txt
-		
+		'''
 		
 		return EBV_interp
 	

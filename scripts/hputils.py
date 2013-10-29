@@ -945,7 +945,7 @@ class MapRasterizer:
 			x, y = self.latlon_lines(l_arr, b_arr, clip=True, mode='meridians')
 			
 			dx = np.diff(np.hstack([x[-1], x]))
-			dy = np.diff(np.hstack([x[-1], y]))
+			dy = np.diff(np.hstack([y[-1], y]))
 			
 			ds = np.sqrt(dx*dx + dy*dy)
 			cut_idx = np.argmax(ds)
@@ -971,7 +971,7 @@ class MapRasterizer:
 			dy_1 *= std_dist / ds_1
 			
 			x_0, y_0 = x[cut_idx] + dx_0, y[cut_idx] + dy_0
-			x_1, y_1 = x[cut_idx-1] + dx_1, y[cut_idx-1] + dx_0
+			x_1, y_1 = x[cut_idx-1] + dx_1, y[cut_idx-1] + dy_1
 			
 			l_labels.append([l, (x_0, y_0),
 			                    (x_1, y_1)])

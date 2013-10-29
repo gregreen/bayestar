@@ -32,7 +32,10 @@ def main():
 	                                 description='Store line-of-sight output to one file.',
 	                                 add_help=True)
 	parser.add_argument('input', type=str, help='Bayestar output files.')
-	parser.add_argument('--output', '-o', type=str, help='Filename for unified output.')
+	parser.add_argument('--unified', '-u', type=str, default=None,
+	                                     help='Filename for unified output.')
+	parser.add_argument('--summary', '-s', type=str, default=None,
+	                                     help='Filename for summary output.')
 	parser.add_argument('--bounds', '-b', type=float, nargs=4, default=None,
 	                                     help='Bounds of pixels to plot (l_min, l_max, b_min, b_max).')
 	parser.add_argument('--processes', '-proc', type=int, default=1,
@@ -50,8 +53,14 @@ def main():
 	                                           processes=args.processes)
 	
 	# Save to unified output file
-	print 'Saving to unified output file ...'
-	los_coll.save_unified(args.output)
+	if args.unified != None:
+		print 'Saving to unified output file ...'
+		los_coll.save_unified(args.unified)
+	
+	# Save to summary output file
+	if args.summary != None:
+		print 'Saving to summary output file ...'
+		los_coll.save_summary(args.summary)
 	
 	print 'Done.'
 	
