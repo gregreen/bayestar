@@ -164,6 +164,8 @@ def main():
 	                            help='Show cloud model of reddening.')
 	parser.add_argument('-ind', '--show-individual', action='store_true',
 	                            help='Show individual stellar pdfs above main plot.')
+	parser.add_argument('-ovplt', '--overplot-clouds', type=float, nargs='+', default=None,
+	                            help='Overplot clouds at specified distance/depth pairs.')
 	#parser.add_argument('--testfn', nargs='+', type=str, default=None,
 	#                    help='ASCII file with true stellar parameters (same as used for galstar input).')
 	#parser.add_argument('-cnv', '--converged', action='store_true',
@@ -299,6 +301,30 @@ def main():
 		
 		for sub_ax in ax_indiv:
 			sub_ax.set_ylim(x_min[1], EBV_max)
+	
+	# Overplot manually-specified clouds
+	if args.overplot_clouds != None:
+		mu_cloud = np.array(args.overplot_clouds[::2])
+		EBV_cloud = np.cumsum(np.array(args.overplot_clouds[1::2]))
+		
+		#mu_plot = np.linspace(DM_lim[0], DM_lim[1], chain.get_nDim())
+		
+		# Plot all paths
+		N_clouds = len(args.overplot_clouds) / 2
+		#mu_tmp = np.cumsum(chain.get_samples(0)[:,:N_clouds], axis=1)
+		#EBV_tmp = np.cumsum(np.exp(chain.get_samples(0)[:,N_clouds:]), axis=1)
+		
+		mu_all = np.zeros(2*(N_clouds+1), dtype='f8')
+		EBV_all = np.zeros(2*(N_clouds+1), dtype='f8')
+		mu_all[0] = DM_lim[0]
+		mu_all[1:-1:2] = mu_cloud
+		mu_all[2:-1:2] = mu_cloud
+		mu_all[-1] = DM_lim[1]
+		EBV_all[2:-1:2] = EBV_cloud
+		EBV_all[3::2] = EBV_cloud
+		
+		ax.plot(mu_all, EBV_all, 'k--', lw=2, alpha=0.5)
+	
 	
 	# Save/show plot
 	if args.output != None:
