@@ -126,6 +126,7 @@ int main(int argc, char **argv) {
 	double star_p_replacement = 0.2;
 	double sigma_RV = -1.;
 	double minEBV = 0.;
+	bool star_priors = true;
 	
 	unsigned int N_regions = 20;
 	unsigned int los_steps = 3000;
@@ -170,6 +171,7 @@ int main(int argc, char **argv) {
 		("star-samplers", po::value<unsigned int>(&star_samplers), "# of samplers per dimension (stellar fit)")
 		("star-p-replacement", po::value<double>(&star_p_replacement), "Probability of taking replacement step (stellar fit)")
 		("sigma-RV", po::value<double>(&sigma_RV), "Variation in R_V (per star) (default: -1, interpreted as no variance)")
+		("no-stellar-priors", "Turn off priors for individual stars.")
 		("minEBV", po::value<double>(&minEBV), "Minimum stellar E(B-V) (default: 0)")
 		
 		("regions", po::value<unsigned int>(&N_regions), "# of piecewise-linear regions in l.o.s. extinction profile (default: 20)")
@@ -209,6 +211,7 @@ int main(int argc, char **argv) {
 	
 	if(vm.count("synthetic")) { synthetic = true; }
 	if(vm.count("save-surfs")) { saveSurfs = true; }
+	if(vm.count("no-stellar-priors")) { star_priors = false; }
 	if(vm.count("disk-prior")) { disk_prior = true; }
 	if(vm.count("SFD-prior")) { SFDPrior = true; }
 	if(vm.count("SFD-subpixel")) { SFDsubpixel = true; }
@@ -413,10 +416,12 @@ int main(int argc, char **argv) {
 		// Sample individual stars
 		if(synthetic) {
 			sample_indiv_synth(output_fname, star_options, los_model, *synthlib, ext_model,
-			                   stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs, gatherSurfs, verbosity);
+			                   stellar_data, img_stack, conv, lnZ, sigma_RV,
+			                   minEBV, saveSurfs, gatherSurfs, verbosity);
 		} else {
 			sample_indiv_emp(output_fname, star_options, los_model, *emplib, ext_model,
-			                 stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV, saveSurfs, gatherSurfs, verbosity);
+			                 stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV,
+			                 saveSurfs, gatherSurfs, star_priors, verbosity);
 		}
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);

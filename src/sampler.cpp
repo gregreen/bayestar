@@ -50,6 +50,8 @@ TMCMCParams::TMCMCParams(TGalacticLOSModel *_gal_model, TSyntheticStellarModel *
 	vary_RV = false;
 	RV_mean = 3.1;
 	RV_variance = 0.2*0.2;
+	
+	use_priors = true;
 }
 
 TMCMCParams::~TMCMCParams() {
@@ -164,6 +166,44 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 	 *  Priors
 	 */
 	logP += gal_model.log_prior_emp(x) + stellar_model.get_log_lf(x[1]);
+	
+	return logP;
+}
+
+
+// Natural logarithm of posterior probability density for one star, given parameters x, where
+//
+//     x = {DM, M_r, [Fe/H]}
+double logP_single_star_emp_noprior(const double *x, double EBV, double RV,
+                                    const TGalacticLOSModel &gal_model, const TStellarModel &stellar_model,
+                                    TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed) {
+	double logP = 0.;
+	
+	/*
+	 *  Likelihood
+	 */
+	bool del_sed = false;
+	if(tmp_sed == NULL) {
+		del_sed = true;
+		tmp_sed = new TSED(true);
+	}
+	if(!stellar_model.get_sed(x+1, *tmp_sed)) {
+		if(del_sed) { delete tmp_sed; }
+		return neg_inf_replacement;
+	}
+	
+	double logL = 0.;
+	double tmp;
+	for(unsigned int i=0; i<NBANDS; i++) {
+		if(d.err[i] < 1.e9) {
+			tmp = tmp_sed->absmag[i] + x[_DM] + EBV * ext_model.get_A(RV, i);	// Model apparent magnitude
+			tmp = (d.m[i] - tmp) / d.err[i];
+			logL -= 0.5*tmp*tmp;
+		}
+	}
+	logP += logL - d.lnL_norm;
+	
+	if(del_sed) { delete tmp_sed; }
 	
 	return logP;
 }
@@ -714,7 +754,11 @@ double logP_indiv_simple_emp(const double *x, unsigned int N, TMCMCParams &param
 	} else {
 		RV = params.RV_mean;
 	}
-	logp += logP_single_star_emp(x+1, x[0], RV, *params.gal_model, *params.emp_stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+	if(params.use_priors) {
+		logp += logP_single_star_emp(x+1, x[0], RV, *params.gal_model, *params.emp_stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+	} else {
+		logp += logP_single_star_emp_noprior(x+1, x[0], RV, *params.gal_model, *params.emp_stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+	}
 	return logp;
 }
 
@@ -877,7 +921,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                       TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                      double RV_sigma, double minEBV, const bool saveSurfs, const bool gatherSurfs, int verbosity) {
+                      double RV_sigma, double minEBV, const bool saveSurfs, const bool gatherSurfs, const bool use_priors, int verbosity) {
 	// Parameters must be consistent - cannot save surfaces without gathering them
 	assert(!(saveSurfs & (!gatherSurfs)));
 	
@@ -886,6 +930,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	double DM_max = 19.;
 	TMCMCParams params(&galactic_model, NULL, &stellar_model, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
 	params.EBV_floor = minEBV;
+	params.use_priors = use_priors;
 	
 	if(RV_sigma > 0.) {
 		params.vary_RV = true;

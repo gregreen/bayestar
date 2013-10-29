@@ -91,6 +91,8 @@ struct TMCMCParams {
 	
 	bool vary_RV;
 	double RV_mean, RV_variance;
+	
+	bool use_priors;
 };
 
 
@@ -104,6 +106,9 @@ double logP_single_star_synth(const double *x, double EBV, double RV,
 double logP_single_star_emp(const double *x, double EBV, double RV,
                             const TGalacticLOSModel &gal_model, const TStellarModel &stellar_model,
                             TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed=NULL);
+double logP_single_star_emp_noprior(const double *x, double EBV, double RV,
+                                    const TGalacticLOSModel &gal_model, const TStellarModel &stellar_model,
+                                    TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed=NULL);
 
 // Sampling routines
 void sample_model_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data);
