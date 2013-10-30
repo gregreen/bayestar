@@ -440,7 +440,7 @@ void sample_los_extinction(const std::string& out_fname, const std::string& grou
 	
 	sampler.set_sigma_min(1.e-5);
 	sampler.set_scale(1.1);
-	sampler.set_replacement_bandwidth(0.10);
+	sampler.set_replacement_bandwidth(0.25);
 	sampler.set_MH_bandwidth(0.15);
 	
 	sampler.tune_MH(8, 0.25);
@@ -497,6 +497,9 @@ void sample_los_extinction(const std::string& out_fname, const std::string& grou
 	sampler.step_custom_reversible(base_N_steps, switch_step, false);
 	sampler.step_custom_reversible(base_N_steps, mix_step, false);
 	sampler.step_custom_reversible(base_N_steps, move_one_step, false);
+	
+	//sampler.step(2*base_N_steps, false, 0., options.p_replacement);
+	sampler.step(base_N_steps, false, 0., 1., true, true);
 	
 	if(verbosity >= 2) {
 		std::cout << "Round 2 diagnostics:" << std::endl;
@@ -935,11 +938,15 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, int verbos
 	TNullLogger logger;
 	
 	unsigned int N_steps = options.steps / 8;
-	if(N_steps < 40) { N_steps = 40; }
 	unsigned int N_samplers = options.samplers;
 	//if(N_samplers < 10) { N_samplers = 10; }
 	unsigned int N_runs = options.N_runs;
 	unsigned int ndim = params.N_regions + 1;
+	
+	if(N_steps < 50) { N_steps = 50; }
+	if(N_steps < 2*ndim) { N_steps = 2*ndim; }
+	
+	unsigned int base_N_steps = int(ceil(N_steps/10.));
 	
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::pdf_t f_pdf = &lnp_los_extinction;
 	TAffineSampler<TLOSMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_los_extinction;
@@ -950,16 +957,17 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, int verbos
 	TParallelAffineSampler<TLOSMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 	sampler.set_sigma_min(0.001);
 	sampler.set_scale(1.05);
-	sampler.set_replacement_bandwidth(0.75);
+	sampler.set_replacement_bandwidth(0.25);
 	
-	sampler.step_MH(int(N_steps*20./100.), true);
+	sampler.step_MH(2*base_N_steps, true);
 	//sampler.step(int(N_steps*10./100.), true, 0., 0.);
-	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, true);
+	sampler.step_custom_reversible(base_N_steps, switch_step, true);
 	
 	//sampler.step(int(N_steps*10./100), true, 0., 1., true);
-	sampler.step_MH(int(N_steps*10./100.), true);
-	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, true);
-	sampler.step_custom_reversible(int(N_steps*10./100.), move_one_step, true);
+	sampler.step_MH(base_N_steps, true);
+	sampler.step_custom_reversible(base_N_steps, switch_step, true);
+	sampler.step_custom_reversible(base_N_steps, move_one_step, true);
+	sampler.step(base_N_steps, false, 0., 1., true, true);
 	
 	//sampler.step(int(N_steps*10./100.), true, 0., 0.5, true);
 	//sampler.step(int(N_steps*10./100), true, 0., 1., true);
@@ -973,9 +981,10 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, int verbos
 		std::cout << sampler.get_MH_bandwidth(k) << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
 	}
 	std::cout << ")" << std::endl;*/
-	sampler.step_MH(int(N_steps*10./100.), true);
-	sampler.step_custom_reversible(int(N_steps*10./100.), switch_step, true);
-	sampler.step_custom_reversible(int(N_steps*10./100.), move_one_step, true);
+	sampler.step_MH(base_N_steps, true);
+	sampler.step_custom_reversible(base_N_steps, switch_step, true);
+	sampler.step_custom_reversible(base_N_steps, move_one_step, true);
+	sampler.step(base_N_steps, false, 0., 1., true, true);
 	
 	/*std::cout << "scale: (";
 	for(int k=0; k<sampler.get_N_samplers(); k++) {
@@ -987,7 +996,7 @@ void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, int verbos
 		std::cout << sampler.get_MH_bandwidth(k) << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
 	}
 	std::cout << ")" << std::endl;*/
-	sampler.step_MH(int(N_steps*10./100.), true);
+	sampler.step_MH(base_N_steps, true);
 	
 	if(verbosity >= 2) {
 		sampler.print_diagnostics();
