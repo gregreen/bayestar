@@ -188,7 +188,7 @@ def main():
 	              add_help=True)
 	parser.add_argument('input', type=str, help='Bayestar input file with true parameters.')
 	parser.add_argument('output', type=str, help='Bayestar output file with surfaces.')
-	parser.add_argument('index', type=int, help='HEALPix index of pixel.')
+	parser.add_argument('index', type=int, nargs=2, help='HEALPix nside and index of pixel.')
 	parser.add_argument('--stack-out', '-so', type=str, default=None,
 	                       help='Output filename for stacked pdf plot.')
 	parser.add_argument('--pct-out', '-po', type=str, default=None,
@@ -211,7 +211,7 @@ def main():
 	
 	# Read in pdfs
 	print 'Loading pdfs...'
-	group = 'pixel %d' % (args.index)
+	group = 'pixel %d-%d' % (args.index[0], args.index[1])
 	dset = '%s/stellar pdfs' % group
 	pdf = hdf5io.TProbSurf(args.output, dset)
 	x_min, x_max = pdf.x_min, pdf.x_max
@@ -253,7 +253,7 @@ def main():
 	# Read in true parameter values
 	print 'Loading true parameter values...'
 	f = h5py.File(args.input, 'r')
-	dset = f['/parameters/pixel %d' % (args.index)]
+	dset = f['/parameters/pixel %d-%d' % (args.index[0], args.index[1])]
 	
 	fields = ['DM', 'EBV', 'Mr', 'FeH']
 	dtype = [(field, 'f8') for field in fields]
@@ -263,7 +263,7 @@ def main():
 		truth[field][:] = dset[field][:]
 	
 	# Read in detection information
-	dset = f['/photometry/pixel %d' % (args.index)]
+	dset = f['/photometry/pixel %d-%d' % (args.index[0], args.index[1])]
 	mag_errs = dset['err'][:]
 	
 	det_idx = (np.sum(mag_errs > 1.e9, axis=1) == 0)

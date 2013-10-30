@@ -70,11 +70,11 @@ TGalacticModel::TGalacticModel() {
 	//h_ISM = 140;
 	
 	// Drimmel & Spergel (2001)
-        H_ISM = 134.4;
-        L_ISM = 2260.;
-        dH_dR_ISM = 0.0148;
-        R_flair_ISM = 4400.;
-        
+	H_ISM = 134.4;
+	L_ISM = 2260.;
+	dH_dR_ISM = 0.0148;
+	R_flair_ISM = 4400.;
+	
 	// Metallicity
 	mu_FeH_inf = -0.82;
 	delta_mu_FeH = 0.55;
@@ -103,10 +103,10 @@ TGalacticModel::TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
 	//h_ISM = 140;
 	
 	// Drimmel & Spergel (2001)
-        H_ISM = 134.4;
-        L_ISM = 2260.;
-        dH_dR_ISM = 0.0148;
-        R_flair_ISM = 4400.;
+	H_ISM = 134.4;
+	L_ISM = 2260.;
+	dH_dR_ISM = 0.0148;
+	R_flair_ISM = 4400.;
 	
 	disk_abundance = new TStellarAbundance(0);
 	halo_abundance = new TStellarAbundance(1);
