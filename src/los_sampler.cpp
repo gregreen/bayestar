@@ -752,8 +752,8 @@ void los_integral(TImgStack &img_stack, const double *const subpixel, double *co
 				y_floor = (y_int >> base_2_prec);
 				diff = y_int - (y_floor << base_2_prec);
 				
-				tmp_ret += diff * img->at<float>(y_floor, x)
-				        + (prec_factor_int - diff) * img->at<float>(y_floor+1, x);
+				tmp_ret += (prec_factor_int - diff) * img->at<float>(y_floor, x)
+				        + diff * img->at<float>(y_floor+1, x);
 				
 				/*
 				// 1
