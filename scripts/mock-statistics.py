@@ -47,9 +47,14 @@ def main():
                               'with true stellar parameters, printing out '
                               'a comparison in each M_r bin.',
                   add_help=True)
-    parser.add_argument('input', type=str, help='Bayestar input file with true parameters.')
-    parser.add_argument('output', type=str, help='Bayestar output file with surfaces.')
-    parser.add_argument('index', type=int, help='HEALPix index of pixel.')
+    parser.add_argument('input', type=str,
+                                 help='Bayestar input file with true parameters.')
+    parser.add_argument('output', type=str,
+                                 help='Bayestar output file with surfaces.')
+    parser.add_argument('index', type=int, nargs=2,
+                                 help='HEALPix nside and index of pixel.')
+    parser.add_argument('-err', '--err-threshold', type=float, default=np.inf,
+                                 help='Magnitude error threshold for inclusion.')
     if 'python' in sys.argv[0]:
         offset = 2
     else:
@@ -59,7 +64,7 @@ def main():
     
     # Read in chain and convergence information
     print 'Loading samples and convergence information...'
-    group = 'pixel %d' % (args.index)
+    group = 'pixel %d-%d' % (args.index[0], args.index[1])
     dset = '%s/stellar chains' % group
     chain = hdf5io.TChain(args.output, dset)
     lnp = chain.get_lnp()[:]
@@ -92,7 +97,7 @@ def main():
     # Read in true parameter values
     print 'Loading true parameter values...'
     f = h5py.File(args.input, 'r')
-    dset = f['/parameters/pixel %d' % (args.index)]
+    dset = f['/parameters/pixel %d-%d' % (args.index[0], args.index[1])]
     
     fields = ['DM', 'EBV', 'Mr', 'FeH']
     #dtype = [(field, 'f8') for field in fields]
@@ -102,16 +107,19 @@ def main():
         truth[:,i] = dset[field][:]
     
     # Read in detection information
-    dset = f['/photometry/pixel %d' % (args.index)]
+    dset = f['/photometry/pixel %d-%d' % (args.index[0], args.index[1])]
     mag_errs = dset['err'][:]
     
     det_idx = (np.sum(mag_errs > 1.e9, axis=1) == 0)
+    
+    snr_idx = (np.sum(mag_errs > args.err_threshold, axis=1) == 0)
+    print '%d of %d stars fail SNR cut.' % (np.sum(~snr_idx), mag_errs.shape[0])
     
     f.close()
     
     # Mask stars based on convergence and detection
     #mask_idx = np.ones(p.shape[0]).astype(np.bool)
-    mask_idx = det_idx & conv #& lnZ_idx
+    mask_idx = det_idx & conv & snr_idx #& lnZ_idx
     mean = mean[mask_idx]
     lnp = lnp[mask_idx]
     conv = conv[mask_idx]
