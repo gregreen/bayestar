@@ -944,37 +944,38 @@ class MapRasterizer:
 			b_arr = np.array([0.])
 			x, y = self.latlon_lines(l_arr, b_arr, clip=True, mode='meridians')
 			
-			dx = np.diff(np.hstack([x[-1], x]))
-			dy = np.diff(np.hstack([y[-1], y]))
-			
-			ds = np.sqrt(dx*dx + dy*dy)
-			cut_idx = np.argmax(ds)
-			
-			# Shift label positions off edge of map
-			dx_0, dy_0 = None, None
-			try:
-				dx_0 = -dx[cut_idx+1]
-				dy_0 = -dy[cut_idx+1]
-			except:
-				dx_0 = -dx[0]
-				dy_0 = -dy[0]
-			ds_0 = np.sqrt(dx_0*dx_0 + dy_0*dy_0)
-			
-			dx_0 *= std_dist / ds_0
-			dy_0 *= std_dist / ds_0
-			
-			dx_1 = dx[cut_idx-1]
-			dy_1 = dy[cut_idx-1]
-			ds_1 = np.sqrt(dx_1*dx_1 + dy_1*dy_1)
-			
-			dx_1 *= std_dist / ds_1
-			dy_1 *= std_dist / ds_1
-			
-			x_0, y_0 = x[cut_idx] + dx_0, y[cut_idx] + dy_0
-			x_1, y_1 = x[cut_idx-1] + dx_1, y[cut_idx-1] + dy_1
-			
-			l_labels.append([l, (x_0, y_0),
-			                    (x_1, y_1)])
+			if x.size != 0:
+				dx = np.diff(np.hstack([x[-1], x]))
+				dy = np.diff(np.hstack([y[-1], y]))
+				
+				ds = np.sqrt(dx*dx + dy*dy)
+				cut_idx = np.argmax(ds)
+				
+				# Shift label positions off edge of map
+				dx_0, dy_0 = None, None
+				try:
+					dx_0 = -dx[cut_idx+1]
+					dy_0 = -dy[cut_idx+1]
+				except:
+					dx_0 = -dx[0]
+					dy_0 = -dy[0]
+				ds_0 = np.sqrt(dx_0*dx_0 + dy_0*dy_0)
+				
+				dx_0 *= std_dist / ds_0
+				dy_0 *= std_dist / ds_0
+				
+				dx_1 = dx[cut_idx-1]
+				dy_1 = dy[cut_idx-1]
+				ds_1 = np.sqrt(dx_1*dx_1 + dy_1*dy_1)
+				
+				dx_1 *= std_dist / ds_1
+				dy_1 *= std_dist / ds_1
+				
+				x_0, y_0 = x[cut_idx] + dx_0, y[cut_idx] + dy_0
+				x_1, y_1 = x[cut_idx-1] + dx_1, y[cut_idx-1] + dy_1
+				
+				l_labels.append([l, (x_0, y_0),
+				                    (x_1, y_1)])
 		
 		b_labels = []
 		
@@ -983,37 +984,38 @@ class MapRasterizer:
 			l_arr = np.array([0.])
 			x, y = self.latlon_lines(l_arr, b_arr, clip=True, mode='parallels')
 			
-			dx = np.diff(np.hstack([x[-1], x]))
-			dy = np.diff(np.hstack([y[-1], y]))
-			
-			ds = np.sqrt(dx*dx + dy*dy)
-			cut_idx = np.argmax(ds)
-			
-			# Shift label positions off edge of map
-			dx_0, dy_0 = None, None
-			try:
-				dx_0 = -dx[cut_idx+1]
-				dy_0 = -dy[cut_idx+1]
-			except:
-				dx_0 = -dx[0]
-				dy_0 = -dy[0]
-			ds_0 = np.sqrt(dx_0*dx_0 + dy_0*dy_0)
-			
-			dx_0 *= std_dist / ds_0
-			dy_0 *= std_dist / ds_0
-			
-			dx_1 = dx[cut_idx-1]
-			dy_1 = dy[cut_idx-1]
-			ds_1 = np.sqrt(dx_1*dx_1 + dy_1*dy_1)
-			
-			dx_1 *= std_dist / ds_1
-			dy_1 *= std_dist / ds_1
-			
-			x_0, y_0 = x[cut_idx] + dx_0, y[cut_idx] + dy_0
-			x_1, y_1 = x[cut_idx-1] + dx_1, y[cut_idx-1] + dy_1
-			
-			b_labels.append([b, (x_0, y_0),
-			                    (x_1, y_1)])
+			if x.size != 0:
+				dx = np.diff(np.hstack([x[-1], x]))
+				dy = np.diff(np.hstack([y[-1], y]))
+				
+				ds = np.sqrt(dx*dx + dy*dy)
+				cut_idx = np.argmax(ds)
+				
+				# Shift label positions off edge of map
+				dx_0, dy_0 = None, None
+				try:
+					dx_0 = -dx[cut_idx+1]
+					dy_0 = -dy[cut_idx+1]
+				except:
+					dx_0 = -dx[0]
+					dy_0 = -dy[0]
+				ds_0 = np.sqrt(dx_0*dx_0 + dy_0*dy_0)
+				
+				dx_0 *= std_dist / ds_0
+				dy_0 *= std_dist / ds_0
+				
+				dx_1 = dx[cut_idx-1]
+				dy_1 = dy[cut_idx-1]
+				ds_1 = np.sqrt(dx_1*dx_1 + dy_1*dy_1)
+				
+				dx_1 *= std_dist / ds_1
+				dy_1 *= std_dist / ds_1
+				
+				x_0, y_0 = x[cut_idx] + dx_0, y[cut_idx] + dy_0
+				x_1, y_1 = x[cut_idx-1] + dx_1, y[cut_idx-1] + dy_1
+				
+				b_labels.append([b, (x_0, y_0),
+				                    (x_1, y_1)])
 		
 		return l_labels, b_labels
 	

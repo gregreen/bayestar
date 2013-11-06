@@ -1017,6 +1017,9 @@ class los_collection:
 		
 		return EBV_interp
 	
+	def calc_depth(self, EBV):
+		pass
+	
 	def est_dEBV_pctile(self, pctile, delta_mu=0.1,
 	                          fit='piecewise'):
 		'''

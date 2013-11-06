@@ -28,6 +28,7 @@ import matplotlib as mplib
 mplib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
+from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import ImageGrid
 
 import argparse, os, sys, time
@@ -43,10 +44,11 @@ import hputils, maptools
 
 def plot_EBV(ax, img, bounds, **kwargs):
 	# Configure plotting options
-	if 'vmin' not in kwargs:
-		kwargs['vmin'] = np.min(img[np.isfinite(img)])
-	if 'vmax' not in kwargs:
-		kwargs['vmax'] = np.max(img[np.isfinite(img)])
+	if 'norm' not in kwargs:
+		if 'vmin' not in kwargs:
+			kwargs['vmin'] = np.min(img[np.isfinite(img)])
+		if 'vmax' not in kwargs:
+			kwargs['vmax'] = np.max(img[np.isfinite(img)])
 	if 'aspect' not in kwargs:
 		kwargs['aspect'] = 'auto'
 	if 'interpolation' not in kwargs:
@@ -59,39 +61,8 @@ def plot_EBV(ax, img, bounds, **kwargs):
 	kwargs['extent'] = bounds
 	kwargs['cmap'] = 'binary'
 	
-	'''
-	# Background color
-	shape = (img.shape[1], img.shape[0], 4)
-	back_img = np.zeros(shape, dtype='f8')
-	back_img[:,:,0] = 0.60
-	back_img[:,:,1] = 0.80
-	back_img[:,:,2] = 0.95
-	back_img[:,:,3] = 0.50
-	ax.imshow(back_img, origin='lower', aspect='auto',
-	                    interpolation='nearest', extent=bounds)
-	'''
-	
 	# Plot image in B&W
 	img_res = ax.imshow(img.T, **kwargs)
-	
-	'''
-	# Neutrally color masked regions
-	kwargs['vmin'] = None
-	kwargs['vmax'] = None
-	kwargs['cmap'] = None
-	mask = np.isnan(img.T)
-	shape = (img.shape[1], img.shape[0], 4)
-	mask_img = np.zeros(shape, dtype='f8')
-	mask_img[:,:,0] = 0.60
-	mask_img[:,:,1] = 0.80
-	mask_img[:,:,2] = 0.95
-	mask_img[:,:,3] = 0.95 * mask.astype('f8')
-	#ax.imshow(mask_img, **kwargs)
-	ax.imshow(mask_img, origin='lower', aspect='auto',
-	                    interpolation='nearest', extent=bounds)
-	'''
-	#xlim = ax.get_xlim()
-	#ax.set_xlim(xlim[1], xlim[0])
 	
 	return img_res
 
@@ -265,17 +236,17 @@ def rasterizer_plotter_worker(dist_q, lock,
 		b_lines = b_lines[~idx]
 		
 		x_guides, y_guides = rasterizer.latlon_lines(l_lines, b_lines,
-		                                             l_spacing=0.5, b_spacing=0.5)
+		                                             l_spacing=0.25, b_spacing=0.25)
 		
 		if l_lines_0.size != 0:
 			x_guides_l0, y_guides_l0 = rasterizer.latlon_lines(l_lines_0, 0.,
 			                                                   mode='meridians',
-			                                                   b_spacing=0.25)
+			                                                   b_spacing=0.15)
 		
 		if b_lines_0.size != 0:
 			x_guides_b0, y_guides_b0 = rasterizer.latlon_lines(0., b_lines_0,
 			                                                   mode='parallels',
-			                                                   l_spacing=0.25)
+			                                                   l_spacing=0.15)
 	
 	first_img = True
 	
@@ -293,24 +264,16 @@ def rasterizer_plotter_worker(dist_q, lock,
 			
 			img = rasterizer(pix_val)
 			
-			'''
-			img, bounds, xy_bounds = los_coll.rasterize(mu, size,
-			                                                fit=model,
-			                                                method=method,
-			                                                mask_sigma=mask,
-			                                                delta_mu=delta_mu,
-			                                                proj=proj,
-			                                                l_cent=l_cent,
-			                                                b_cent=b_cent)
-			'''
-			
 			# Plot this image
 			print 'Plotting mu = %.2f (image %d) ...' % (mu, n+1)
 			
 			fig = plt.figure(figsize=figsize, dpi=dpi)
 			ax = fig.add_subplot(1,1,1, axisbg=(0.6, 0.8, 0.95, 0.95))
 			
-			img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
+			if method == 'sigma':
+				img = plot_EBV(ax, img, bounds, norm=LogNorm(vmin=0.001, vmax=EBV_max))
+			else:
+				img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
 			
 			# Colorbar
 			fig.subplots_adjust(bottom=0.05, left=0.05,
@@ -364,30 +327,31 @@ def rasterizer_plotter_worker(dist_q, lock,
 						print bounds
 						
 						for l, (x_0, y_0), (x_1, y_1) in l_labels:
-							ax.text(x_0, y_0, r'$%d$' % l, fontsize=20,
+							ax.text(x_0, y_0, r'$%d^{\circ}$' % l, fontsize=20,
 							                               ha='center',
 							                               va='center')
-							ax.text(x_1, y_1, r'$%d$' % l, fontsize=20,
+							ax.text(x_1, y_1, r'$%d^{\circ}$' % l, fontsize=20,
 							                               ha='center',
 							                               va='center')
 			
 			if b_lines != None:
 				for b, (x_0, y_0), (x_1, y_1) in b_labels:
-					ax.text(x_0, y_0, r'$%d$' % b, fontsize=20,
+					ax.text(x_0, y_0, r'$%d^{\circ}$' % b, fontsize=20,
 					                               ha='center',
 					                               va='center')
-					ax.text(x_1, y_1, r'$%d$' % b, fontsize=20,
+					ax.text(x_1, y_1, r'$%d^{\circ}$' % b, fontsize=20,
 					                               ha='center',
 					                               va='center')
 				
 				# Expand axes limits to fit labels
+				expand = 0.075
 				xlim = ax.get_xlim()
 				w = xlim[1] - xlim[0]
-				xlim = [xlim[0] - 0.05*w, xlim[1] + 0.05 * w]
+				xlim = [xlim[0] - expand * w, xlim[1] + expand * w]
 				
 				ylim = ax.get_ylim()
 				h = ylim[1] - ylim[0]
-				ylim = [ylim[0] - 0.05*h, ylim[1] + 0.05 * h]
+				ylim = [ylim[0] - expand * h, ylim[1] + expand * h]
 				
 				ax.set_xlim(xlim)
 				ax.set_ylim(ylim)
@@ -517,16 +481,32 @@ def main():
 	if method == 'sample':
 		method_tmp = 'median'
 	
-	EBV_max = None
+	EBV_max = -np.inf
 	
 	if args.delta_mu == None:
-		nside_tmp, pix_idx_tmp, EBV = los_coll.gen_EBV_map(mu_plot[-1],
-		                                                   fit=args.model,
-		                                                   method=method_tmp,
-		                                                   mask_sigma=args.mask,
-		                                                   delta_mu=args.delta_mu)
-		idx = np.isfinite(EBV)
-		EBV_max = np.percentile(EBV[idx], 95.)
+		mu_eval = None
+		
+		if method == 'sigma':
+			mu_eval = np.array(los_coll.los_mu_anchor)
+			idx = (mu_eval >= args.dists[0]) & (mu_eval <= args.dists[1])
+			mu_eval = mu_eval[idx]
+			
+		else:
+			mu_eval = [mu_plot[-1]]
+		
+		for mu in mu_eval:
+			print 'Determining max E(B-V) from mu = %.2f ...' % mu
+			
+			nside_tmp, pix_idx_tmp, EBV = los_coll.gen_EBV_map(mu,
+			                                                   fit=args.model,
+			                                                   method=method_tmp,
+			                                                   mask_sigma=args.mask,
+			                                                   delta_mu=args.delta_mu)
+			idx = np.isfinite(EBV)
+			EBV_max_tmp = np.percentile(EBV[idx], 95.)
+			
+			if EBV_max_tmp > EBV_max:
+				EBV_max = EBV_max_tmp
 		
 	else:
 		EBV_max = los_coll.est_dEBV_pctile(95., delta_mu=args.delta_mu,
@@ -637,7 +617,7 @@ def main():
 		
 		# Save figure
 		if outfname != None:
-			full_fname = '%s.%s.%s.%.5d.png' % (outfname, args.model, method, n)
+			full_fname = '%s.%s.%s.%.5d.png' % (outfname, args.model, args.method, n)
 			fig.savefig(full_fname, dpi=args.dpi)
 		
 		plt.close(fig)
