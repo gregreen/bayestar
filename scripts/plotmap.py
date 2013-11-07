@@ -25,7 +25,7 @@
 import numpy as np
 
 import matplotlib as mplib
-mplib.use('Agg')
+#mplib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 from matplotlib.colors import LogNorm
@@ -65,35 +65,6 @@ def plot_EBV(ax, img, bounds, **kwargs):
 	img_res = ax.imshow(img.T, **kwargs)
 	
 	return img_res
-
-
-class PixelIdentifier:
-	'''
-	Class that prints out the HEALPix pixel index when the user
-	clicks somewhere in a figure.
-	'''
-	
-	def __init__(self, ax, nside,
-	                   nest=True,
-	                   proj=hputils.Cartesian_projection()):
-		self.ax = ax
-		self.cid = ax.figure.canvas.mpl_connect('button_press_event', self)
-		
-		self.nside = nside
-		self.nest = nest
-		
-		self.proj = proj
-	
-	def __call__(self, event):
-		if event.inaxes != self.ax:
-			return
-		
-		# Determine healpix index of point
-		x, y = event.xdata, event.ydata
-		b, l = self.proj.inv(x, y)
-		pix_idx = hputils.lb2pix(self.nside, l, b, nest=self.nest)
-		
-		print '(%.2f, %.2f) -> %d' % (l, b, pix_idx)
 
 
 def plotter_worker(img_q, lock,
@@ -192,6 +163,81 @@ def rasterizer_worker(dist_q, img_q,
 			
 			return
 
+
+class PixelPlotter:
+	def __init__(self, los_coll, model='piecewise'):
+		self.los_coll = los_coll
+		self.model = model
+	
+	def __call__(self, map_idx):
+		self.plot_pixel(map_idx)
+	
+	def plot_pixel(self, map_idx):
+		if map_idx == -1:
+			return
+		
+		# Load piecewise-linear profiles
+		mu = self.los_coll.los_mu_anchor
+		EBV_all = self.los_coll.los_EBV[map_idx, :, :]
+		
+		nside = self.los_coll.nside[map_idx]
+		pix_idx = self.los_coll.pix_idx[map_idx]
+		l, b = hputils.pix2lb_scalar(nside, pix_idx, nest=True, use_negative_l=True)
+		
+		# Load ln(p), if available
+		lnp = None
+		lnp_txt = None
+		
+		if self.los_coll.los_lnp != []:
+			lnp = self.los_coll.los_lnp[map_idx, :]
+			GR = self.los_coll.los_GR[map_idx, :]
+			
+			lnp_min, lnp_max = np.percentile(lnp[1:], [10., 90.])
+			GR_max = np.max(GR)
+			
+			lnp_txt =  '$\ln \, p_{\mathrm{best}} = %.2f$\n' % lnp[0]
+			lnp_txt += '$\ln \, p_{90\%%} = %.2f$\n' % lnp_max
+			lnp_txt += '$\ln \, p_{10\%%} = %.2f$\n' % lnp_min
+			lnp_txt += '$\mathrm{GR}_{\mathrm{max}} = %.3f$' % GR_max
+			
+			lnp = (lnp - lnp_min) / (lnp_max - lnp_min)
+			lnp[lnp > 1.] = 1.
+			lnp[lnp < 0.] = 0.
+		else:
+			lnp = [0. for EBV in EBV_all]
+		
+		# Plot samples
+		fig = plt.figure(figsize=(8,5), dpi=150)
+		ax = fig.add_subplot(1,1,1)
+		fig.subplots_adjust(left=0.12, bottom=0.12)
+		
+		alpha = 1. / np.power(EBV_all.shape[0], 0.55)
+		
+		for i,EBV in enumerate(EBV_all[1:]):
+			c = (1.-lnp[i+1], 0., lnp[i+1])
+			ax.plot(mu, EBV, c=c, alpha=alpha)
+		
+		# Plot best fit
+		ax.plot(mu, EBV_all[0, :], 'g', lw=2, alpha=0.5)
+		
+		ax.set_xlim(mu[0], mu[-1])
+		
+		# Add labels
+		ax.set_xlabel(r'$\mu$', fontsize=16)
+		ax.set_ylabel(r'$\mathrm{E} \left( B - V \right)$', fontsize=16)
+		ax.set_title(r'$\ell = %.2f, \ b = %.2f$' % (l, b), fontsize=16)
+		
+		if lnp_txt != None:
+			ylim = ax.get_ylim()
+			y_txt = ylim[0] + 0.95 * (ylim[1] - ylim[0])
+			x_txt = mu[0] + 0.05 * (mu[-1] - mu[0])
+			ax.text(x_txt, y_txt, lnp_txt, fontsize=16,
+			                               multialignment='left',
+			                               va='top')
+		
+		plt.show()
+
+
 def rasterizer_plotter_worker(dist_q, lock,
                               los_coll,
                               figsize, dpi, size,
@@ -199,7 +245,7 @@ def rasterizer_plotter_worker(dist_q, lock,
                               proj, l_cent, b_cent, bounds,
                               l_lines, b_lines,
                               delta_mu, EBV_max,
-                              outfname):
+                              outfname, show=False):
 	# Reseed random number generator
 	t = time.time()
 	t_after_dec = int(1.e9*(t - np.floor(t)))
@@ -249,6 +295,10 @@ def rasterizer_plotter_worker(dist_q, lock,
 			                                                   l_spacing=0.15)
 	
 	first_img = True
+	pix_identifier = []
+	
+	if show:
+		pix_plotter = PixelPlotter(los_coll)
 	
 	# Generate images
 	while True:
@@ -309,7 +359,8 @@ def rasterizer_plotter_worker(dist_q, lock,
 			xlim = ax.get_xlim()
 			ylim = ax.get_ylim()
 			
-			ax.scatter(x_guides, y_guides, s=1., c='b', edgecolor='b', alpha=0.10)
+			if x_guides != None:
+				ax.scatter(x_guides, y_guides, s=1., c='b', edgecolor='b', alpha=0.10)
 			
 			if x_guides_l0 != None:
 				ax.scatter(x_guides_l0, y_guides_l0, s=3., c='g', edgecolor='g', alpha=0.25)
@@ -368,11 +419,20 @@ def rasterizer_plotter_worker(dist_q, lock,
 			else:
 				fig.savefig(full_fname, dpi=dpi)
 			
-			plt.close(fig)
-			del img
+			if show:
+				# Add pixel identifier to allow user to find info on
+				# individual HEALPix pixels
+				pix_identifier.append(hputils.PixelIdentifier(ax, rasterizer, lb_bounds=True))
+				pix_identifier[-1].attach_obj(pix_plotter)
+			else:
+				plt.close(fig)
+				del img
 			
 		except Queue.Empty:
 			print 'Rasterizer finished.'
+			
+			if show:
+				plt.show()
 			
 			return
 
@@ -383,7 +443,7 @@ def main():
 	                                 add_help=True)
 	parser.add_argument('input', type=str, nargs='+', help='Bayestar output files.')
 	parser.add_argument('--output', '-o', type=str, help='Output filename for plot.')
-	#parser.add_argument('--show', '-sh', action='store_true', help='Show plot.')
+	parser.add_argument('--show', '-sh', action='store_true', help='Show plot.')
 	parser.add_argument('--dists', '-d', type=float, nargs=3,
 	                                     default=(4., 19., 21),
 	                                     help='DM min, DM max, # of distance slices.')
@@ -519,8 +579,9 @@ def main():
 	
 	print 'EBV_max = %.3f' % EBV_max
 	
+	
 	# Matplotlib settings
-	mplib.rc('text', usetex=False) # TODO: Set to True once LaTeX is fixed on CentOS 6
+	#mplib.rc('text', usetex=False) # TODO: Set to True once LaTeX is fixed on CentOS 6
 	mplib.rc('xtick.major', size=6)
 	mplib.rc('xtick.minor', size=2)
 	mplib.rc('ytick.major', size=6)
@@ -557,7 +618,7 @@ def main():
 		                                  proj, l_cent, b_cent, args.bounds,
 		                                  args.l_lines, args.b_lines,
 		                                  args.delta_mu, EBV_max,
-		                                  outfname)
+		                                  outfname, args.show)
 		                           )
 		procs.append(p)
 	
@@ -566,68 +627,6 @@ def main():
 	
 	for p in procs:
 		p.join()
-	
-	'''
-	# Plot and save results
-	n_rast_finished = 0
-	n_img_finished = 0
-	
-	while True:
-		q_in = img_q.get()
-		
-		# Count number of rasterizer workers that have finished
-		# processing their queue
-		if q_in == 'FINISHED':
-			n_rast_finished += 1
-			
-			if n_rast_finished >= n_rasterizers:
-				break
-			else:
-				continue
-		
-		n, mu, img, bounds, xy_bounds = q_in
-		
-		# Plot this image
-		print 'Plotting mu = %.2f (%d of %d) ...' % (mu,
-		                                             n_img_finished+1,
-		                                             mu_plot.size)
-		
-		fig = plt.figure(figsize=args.figsize, dpi=args.dpi)
-		ax = fig.add_subplot(1,1,1)
-		
-		img = plot_EBV(ax, img, bounds, vmin=-EBV_max, vmax=EBV_max)
-		
-		# Colorbar
-		fig.subplots_adjust(bottom=0.12, left=0.12, right=0.89, top=0.88)
-		cax = fig.add_axes([0.9, 0.12, 0.03, 0.76])
-		cb = fig.colorbar(img, cax=cax)
-		
-		# Labels, ticks, etc.
-		ax.set_xlabel(r'$\ell$', fontsize=16)
-		ax.set_ylabel(r'$b$', fontsize=16)
-		
-		ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
-		ax.xaxis.set_minor_locator(AutoMinorLocator())
-		ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
-		ax.yaxis.set_minor_locator(AutoMinorLocator())
-		
-		# Title
-		d = 10.**(mu/5. - 2.)
-		ax.set_title(r'$\mu = %.2f \ \ \ d = %.2f \, \mathrm{kpc}$' % (mu, d), fontsize=16)
-		
-		# Save figure
-		if outfname != None:
-			full_fname = '%s.%s.%s.%.5d.png' % (outfname, args.model, args.method, n)
-			fig.savefig(full_fname, dpi=args.dpi)
-		
-		plt.close(fig)
-		del img
-		
-		n_img_finished += 1
-	
-	for p in procs:
-		p.join()
-	'''
 	
 	print 'Done.'
 	

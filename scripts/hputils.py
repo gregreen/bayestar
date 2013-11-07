@@ -25,8 +25,6 @@
 import numpy as np
 import healpy as hp
 
-import matplotlib.pyplot as plt
-
 
 def lb2pix(nside, l, b, nest=True):
 	'''
@@ -815,8 +813,8 @@ class MapRasterizer:
 		
 		#image_idx = np.arange(l.size, dtype='i8')
 		input_idx = np.arange(pix_idx.size, dtype='i8')
-		self.map_idx = np.empty(l.size, dtype='i8')
-		self.map_idx[:] = -1
+		self.map_idx_full = np.empty(l.size, dtype='i8')
+		self.map_idx_full[:] = -1
 		
 		for n in nside_unique:
 			idx = (nside == n)
@@ -834,13 +832,13 @@ class MapRasterizer:
 			map_idx_tmp = healpix_2_map[disp_idx]
 			mask = ~(map_idx_tmp == -1)
 			
-			self.map_idx[mask] = map_idx_tmp[mask]
+			self.map_idx_full[mask] = map_idx_tmp[mask]
 			
 			del healpix_2_map
 			del map_idx_tmp
 		
-		self.good_idx = ~(self.map_idx == -1)
-		self.map_idx = self.map_idx[self.good_idx]
+		self.good_idx = ~(self.map_idx_full == -1)
+		self.map_idx = self.map_idx_full[self.good_idx]
 		
 		l_min, l_max = np.min(l[self.good_idx]), np.max(l[self.good_idx])
 		b_min, b_max = np.min(b[self.good_idx]), np.max(b[self.good_idx])
@@ -874,6 +872,42 @@ class MapRasterizer:
 	
 	def __call__(self, pix_val):
 		return self.rasterize(pix_val)
+	
+	def xy2idx(self, x, y, lb_bounds=True):
+		'''
+		Return the map index of the raster position (x, y).
+		
+		Returns -1 if (x, y) is off the map.
+		
+		If lb_bounds is True, then assume that lb_bounds was used to set
+		extent of image (in imshow).
+		
+		This is useful for letting the user click on the image of the
+		map to retrieve information on a given pixel.
+		'''
+		
+		bounds = self.xy_bounds
+		
+		if lb_bounds:
+			bounds = self.lb_bounds
+		
+		dx = (bounds[1] - bounds[0]) / float(self.img_shape[0])
+		dy = (bounds[3] - bounds[2]) / float(self.img_shape[1])
+		
+		x_idx = int(np.floor((x - bounds[0]) / dx))
+		y_idx = int(np.floor((y - bounds[2]) / dy))
+		
+		if (    (x_idx < 0) or (x_idx >= self.img_shape[0])
+		     or (y_idx < 0) or (y_idx >= self.img_shape[1])):
+			return -1
+		
+		idx = x_idx * self.img_shape[1] + y_idx
+		
+		if self.clip:
+			if self.clip_mask[idx]:
+				return -1
+		
+		return self.map_idx_full[idx]
 	
 	def latlon_lines(self, l_lines, b_lines,
 	                       l_spacing=1., b_spacing=1.,
@@ -1025,6 +1059,12 @@ class MapRasterizer:
 		
 		return x_sc, y_sc
 	
+	def _unscale_lb_coords(self, x, y):
+		l_sc = (x - self.lb_bounds[0]) / self.x_scale + self.xy_bounds[0]
+		b_sc = (y - self.lb_bounds[2]) / self.y_scale + self.xy_bounds[2]
+		
+		return l_sc, b_sc
+	
 	def get_lb_bounds(self):
 		'''
 		Return the bounds of the map in Galactic coordinates:
@@ -1040,6 +1080,35 @@ class MapRasterizer:
 		'''
 		
 		return self.xy_bounds
+
+
+class PixelIdentifier:
+	def __init__(self, ax, rasterizer, lb_bounds=False):
+		self.ax = ax
+		self.cid = ax.figure.canvas.mpl_connect('button_press_event', self)
+		
+		self.rasterizer = rasterizer
+		self.lb_bounds = lb_bounds
+		
+		self.objs = []
+	
+	def __call__(self, event):
+		if event.inaxes != self.ax:
+			return
+		
+		# Determine map index of the raster coordinates
+		x, y = event.xdata, event.ydata
+		
+		map_idx = self.rasterizer.xy2idx(x, y, lb_bounds=self.lb_bounds)
+		
+		print '(%.2f, %.2f) -> %d' % (x, y, map_idx)
+		
+		# Pass map index to attached objects
+		for obj in self.objs:
+			obj(map_idx)
+	
+	def attach_obj(self, obj):
+		self.objs.append(obj)
 
 
 def test_Mollweide():
@@ -1124,7 +1193,9 @@ def test_Cartesian():
 
 
 def test_proj():
-	nside = 128
+	import matplotlib.pyplot as plt
+	
+	nside = 512
 	nest = True
 	clip = True
 	size = (2000, 1000)
@@ -1133,7 +1204,7 @@ def test_proj():
 	b_cent = 10.
 	
 	n_pix = hp.pixelfunc.nside2npix(nside)
-	pix_idx = np.arange(n_pix)#[4*n_pix/12:5*n_pix/12]
+	pix_idx = np.arange(n_pix)#[10000:11000]#[4*n_pix/12:5*n_pix/12]
 	l, b = pix2lb(nside, pix_idx, nest=nest)
 	pix_val = pix_idx[:]
 	
@@ -1191,27 +1262,20 @@ def test_proj():
 	ax.scatter(x, y, c='k', s=1, alpha=0.25)
 	
 	# Latitude/Longitude labels
-	l_labels, b_labels = rasterizer.label_locs(ls, bs, shift_frac=0.04)
+	l_labels, b_labels = rasterizer.label_locs(ls, bs, shift_frac=0.055)
 	
 	for b, (x_0, y_0), (x_1, y_1) in b_labels:
 		#print b, x_0, y_0
 		
-		ax.text(x_0, y_0, r'$%d$' % b, fontsize=12,
+		ax.text(x_0, y_0, r'$%d^{\circ}$' % b, fontsize=12,
 		                               ha='center',
 		                               va='center')
-		ax.text(x_1, y_1, r'$%d$' % b, fontsize=12,
+		ax.text(x_1, y_1, r'$%d^{\circ}$' % b, fontsize=12,
 		                               ha='center',
 		                               va='center')
 	
-	'''
-	for l, (x_0, y_0), (x_1, y_1) in l_labels:
-		ax.text(x_0, y_0, r'$%d$' % l, fontsize=12,
-		                               ha='center',
-		                               va='center')
-		ax.text(x_1, y_1, r'$%d$' % l, fontsize=12,
-		                               ha='center',
-		                               va='center')
-	'''
+	# Add pixel identifier
+	pix_identifier = PixelIdentifier(ax, rasterizer, lb_bounds=True)
 	
 	plt.show()
 
