@@ -206,8 +206,10 @@ class TGalacticModel:
     def mu_FeH_D(self, z):
         return self.mu_FeH_inf + self.Delta_mu*np.exp(-np.abs(z)/self.H_mu)
     
-    def p_FeH(self, FeH, DM, cos_l, sin_l, cos_b, sin_b):
-        x,y,z = self.Cartesian_coords(DM, cos_l, sin_l, cos_b, sin_b)
+    def p_FeH(self, FeH, DM, cos_l, sin_l, cos_b=None, sin_b=None):
+        x,y,z = DM, cos_l, sin_l
+        if (cos_b != None) and (sin_b != None):
+            x,y,z = self.Cartesian_coords(DM, cos_l, sin_l, cos_b, sin_b)
         r = np.sqrt(x*x + y*y)
         rho_halo_tmp = self.rho_halo(r,z)
         f_halo = rho_halo_tmp / (rho_halo_tmp + self.rho_thin(r,z) + self.rho_thick(r,z))
