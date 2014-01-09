@@ -25,7 +25,7 @@
 import numpy as np
 
 import matplotlib as mplib
-mplib.use('Agg')
+#mplib.use('Agg')
 import matplotlib.pyplot as plt
 
 import healpy as hp
@@ -412,11 +412,14 @@ class los_collection:
 		# Pixel locations
 		self.pix_idx = []
 		self.nside = []
+		self.fname_dict = {}
 		
 		# Cloud fit data
 		self.cloud_delta_mu = []
 		self.cloud_delta_lnEBV = []
 		self.cloud_mask = []
+		self.cloud_lnp = []
+		self.cloud_GR = []
 		
 		self.n_clouds = None
 		self.n_cloud_samples = None
@@ -424,6 +427,8 @@ class los_collection:
 		# Piecewise-linear fit data
 		self.los_delta_lnEBV = []
 		self.los_mask = []
+		self.los_lnp = []
+		self.los_GR = []
 		
 		self.n_slices = None
 		self.n_los_samples = None
@@ -525,30 +530,6 @@ class los_collection:
 			
 			del ret
 		
-		'''
-		for n in xrange(processes):
-			#print 'Getting information from process %d ...' % (n + 1)
-			
-			ret = output_q.get()
-			
-			if ret != None:
-				pix_idx.append(ret[0])
-				nside.append(ret[1])
-				
-				cloud_mask.append(ret[2])
-				cloud_mu_anchor.append(ret[3])
-				cloud_delta_EBV.append(ret[4])
-				
-				los_mask.append(ret[5])
-				#los_delta_EBV.append(ret[6])
-				los_EBV.append(ret[6])
-				
-				DM_min = ret[7]
-				DM_max = ret[8]
-			
-			del ret
-		'''
-		
 		print 'Concatening output from workers ...'
 		
 		#try:
@@ -630,12 +611,17 @@ class los_collection:
 			
 			# Load cloud fit
 			try:
-				cloud_samples_tmp = item['clouds'][:, 1:, 1:]
+				cloud_samples_tmp = item['clouds'][:, :, :]
+				
 				tmp, n_cloud_samples, n_clouds = cloud_samples_tmp.shape
+				n_clouds -= 1
+				n_cloud_samples -= 1
 				n_clouds /= 2
 				
-				self.cloud_delta_mu.append(cloud_samples_tmp[:, :, :n_clouds])
-				self.cloud_delta_lnEBV.append(cloud_samples_tmp[:, :, n_clouds:])
+				self.cloud_delta_mu.append(cloud_samples_tmp[:, 1:, 1:n_clouds+1])
+				self.cloud_delta_lnEBV.append(cloud_samples_tmp[:, 1:, n_clouds+1:])
+				self.cloud_lnp.append(cloud_samples_tmp[:, 1:, 0])
+				self.cloud_GR.append(cloud_samples_tmp[:, 0, 1:])
 				
 				if self.n_cloud_samples != None:
 					if n_cloud_samples != self.n_cloud_samples:
@@ -653,14 +639,18 @@ class los_collection:
 			
 			# Load piecewise-linear fit
 			try:
-				los_samples_tmp = item['los'][:, 1:, 1:]
+				los_samples_tmp = item['los'][:, :, :]
 				tmp, n_los_samples, n_slices = los_samples_tmp.shape
+				n_los_samples -= 1
+				n_slices -= 1
 				
 				DM_min = item['los'].attrs['DM_min']
 				DM_max = item['los'].attrs['DM_max']
 				
-				self.los_delta_lnEBV.append(los_samples_tmp)
-					
+				self.los_delta_lnEBV.append(los_samples_tmp[:, 1:, 1:])
+				self.los_lnp.append(los_samples_tmp[:, 1:, 0])
+				self.los_GR.append(los_samples_tmp[:, 0, 1:])
+				
 				if self.n_los_samples != None:
 					if n_los_samples != self.n_los_samples:
 						raise ValueError('# of l.o.s. fit samples in "%s" different from other pixels') % name
@@ -708,10 +698,15 @@ class los_collection:
 		self.cloud_mask = np.array(self.cloud_mask).astype(np.bool)
 		self.cloud_delta_mu = np.concatenate(self.cloud_delta_mu, axis=0)
 		self.cloud_delta_lnEBV = np.concatenate(self.cloud_delta_lnEBV, axis=0)
+		self.cloud_lnp = np.concatenate(self.cloud_lnp, axis=0)
+		self.cloud_GR = np.concatenate(self.cloud_GR, axis=0)
 		
 		# Combine piecewise-linear fits
 		self.los_mask = np.array(self.los_mask).astype(np.bool)
-		self.los_delta_lnEBV = np.concatenate(self.los_delta_lnEBV, axis=0)
+		self.los_EBV =  np.cumsum(np.exp(np.concatenate(self.los_delta_lnEBV, axis=0)), axis=2)
+		del self.los_delta_lnEBV
+		self.los_lnp = np.concatenate(self.los_lnp, axis=0)
+		self.los_GR = np.concatenate(self.los_GR, axis=0)
 		
 		# Calculate derived information
 		self.cloud_mu_anchor = np.cumsum(self.cloud_delta_mu, axis=2)
