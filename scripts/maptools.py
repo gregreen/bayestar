@@ -111,12 +111,12 @@ def put_los_output_on_q(output_q, pix_idx, nside,
 		          cloud_mask[s_idx:e_idx],
 		          cloud_delta_mu[s_idx:e_idx],
 		          cloud_delta_EBV[s_idx:e_idx],
-		          cloud_lnp[s_idx:e_idx]
-		          cloud_GR[s_idx:e_idx]
+		          cloud_lnp[s_idx:e_idx],
+		          cloud_GR[s_idx:e_idx],
 		          los_mask[s_idx:e_idx],
 		          los_delta_EBV[s_idx:e_idx],
-		          los_lnp[s_idx:e_idx]
-		          los_GR[s_idx:e_idx]
+		          los_lnp[s_idx:e_idx],
+		          los_GR[s_idx:e_idx],
 		          DM_min, DM_max)
 		
 		output_q.put(output)
@@ -1289,6 +1289,69 @@ class los_collection:
 		return hputils.MapRasterizer(self.nside, self.pix_idx, img_shape,
 		                             clip=clip, proj=proj,
 		                             l_cent=l_cent, b_cent=b_cent)
+	
+	def get_xyz(self):
+		'''
+		Return the Cartesian 3D map coordinates.
+		'''
+		
+		l = np.empty(len(self.nside))
+		b = np.empty(len(self.nside))
+		
+		for n in np.unique(self.nside):
+			idx = (self.nside == n)
+			
+			l[idx], b[idx] = hputils.pix2lb(n, self.pix_idx[idx],
+			                                nest=True, use_negative_l=False)
+		
+		l = np.radians(l)
+		b = np.radians(b)
+		
+		x = np.cos(l) * np.cos(b)
+		y = np.sin(l) * np.cos(b)
+		z = np.sin(b)
+		
+		d_anchor = np.power(10., self.los_mu_anchor / 5. + 1.)
+		d_cent = 0.5 * np.hstack([d_anchor[0], d_anchor[:1] + d_anchor[1:]])
+		
+		x_ret = []
+		y_ret = []
+		z_ret = []
+		
+		for d in d_cent:
+			x_ret.append(d * x)
+			y_ret.append(d * y)
+			z_ret.append(d * z)
+		
+		x_ret = np.hstack(x_ret)
+		y_ret = np.hstack(y_ret)
+		z_ret = np.hstack(z_ret)
+		
+		return x_ret, y_ret, z_ret
+	
+	def get_density(self, method='median'):
+		'''
+		Return the map density in the same order as get_xyz().
+		'''
+		
+		d_anchor = np.power(10., self.los_mu_anchor / 5. + 1.)
+		bin_width = np.hstack([d_anchor[0], np.diff(d_anchor)])
+		
+		density_ret = []
+		
+		for i,w in enumerate(bin_width):
+			rho = self.los_EBV[:, :, i]
+			
+			if i > 0:
+				rho -= self.los_EBV[:, :, i-1]
+			
+			rho = self.take_measure(rho, method)
+			
+			density_ret.append(rho / w)
+		
+		density_ret = np.hstack(density_ret)
+		
+		return density_ret
 
 
 class job_completion_counter:
