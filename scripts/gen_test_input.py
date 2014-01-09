@@ -92,18 +92,21 @@ def mock_mags(stellarmodel, mu, Ar, Mr, FeH, mag_limit=(23., 23., 23., 23., 23.)
 def observed(mags, mag_lim):
 	pass
 
-def err_model(mag, mag_lim):
-	err = np.sqrt(0.02*0.02 + 0.2 * np.exp(2. * (mag - mag_lim + 0.1) / 0.25))
+def err_model(mag, mag_lim, scale=1.):
+	err = 0.2 * np.exp((mag - mag_lim - 0.16) / 0.80)
+	err *= 1. + np.random.normal(loc=0., scale=0.1, size=err.shape)
+	err = scale * np.sqrt(0.02**2 + err**2)
 	
-	idx = (err > 1.)
-	err[idx] = 1.
+	idx = (err > 0.4)
+	err[idx] = 0.4
 	
 	return err
 
 def draw_from_model(l, b, N, EBV_spread=0.02,
                     mag_lim=(23., 22., 22., 21., 20.),
                     EBV_of_mu=None, EBV_uniform=False,
-                    redraw=True, n_bands=4):
+                    redraw=True, n_bands=4,
+                    scale=1.):
 	dtype = [('DM', 'f8'), ('EBV', 'f8'),
 	         ('Mr', 'f8'), ('FeH', 'f8'),
 	         ('mag', '5f8'), ('err', '5f8')]
@@ -187,7 +190,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		for k in xrange(5):
 			ret['mag'][idx,k] += ret['DM'][idx]
 			ret['mag'][idx,k] += ret['EBV'][idx] * R[k]
-			ret['err'][idx,k] = err_model(ret['mag'][idx][:,k], mag_lim[k])
+			ret['err'][idx,k] = err_model(ret['mag'][idx][:,k], mag_lim[k], scale=scale)
 			#0.02 + 0.3 * np.exp(ret['mag'][idx][:,k] - mag_lim[k])
 			#idx_tmp = ret['err'][idx,k] > 1.
 			#ret['err'][idx[idx_tmp],k] = 1.
@@ -196,7 +199,8 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		p_obs = np.empty((size, 5), dtype='f8')
 		
 		for k in xrange(5):
-			p_obs[:,k] = 0.5 - 0.5 * erf((ret['mag'][idx,k] - mag_lim[k] + 0.1) / 0.25)
+			p_obs[:,k] = 1. / (1. + np.exp( (ret['mag'][idx,k] - mag_lim[k] - 0.16) / 0.20 ))
+			#p_obs[:,k] = 0.5 - 0.5 * erf((ret['mag'][idx,k] - mag_lim[k] + 0.1) / 0.25)
 		
 		# Determine which bands stars are observed in
 		obs = (p_obs > np.random.random(size=(size, 5)))
@@ -206,7 +210,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		
 		# Re-estimate errors based on magnitudes
 		for k in xrange(5):
-			ret['err'][idx,k] = err_model(ret['mag'][idx,k], mag_lim[k])
+			ret['err'][idx,k] = err_model(ret['mag'][idx,k], mag_lim[k], scale=scale)
 		
 		# Remove observations with errors above 0.2 mags
 		obs = obs & (ret['err'][idx] < 0.2)
@@ -217,6 +221,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		
 		# Require detection in g and at least n_bands-1 other bands
 		obs = obs[:,0] & (np.sum(obs, axis=1) >= n_bands)
+		#obs = (np.sum(obs, axis=1) >= n_bands)
 		
 		idx = idx[~obs]
 		
@@ -228,7 +233,38 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 			
 			ret = ret[obs]
 	
+	np.set_printoptions(formatter={'float':lambda x: '%.3f' % x})
 	print ret['err']
+	
+	#print np.sum(ret['mag'] < 1.)
+	
+	fig = plt.figure()
+	
+	for n in xrange(5):
+		# Mag histogram
+		ax = fig.add_subplot(5,2,1+2*n)
+		
+		idx = ret['err'][:, n] < 1.e9
+		ax.hist(ret['mag'][idx, n], bins=100)
+		
+		m = np.linspace(10., mag_lim[n] + 0.5, 1000)
+		err_curve = err_model(m, mag_lim[n], scale=scale)
+		
+		ylim = ax.get_ylim()
+		err_curve *= 0.9 * ylim[1] / np.max(err_curve)
+		
+		ax.plot(m, err_curve)
+		
+		ax.set_xlim(10., 25.)
+		
+		# Error histogram
+		ax = fig.add_subplot(5,2,2+2*n)
+		ax.hist(ret['err'][idx, n], bins=100)
+		ax.set_xlim(0., 0.2)
+		
+	
+	plt.show()
+	
 	return ret
 
 
@@ -269,14 +305,16 @@ def main():
 	parser.add_argument('-r', '--max-r', type=float, default=23.,
 	                    metavar='mags', help='Limiting apparent r-band magnitude.')
 	parser.add_argument('-lim', '--limiting-mag', metavar='mags', type=float,
-	                    nargs=5, default=(22.5, 22.5, 22., 21., 20.),
-	                    help='Limiting magnitudes in grizy.')
+	                    nargs=5, default=(22.4, 21.7, 21.7, 21.1, 20.1),
+	                    help='Limiting magnitudes in grizy_{P1}.')
 	parser.add_argument('-nb', '--n-bands', type=int, default=4,
 	                    help='# of bands required to keep object.')
 	parser.add_argument('-flat', '--flat', action='store_true',
 	                    help='Draw parameters from flat distribution')
 	parser.add_argument('-sh', '--show', action='store_true',
 	                    help='Plot distribution of DM, Mr and E(B-V).')
+	parser.add_argument('-err', '--scale-errors', type=float, default=1.,
+	                    help='Stretch uncertainties by given amount.')
 	#parser.add_argument('-b', '--binary', action='store_true', help='Generate binary stars.')
 	if 'python' in sys.argv[0]:
 		offset = 2
@@ -332,7 +370,7 @@ def main():
 		                         N_stars, EBV_spread=args.mean_EBV,
 		                         mag_lim=args.limiting_mag, EBV_of_mu=EBV_of_mu,
 		                         EBV_uniform=args.EBV_uniform, redraw=redraw,
-		                         n_bands=args.n_bands)
+		                         n_bands=args.n_bands, scale=args.scale_errors)
 		print '%d stars observed' % (len(params))
 	
 	# Write Bayestar input file

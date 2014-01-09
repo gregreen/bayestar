@@ -169,7 +169,7 @@ def main():
         if np.isfinite(Mr_min):
             latex_table_2 += '$ %d \\! < \\! M_{r} \\! \\leq \\! %d$ &\n' % (Mr_min, Mr_max)
         
-        latex_table_2 += '$%d \\%% \\substack{+%d \\%% \\\\ %d \\%%}$ &\n' % (100.*d_med, 100.*(d_high-d_med), 100.*(d_low-d_med))
+        latex_table_2 += '$%d \\substack{+%d \\%% \\\\ %d \\%%}$ &\n' % (100.*d_med, 100.*(d_high-d_med), 100.*(d_low-d_med))
         latex_table_2 += '$%.2f \\substack{+%.2f \\\\ %.2f}$ \\\\ \n\n' % (EBV_pctiles[2], EBV_pctiles[3]-EBV_pctiles[2], EBV_pctiles[1]-EBV_pctiles[2])
         
         

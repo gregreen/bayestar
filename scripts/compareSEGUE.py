@@ -31,7 +31,7 @@ import time
 
 import matplotlib.pyplot as plt
 import matplotlib as mplib
-from matplotlib.ticker import FormatStrFormatter
+from matplotlib.ticker import FormatStrFormatter, AutoMinorLocator, MaxNLocator
 
 import hdf5io
 
@@ -86,13 +86,18 @@ def get1DProbSurfs(fname):
 		if 'pixel' in name:
 			dset = str(name + '/stellar pdfs')
 			idx = int(name.split()[1])
-			stack = hdf5io.TProbSurf(f, dset)
-			tmp = np.sum(stack.p[:,:,:], axis=1)
-			tmp = np.einsum('ij,i->ij', tmp, 1./np.sum(tmp, axis=1))
-			surfs.append(tmp)
+			#stack = hdf5io.TProbSurf(f, dset)
+			#tmp = np.sum(stack.p[:,:,:], axis=1)
+			#tmp = np.einsum('ij,i->ij', tmp, 1./np.sum(tmp, axis=1))
+			#surfs.append(tmp)
 			pixIdx.append(idx)
 			minEBV = f[dset].attrs['min'][0]
 			maxEBV = f[dset].attrs['max'][0]
+			
+			n_stars, n_bins, tmp = f[dset].shape
+			
+			#minEBV = -3.
+			#maxEBV = 5.
 			
 			dset = str(name + '/stellar chains')
 			EBVsamples.append(f[dset][:,1:,1])
@@ -103,6 +108,18 @@ def get1DProbSurfs(fname):
 			
 			dset = str(name + '/stellar chains')
 			Mrsamples.append(f[dset][:,1:,3])
+			
+			# Surfaces from samples
+			stack = np.empty((n_stars, n_bins), dtype='f8')
+			
+			for k in xrange(n_stars):
+				idx = (Mrsamples[-1][k] < 6.)
+				stack[k, :], edges = np.histogram(EBVsamples[-1][k, idx],
+				                                  bins=n_bins,
+				                                  range=(minEBV, maxEBV))
+			
+			tmp = np.einsum('ij,i->ij', stack, 1./np.sum(stack, axis=1))
+			surfs.append(tmp)
 	
 	f.close()
 	
@@ -494,19 +511,30 @@ def plot2DSurfs(surfs2D, surfs1D, EBV, sigmaEBV, minEBV, maxEBV):
 
 def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
                 minEBV, maxEBV, EBV_SFD, method='max', norm=False, filt_giant=False):
-	nStars, nCells = surfs.shape
+	nStars, nCells = surfs.shape 
 	DeltaEBV = (maxEBV - minEBV) / nCells
 	
+	nStars = EBV_samples.shape[0]
+	
 	mu, yCell, err = None, None, None
+	title = None
+	
 	if method == 'max':
+		title = r'$\mathrm{Maximum \ Probability \ Reddening}$'
+		#mu = EBV_samples[:, 0]
+		
 		yCell = np.argmax(surfs, axis=1).astype('f8')
 		yCell += np.random.random(size=(surfs.shape[0]))
 		mu = minEBV + yCell * DeltaEBV
 		
-		samples_err = np.std(EBV_samples, axis=1)
+		samples_err = np.std(EBV_samples[:, 1:], axis=1)
 		#err = np.sqrt(samples_err*samples_err + sigmaEBV*sigmaEBV)
 		err = samples_err
+		
 	elif method == 'mean':
+		title = r'$\mathrm{Mean \ Reddening}$'
+		
+		'''
 		y = np.linspace(0.5, nCells - 0.5, nCells)
 		y.shape = (1, nCells)
 		y = np.repeat(y, nStars, axis=0)
@@ -514,46 +542,54 @@ def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
 		y2Cell = np.sum(y*y*surfs, axis=1) / np.sum(surfs, axis=1)
 		sigma2 = (y2Cell - yCell*yCell) * (DeltaEBV*DeltaEBV)
 		mu = minEBV + yCell * DeltaEBV
+		'''
+		
+		mu = np.mean(EBV_samples[:, 1:], axis=1)
 		
 		samples_err = np.std(EBV_samples, axis=1)
 		#err = np.sqrt(samples_err*samples_err + sigmaEBV*sigmaEBV)
 		err = samples_err
-	elif method == 'resample':
-		EBVNew = []
 		
-		for i in xrange(EBV_samples.shape[1]):
+	elif method == 'resample':
+		title = r'$\mathrm{Reddening \ Samples}$'
+		
+		EBVNew = []
+		EBV_samples_tmp = EBV_samples[:, 1:]
+		Mr_samples_tmp = Mr_samples[:, 1:]
+		
+		for i in xrange(EBV_samples_tmp.shape[1]):
 			# Draw a set of of samples from SEGUE
 			nDev = np.random.normal(size=nStars)
 			EBVNew.append(EBV + nDev * sigmaEBV)
 		
-		mu = np.reshape(EBV_samples.T, (EBV_samples.size))
+		mu = np.reshape(EBV_samples_tmp.T, (EBV_samples_tmp.size))
 		EBV = np.hstack(EBVNew)
 		
 		EBV_SFD = np.reshape(EBV_SFD, (1, EBV_SFD.size))
-		EBV_SFD = np.repeat(EBV_SFD, EBV_samples.shape[1], axis=0)
+		EBV_SFD = np.repeat(EBV_SFD, EBV_samples_tmp.shape[1], axis=0)
 		EBV_SFD = np.hstack(EBV_SFD)
 		
 		SEGUE_err = np.reshape(sigmaEBV, (1, sigmaEBV.size))
-		SEGUE_err = np.repeat(SEGUE_err, EBV_samples.shape[1], axis=0)
+		SEGUE_err = np.repeat(SEGUE_err, EBV_samples_tmp.shape[1], axis=0)
 		SEGUE_err = np.hstack(SEGUE_err)
 		
 		
 		samples_err = None
 		if filt_giant:
-			samples_ma = np.ma.masked_array(EBV_samples, Mr_samples <= 6.)
-			samples_err = np.std(EBV_samples, axis=1)
+			samples_ma = np.ma.masked_array(EBV_samples_tmp, Mr_samples_tmp <= 6.)
+			samples_err = np.std(EBV_samples_tmp, axis=1)
 		else:
-			samples_err = np.std(EBV_samples, axis=1)
+			samples_err = np.std(EBV_samples_tmp, axis=1)
 		
 		samples_err = np.reshape(samples_err, (1, samples_err.size))
-		samples_err = np.repeat(samples_err, EBV_samples.shape[1], axis=0)
+		samples_err = np.repeat(samples_err, EBV_samples_tmp.shape[1], axis=0)
 		samples_err = np.hstack(samples_err)
 		
 		#err = np.sqrt(SEGUE_err*SEGUE_err + samples_err*samples_err)
 		err = samples_err
 		
 		if filt_giant:
-			Mr = np.reshape(Mr_samples.T, (EBV_samples.size))
+			Mr = np.reshape(Mr_samples_tmp.T, (EBV_samples_tmp.size))
 			dwarf = (Mr > 6.)
 			print 'Filtering out %.2f%% as dwarfs.' % (100. * float(np.sum(dwarf)) / Mr.size)
 			mu = mu[~dwarf]
@@ -587,6 +623,8 @@ def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
 	
 	ax.set_xlim(xlim)
 	ax.set_ylim([-0.6, 0.6])
+	ax.xaxis.set_minor_locator(AutoMinorLocator())
+	ax.yaxis.set_minor_locator(AutoMinorLocator())
 	#ax.set_xlabel(r'$\frac{1}{2} \left[ \mathrm{E} \left( B \! - \! V \right)_{\mathrm{Bayes}} + \mathrm{E} \left( B \! - \! V \right)_{\mathrm{SEGUE}} \right]$', fontsize=14)
 	ax.set_xlabel(r'$\mathrm{E} \left( B \! - \! V \right)_{\mathrm{SEGUE}}$', fontsize=14)
 	ax.set_ylabel(r'$\mathrm{E} \left( B \! - \! V \right)_{\mathrm{Bayes}} - \mathrm{E} \left( B \! - \! V \right)_{\mathrm{SEGUE}}$', fontsize=14)
@@ -630,7 +668,7 @@ def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
 	ax_hist = fig3.add_axes([0.75, 0.20, 0.10, 0.70])
 	
 	EBVavg = EBV_SFD[:]
-	EBVdiff = (mu - EBV) / err
+	EBVdiff = mu - EBV
 	xlim = [0., np.percentile(EBVavg, 99.9)]
 	ylim = [-3., 3.]
 	idx = ((EBVavg >= xlim[0]) & (EBVavg <= xlim[1]) & 
@@ -640,8 +678,11 @@ def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
 	ax.set_xlim(xlim)
 	ax.set_ylim([-0.6, 0.6])
 	ax_hist.set_ylim(ax.get_ylim())
+	ax.xaxis.set_minor_locator(AutoMinorLocator())
+	ax.yaxis.set_minor_locator(AutoMinorLocator())
 	ax.set_xlabel(r'$\mathrm{E} \left( B \! - \! V \right)_{\mathrm{SFD}}$', fontsize=14)
 	ax.set_ylabel(r'$\mathrm{E} \left( B \! - \! V \right)_{\mathrm{Bayes}} - \mathrm{E} \left( B \! - \! V \right)_{\mathrm{SEGUE}}$', fontsize=14)
+	#ax.set_title(title, fontsize=14)
 	#fig3.subplots_adjust(left=0.20, bottom=0.20)
 	
 	
@@ -662,8 +703,11 @@ def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
 	ax.set_xlim(xlim)
 	#ax.set_ylim([-0.6, 0.6])
 	ax_hist.set_ylim(ax.get_ylim())
+	ax.xaxis.set_minor_locator(AutoMinorLocator())
+	ax.yaxis.set_minor_locator(AutoMinorLocator())
 	ax.set_xlabel(r'$\mathrm{E} \left( B \! - \! V \right)_{\mathrm{SFD}}$', fontsize=14)
-	ax.set_ylabel(r'$\mathrm{E} \left( B \! - \! V \right)_{\mathrm{Bayes}} - \mathrm{E} \left( B \! - \! V \right)_{\mathrm{SEGUE}}$', fontsize=14)
+	ax.set_ylabel(r'$\chi_{\mathrm{Bayes} - \mathrm{SEGUE}}$', fontsize=14)
+	#ax.set_title(title, fontsize=14)
 	
 	
 	fig4 = plt.figure(figsize=(5,4), dpi=200)
@@ -680,7 +724,7 @@ def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
 	
 	print mean, sigma
 	
-	# Clip at 2 sigma
+	# Clip at 2.5 sigma
 	n_clip = 2.5
 	idx = (EBVdiff > mean - n_clip * sigma) & (EBVdiff < mean + n_clip * sigma)
 	mean = np.mean(EBVdiff[idx])
@@ -703,6 +747,8 @@ def plotScatter(surfs, EBV_samples, EBV, sigmaEBV, Mr_samples,
 	
 	ax.set_xlim(xlim)
 	ax.set_ylim(ylim)
+	ax.xaxis.set_minor_locator(AutoMinorLocator())
+	ax.yaxis.set_minor_locator(AutoMinorLocator())
 	ax.set_xlabel(r'$\mathrm{E} \left( B \! - \! V \right)_{\mathrm{Bayes}} - \mathrm{E} \left( B \! - \! V \right)_{\mathrm{SEGUE}}$', fontsize=14)
 	ax.set_ylabel(r'$\mathrm{Frequency}$', fontsize=14)
 	fig4.subplots_adjust(left=0.20, bottom=0.20)
@@ -752,17 +798,24 @@ def correlation_plot(ax, x, y, nbins=(25,20), ax_hist=None):
 		ax_hist.axhline(y=y_pctiles[0], c='b', ls='-', alpha=0.25)
 		ax_hist.axhline(y=y_pctiles[1], c='b', ls='-', alpha=0.25)
 		
-		ny = np.ceil(nbins[1]/2.)
-		bins = np.linspace(-ny*height, ny*height, 2*int(ny))
+		#ny = np.ceil(nbins[1]/2.)
+		#bins = np.linspace(-ny*height, ny*height, 2*int(ny)+1)
 		
-		idx1 = np.max( np.where(bins < y_pctiles[0], np.arange(bins.size), -1) )
-		idx2 = np.max( np.where(bins < y_pctiles[1], np.arange(bins.size), -1) )
+		n_bins = nbins[1]
+		bins = np.linspace(-diffMax, diffMax, nbins+1)
 		
-		ax_hist.hist(y, bins=bins[:idx1+2], orientation='horizontal',
+		while bins[1] - bins[0] > 0.04:
+			n_bins *= 2
+			bins = np.linspace(-diffMax, diffMax, n_bins+1)
+		
+		idx1 = np.argmin(np.abs(bins - y_pctiles[0]))
+		idx2 = np.argmin(np.abs(bins - y_pctiles[1]))
+		
+		ax_hist.hist(y, bins=bins[:idx1+1], orientation='horizontal',
 		             color='k', alpha=0.35)
-		ax_hist.hist(y, bins=bins[idx1+1:idx2+2], orientation='horizontal',
+		ax_hist.hist(y, bins=bins[idx1:idx2+1], orientation='horizontal',
 		             color='k', alpha=0.75)
-		ax_hist.hist(y, bins=bins[idx2+1:], orientation='horizontal',
+		ax_hist.hist(y, bins=bins[idx2:], orientation='horizontal',
 		             color='k', alpha=0.35)
 		
 		ax_hist.yaxis.tick_right()
@@ -777,7 +830,6 @@ def correlation_plot(ax, x, y, nbins=(25,20), ax_hist=None):
 	for i in xrange(3):
 		y_envelope = np.hstack([[thresholds[0,i]], thresholds[:,i], [thresholds[-1,i]]])
 		ax.step(EBVRange, y_envelope, where='mid', c='b', alpha=0.5)
-		
 
 
 def density_scatter(ax, x, y, nbins=(50,50), binsize=None,
@@ -891,7 +943,7 @@ def tests():
 def main():
 	directory = '/n/wise/ggreen/bayestar'
 	inFNames = ['%s/input/SEGUEcovar.%.5d.h5' % (directory, i) for i in xrange(10)]
-	outFNames = ['%s/output/SEGUEcovar_v2.%.5d.h5' % (directory, i) for i in xrange(10)]
+	outFNames = ['%s/output/SEGUEpaper2.%.5d.h5' % (directory, i) for i in xrange(10)]
 	bands = 5
 	max_SEGUE_sigma_EBV = 0.15
 	
@@ -987,7 +1039,7 @@ def main():
 	'''
 	
 	print 'Saving plots...'
-	name = 'SEGUEcovar_v2_noSEGUEerr'
+	name = 'SEGUEpaper2'
 	fig11.savefig('plots/SEGUE/%s-corr-maxprob.png' % name, dpi=300)
 	fig12.savefig('plots/SEGUE/%s-scatter-maxprob.png' % name, dpi=300)
 	fig13.savefig('plots/SEGUE/%s-SFDcorr-maxprob.png' % name, dpi=300)

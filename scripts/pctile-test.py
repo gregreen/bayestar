@@ -55,12 +55,21 @@ def stack_shifted(bounds, p, shift, norm):
 	dx = shift[0] * p.shape[1] / (bounds[1] - bounds[0])
 	dy = shift[1] * p.shape[2] / (bounds[3] - bounds[2])
 	dxy = np.vstack([dx,dy]).T
+	
 	p_stacked = np.zeros(p.shape[1:], dtype='f8')
+	
 	for surf,D,Z in zip(p,dxy,norm):
 		tmp = interp.shift(surf, D) / Z
-		idx = (tmp < 0.)
+		
+		idx = (tmp < 0.) | (~np.isfinite(tmp))
 		tmp[idx] = 0.
+		
+		#print np.min(tmp), np.max(tmp), np.sum(~np.isfinite(tmp))
+		
 		p_stacked += tmp #*= tmp + 1.e-5*np.exp(-tmp/1.e-2)
+	
+	print np.min(p_stacked), np.max(p_stacked), np.sum(~np.isfinite(p_stacked))
+	
 	return p_stacked
 
 
@@ -197,6 +206,13 @@ def main():
 	                        help='Output filename for error histogram plot.')
 	parser.add_argument('--indiv-out', '-io', type=str, default=None,
 	                       help='Output filename for individual pdfs.')
+	parser.add_argument('--max-err', '-max-err', type=float, nargs=5,
+	                       default=(np.inf, np.inf, np.inf, np.inf, np.inf),
+	                       help='Maximum grizy observational uncertainty.')
+	parser.add_argument('--min-err', '-min-err', type=float, nargs=5,
+	                       default=(0., 0., 0., 0., 0.),
+	                       help='Minimum grizy observational uncertainty.')
+	
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -238,7 +254,7 @@ def main():
 	lnZ.shape = (lnZ.size)
 	
 	lnZ_max = np.percentile(lnZ[np.isfinite(lnZ)], 0.95)
-	lnZ_idx = (lnZ > lnZ_max - 15.)
+	lnZ_idx = (lnZ > lnZ_max - 15.) & np.isfinite(lnZ)
 	
 	mean = np.mean(samples, axis=1)
 	
@@ -270,8 +286,31 @@ def main():
 	
 	f.close()
 	
+	# SNR cut
+	low_snr_idx = np.ones(truth.shape[0], dtype=np.bool)
+	
+	for i,m in enumerate(args.max_err):
+		low_snr_idx = low_snr_idx & (mag_errs[:, i] < m)
+	
+	high_snr_idx = np.empty((truth.shape[0], 5), dtype=np.bool)
+	
+	for i,m in enumerate(args.min_err):
+		high_snr_idx[:, i] = (mag_errs[:, i] > m)
+	
+	high_snr_idx = (np.sum(high_snr_idx, axis=1) >= 2)
+	
 	#mask_idx = np.ones(p.shape[0]).astype(np.bool)
-	mask_idx = det_idx & conv #& lnZ_idx
+	mask_idx = det_idx & conv & low_snr_idx & high_snr_idx & lnZ_idx
+	
+	for name, arr in [('nonconverged', conv),
+	                  ('low evidence (Z)', lnZ_idx),
+	                  ('insufficient bands', det_idx),
+	                  ('high S/N', low_snr_idx),
+	                  ('low S/N', high_snr_idx)]:
+		n_filt = np.sum(~arr)
+		pct_filt = 100. * float(n_filt) / float(mask_idx.size)
+		print '  * %s: %d (%.2f %%)' % (name, n_filt, pct_filt)
+	
 	p = p[mask_idx]
 	mean = mean[mask_idx]
 	lnp = lnp[mask_idx]
@@ -279,8 +318,6 @@ def main():
 	truth = truth[mask_idx]
 	cov = cov[mask_idx]
 	samples = samples[mask_idx]
-	
-	print 'Filtered out %d stars.' % (np.sum(~mask_idx))
 	
 	norm = np.sum(np.sum(p, axis=1), axis=1)
 	
