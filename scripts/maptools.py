@@ -23,6 +23,7 @@
 #  
 
 import numpy as np
+from scipy.ndimage.filters import gaussian_filter
 
 import matplotlib as mplib
 #mplib.use('Agg')
@@ -79,13 +80,19 @@ def reduce_to_single_res(pix_idx, nside, pix_val):
 
 def put_los_output_on_q(output_q, pix_idx, nside,
                                   cloud_mask, cloud_delta_mu, cloud_delta_EBV,
-                                  los_mask, los_delta_EBV, DM_min, DM_max):
+                                  cloud_lnp, cloud_GR,
+                                  los_mask, los_delta_EBV,
+                                  los_lnp, los_GR,
+                                  DM_min, DM_max):
 	# Determine number of pixels to put in each output object
 	pix_bytes = 44
 	
 	for x in [cloud_delta_mu, cloud_delta_EBV, los_delta_EBV]:
 		s = x.shape
 		pix_bytes += 4 * s[1] * s[2]
+	
+	for x in [cloud_lnp, cloud_GR, los_lnp, los_GR]:
+		pix_bytes += 4 * x.shape[1]
 	
 	max_bytes = 1.e9
 	max_pix = int(max_bytes / pix_bytes)
@@ -104,8 +111,12 @@ def put_los_output_on_q(output_q, pix_idx, nside,
 		          cloud_mask[s_idx:e_idx],
 		          cloud_delta_mu[s_idx:e_idx],
 		          cloud_delta_EBV[s_idx:e_idx],
+		          cloud_lnp[s_idx:e_idx],
+		          cloud_GR[s_idx:e_idx],
 		          los_mask[s_idx:e_idx],
 		          los_delta_EBV[s_idx:e_idx],
+		          los_lnp[s_idx:e_idx],
+		          los_GR[s_idx:e_idx],
 		          DM_min, DM_max)
 		
 		output_q.put(output)
@@ -115,18 +126,27 @@ def put_los_output_on_q(output_q, pix_idx, nside,
 	output_q.put('DONE')
 
 
-def los_coll_load_file_worker(fname_q, output_q, bounds, max_samples=None):
+def los_coll_load_file_worker(fname_q, output_q, bounds,
+                              star_E_range, star_DM_range,
+                              max_samples=None):
 	# Data on pixels
 	pix_idx = []
 	nside = []
 	
 	cloud_delta_mu = []
 	cloud_delta_EBV = []
+	cloud_lnp = []
+	cloud_GR = []
 	cloud_mask = []
 	
 	los_delta_EBV = []
 	los_EBV = []
+	los_lnp = []
+	los_GR = []
 	los_mask = []
+	
+	star_stack = []
+	n_stars = []
 	
 	DM_min, DM_max = None, None
 	unified = False
@@ -262,12 +282,17 @@ def los_coll_load_file_worker(fname_q, output_q, bounds, max_samples=None):
 					
 					# Load cloud fit
 					try:
-						cloud_samples_tmp = item['clouds'][:, 1:, 1:]
+						cloud_samples_tmp = item['clouds'][:, :, :]
 						tmp, n_cloud_samples, n_clouds = cloud_samples_tmp.shape
+						n_clouds -= 1
+						n_cloud_samples -= 1
 						n_clouds /= 2
 						
-						cloud_delta_mu.append(cloud_samples_tmp[:, :, :n_clouds])
-						cloud_delta_EBV.append(np.exp(cloud_samples_tmp[:, :, n_clouds:]))
+						cloud_delta_mu.append(cloud_samples_tmp[:, 1:, 1:n_clouds+1])
+						cloud_delta_EBV.append(np.exp(cloud_samples_tmp[:, 1:, n_clouds+1:]))
+						cloud_lnp.append(cloud_samples_tmp[:, 1:, 0])
+						cloud_GR.append(cloud_samples_tmp[:, 0, 1:])
+						
 						del cloud_samples_tmp
 						cloud_mask.append(True)
 						
@@ -276,45 +301,41 @@ def los_coll_load_file_worker(fname_q, output_q, bounds, max_samples=None):
 					
 					# Load piecewise-linear fit
 					try:
-						los_samples_tmp = item['los'][:, 1:, 1:]
+						los_samples_tmp = item['los'][:, :, :]
 						tmp, n_los_samples, n_slices = los_samples_tmp.shape
+						n_los_samples -= 1
+						n_slices -= 1
 						
 						DM_min = item['los'].attrs['DM_min']
 						DM_max = item['los'].attrs['DM_max']
 						
-						los_delta_EBV.append(np.exp(los_samples_tmp))
+						los_delta_EBV.append(np.exp(los_samples_tmp[:, 1:, 1:]))
+						los_lnp.append(los_samples_tmp[:, 1:, 0])
+						los_GR.append(los_samples_tmp[:, 0, 1:])
+						
 						del los_samples_tmp
 						los_mask.append(True)
 						
 					except:
 						los_mask.append(False)
+					
+					# Load stellar chains and create stacked image
+					star_samples = item['stellar chains'][:, 1:, 1:3]
+					n_stars, n_star_samples, n_star_dim = star_samples.shape
+					star_samples.shape = (n_stars * n_star_samples, n_star_dim)
+					
+					star_stack, tmp1, tmp2 = np.histogram2d(star_samples[:,0], star_samples[:,1],
+					                                        bins=[star_E_range, star_DM_range])
+					star_stack = star_stack.astype('i2')
+					
+					star_stack.append(star_stack)
+					n_stars.append(n_stars)
 			
 			f.close()
 			fname_q.task_done()
 			
 		else:
 			output = None
-			
-			'''
-			if unified:
-				print 'combine'
-				pix_idx = np.hstack(pix_idx)
-				nside = np.hstack(nside)
-				
-				# Combine cloud fits
-				cloud_mask = np.hstack(cloud_mask).astype(np.bool)
-				cloud_delta_mu = np.concatenate(cloud_delta_mu, axis=0)
-				cloud_delta_EBV = np.concatenate(cloud_delta_EBV, axis=0)
-				
-				# Combine piecewise-linear fits
-				los_mask = np.hstack(los_mask).astype(np.bool)
-				los_EBV = np.concatenate(los_EBV, axis=0)
-				
-				# Calculate derived information
-				cloud_mu_anchor = np.cumsum(cloud_delta_mu, axis=2)
-				
-				print 'done'
-			'''
 			
 			try:
 				# Combine pixel information
@@ -346,21 +367,28 @@ def los_coll_load_file_worker(fname_q, output_q, bounds, max_samples=None):
 					cloud_mask = np.array(cloud_mask).astype(np.bool)
 					cloud_delta_mu = np.concatenate(cloud_delta_mu, axis=0)
 					cloud_delta_EBV = np.concatenate(cloud_delta_EBV, axis=0)
+					cloud_lnp = np.concatenate(cloud_lnp, axis=0)
+					cloud_GR = np.concatenate(cloud_GR, axis=0)
 					
 					# Combine piecewise-linear fits
 					los_mask = np.array(los_mask).astype(np.bool)
 					los_EBV = np.cumsum(np.concatenate(los_delta_EBV, axis=0), axis=2)
+					los_lnp = np.concatenate(los_lnp, axis=0)
+					los_GR = np.concatenate(los_GR, axis=0)
+					
+					# Stacked stellar PDFs
+					star_stack = np.concatenate(star_stack, axis=0)
+					n_stars = np.concatenate(n_stars, axis=0)
 					
 					# Calculate derived information
 					cloud_mu_anchor = np.cumsum(cloud_delta_mu, axis=2)
-					#cloud_delta_EBV = np.exp(cloud_delta_lnEBV)
-					
-					#los_delta_EBV = np.exp(los_delta_lnEBV)
-					#los_EBV = np.cumsum(los_delta_EBV, axis=2)
-					
-				output = (pix_idx, nside,
-				          cloud_mask, cloud_mu_anchor, cloud_delta_EBV,
-				          los_mask, los_EBV, DM_min, DM_max)
+				
+				#output = (pix_idx, nside,
+				#          cloud_mask, cloud_mu_anchor, cloud_delta_EBV,
+				#          cloud_lnp, cloud_GR,
+				#          los_mask, los_EBV,
+				#          los_lnp, los_GR,
+				#          DM_min, DM_max)
 				
 			except:
 				pass
@@ -375,8 +403,12 @@ def los_coll_load_file_worker(fname_q, output_q, bounds, max_samples=None):
 			                              cloud_mask,
 			                              cloud_mu_anchor,
 			                              cloud_delta_EBV,
+			                              cloud_lnp,
+			                              cloud_GR,
 			                              los_mask,
 			                              los_EBV,
+			                              los_lnp,
+			                              los_GR,
 			                              DM_min, DM_max)
 			
 			#output_q.put(output)
@@ -412,11 +444,10 @@ class los_collection:
 		# Pixel locations
 		self.pix_idx = []
 		self.nside = []
-		self.fname_dict = {}
 		
 		# Cloud fit data
-		self.cloud_delta_mu = []
-		self.cloud_delta_lnEBV = []
+		self.cloud_mu_anchor = []
+		self.cloud_delta_EBV = []
 		self.cloud_mask = []
 		self.cloud_lnp = []
 		self.cloud_GR = []
@@ -425,7 +456,7 @@ class los_collection:
 		self.n_cloud_samples = None
 		
 		# Piecewise-linear fit data
-		self.los_delta_lnEBV = []
+		self.los_EBV = []
 		self.los_mask = []
 		self.los_lnp = []
 		self.los_GR = []
@@ -434,6 +465,13 @@ class los_collection:
 		self.n_los_samples = None
 		self.DM_min = None
 		self.DM_max = None
+		
+		# Stacked stellar pdfs
+		self.star_stack = []
+		self.star_E_range = np.linspace(0., 5., 501)
+		self.star_DM_range = np.linspace(4., 19., 121)
+		self.star_bounds = [[0., 5.], [4., 19.]]
+		self.n_stars = []
 		
 		# Load files
 		if processes == 1:
@@ -497,10 +535,16 @@ class los_collection:
 		cloud_mask = []
 		cloud_mu_anchor = []
 		cloud_delta_EBV = []
+		cloud_lnp = []
+		cloud_GR = []
 		
 		los_mask = []
-		#los_delta_EBV = []
 		los_EBV = []
+		los_lnp = []
+		los_GR = []
+		
+		star_stack = []
+		n_stars = []
 		
 		DM_min, DM_max = None, None
 		
@@ -520,13 +564,16 @@ class los_collection:
 				cloud_mask.append(ret[2])
 				cloud_mu_anchor.append(ret[3])
 				cloud_delta_EBV.append(ret[4])
+				cloud_lnp.append(ret[5])
+				cloud_GR.append(ret[6])
 				
-				los_mask.append(ret[5])
-				#los_delta_EBV.append(ret[6])
-				los_EBV.append(ret[6])
+				los_mask.append(ret[7])
+				los_EBV.append(ret[8])
+				los_lnp.append(ret[9])
+				los_GR.append(ret[10])
 				
-				DM_min = ret[7]
-				DM_max = ret[8]
+				DM_min = ret[11]
+				DM_max = ret[12]
 			
 			del ret
 		
@@ -546,13 +593,19 @@ class los_collection:
 		del cloud_mu_anchor
 		self.cloud_delta_EBV = np.concatenate(cloud_delta_EBV, axis=0)
 		del cloud_delta_EBV
+		self.cloud_lnp = np.concatenate(cloud_lnp, axis=0)
+		del cloud_lnp
+		self.cloud_GR = np.concatenate(cloud_GR, axis=0)
+		del cloud_GR
 		
 		self.los_mask = np.hstack(los_mask)
 		del los_mask
-		#self.los_delta_EBV = np.concatenate(los_delta_EBV, axis=0)
-		#del los_delta_EBV
 		self.los_EBV = np.concatenate(los_EBV, axis=0)
 		del los_EBV
+		self.los_lnp = np.concatenate(los_lnp, axis=0)
+		del los_lnp
+		self.los_GR = np.concatenate(los_GR, axis=0)
+		del los_GR
 		
 		self.DM_min = DM_min
 		self.DM_max = DM_max
@@ -566,7 +619,7 @@ class los_collection:
 		
 		print 'Done concatenating input.'
 	
-	def load_file_indiv(self, fname, bounds=None):
+	def load_file_indiv(self, fname, bounds=None, max_samples=None):
 		'''
 		Loads data on the line-of-sight fits from one
 		Bayestar output file.
@@ -588,88 +641,190 @@ class los_collection:
 		except:
 			raise IOError('Unable to open %s.' % fname)
 		
-		# Load each pixel
+		unified = False
 		
-		for name,item in f.iteritems():
-			# Load pixel position
-			try:
-				pix_idx_tmp = int(item.attrs['healpix_index'][0])
-				nside_tmp = int(item.attrs['nside'][0])
-			except:
-				continue
+		# Unified file type
+		if 'locations' in f:
+			dset = f['locations']
+			nside_tmp = dset['nside'][:]
+			pix_idx_tmp = dset['healpix_index'][:]
+			cloud_mask_tmp = dset['cloud_mask'][:]
+			los_mask_tmp = dset['piecewise_mask'][:]
 			
-			# Check if pixel is in bounds
-			if bounds != None:
-				l, b = hputils.pix2lb_scalar(nside_tmp, pix_idx_tmp, nest=True)
-				
-				if (     (l < bounds[0]) or (l > bounds[1])
-				      or (b < bounds[2]) or (b > bounds[3])  ):
-					continue
+			cloud_delta_mu_tmp = None
+			cloud_delta_EBV_tmp = None
+			los_EBV_tmp = None
 			
-			self.pix_idx.append(pix_idx_tmp)
-			self.nside.append(nside_tmp)
-			
-			# Load cloud fit
-			try:
-				cloud_samples_tmp = item['clouds'][:, :, :]
-				
-				tmp, n_cloud_samples, n_clouds = cloud_samples_tmp.shape
-				n_clouds -= 1
-				n_cloud_samples -= 1
+			if max_samples == None:
+				dset = f['cloud']
+				tmp, n_cloud_samples, n_clouds = dset.shape
 				n_clouds /= 2
+				cloud_delta_mu_tmp = dset[:, :, :n_clouds].astype('f4')
+				cloud_delta_EBV_tmp = dset[:, :, n_clouds:].astype('f4')
 				
-				self.cloud_delta_mu.append(cloud_samples_tmp[:, 1:, 1:n_clouds+1])
-				self.cloud_delta_lnEBV.append(cloud_samples_tmp[:, 1:, n_clouds+1:])
-				self.cloud_lnp.append(cloud_samples_tmp[:, 1:, 0])
-				self.cloud_GR.append(cloud_samples_tmp[:, 0, 1:])
+				dset = f['piecewise']
+				los_EBV_tmp = dset[:, :, :].astype('f4')
+				self.DM_min = dset.attrs['DM_min']
+				self.DM_max = dset.attrs['DM_max']
 				
-				if self.n_cloud_samples != None:
-					if n_cloud_samples != self.n_cloud_samples:
-						raise ValueError('# of cloud fit samples in "%s" different from other pixels') % name
-					if n_clouds != self.n_clouds:
-						raise ValueError('# of cloud fit clouds in "%s" different from other pixels') % name
-				else:
-					self.n_cloud_samples = n_cloud_samples
-					self.n_clouds = n_clouds
+			else:
+				dset = f['cloud']
+				tmp, n_cloud_samples, n_clouds = dset.shape
+				n_clouds /= 2
+				cloud_delta_mu_tmp = dset[:, :max_samples, :n_clouds].astype('f4')
+				cloud_delta_EBV_tmp = dset[:, :max_samples, n_clouds:].astype('f4')
+				n_cloud_samples = cloud_delta_mu_tmp.shape[1]
 				
-				self.cloud_mask.append(True)
-				
-			except:
-				self.cloud_mask.append(False)
+				dset = f['piecewise']
+				los_EBV_tmp = dset[:, :max_samples, :].astype('f4')
+				self.DM_min = dset.attrs['DM_min']
+				self.DM_max = dset.attrs['DM_max']
 			
-			# Load piecewise-linear fit
-			try:
-				los_samples_tmp = item['los'][:, :, :]
-				tmp, n_los_samples, n_slices = los_samples_tmp.shape
-				n_los_samples -= 1
-				n_slices -= 1
+			# Check which pixels are in bounds
+			if bounds != None:
+				l = np.empty(nside_tmp.size, dtype='f8')
+				b = np.empty(nside_tmp.size, dtype='f8')
 				
-				DM_min = item['los'].attrs['DM_min']
-				DM_max = item['los'].attrs['DM_max']
+				for n in np.unique(nside_tmp):
+					idx = (nside_tmp == n)
+					l[idx], b[idx] = hputils.pix2lb(n, pix_idx_tmp[idx], nest=True)
 				
-				self.los_delta_lnEBV.append(los_samples_tmp[:, 1:, 1:])
-				self.los_lnp.append(los_samples_tmp[:, 1:, 0])
-				self.los_GR.append(los_samples_tmp[:, 0, 1:])
+				idx = (  (l >= bounds[0]) & (l <= bounds[1])
+				       & (b >= bounds[2]) & (b <= bounds[3])  )
 				
-				if self.n_los_samples != None:
-					if n_los_samples != self.n_los_samples:
-						raise ValueError('# of l.o.s. fit samples in "%s" different from other pixels') % name
-					if n_slices != self.n_slices:
-						raise ValueError('# of l.o.s. regions in "%s" different from other pixels') % name
-					if DM_min != self.DM_min:
-						raise ValueError('DM_min in "%s" different from other pixels') % name
-					if DM_max != self.DM_max:
-						raise ValueError('DM_min in "%s" different from other pixels') % name
-				else:
-					self.n_los_samples = n_los_samples
-					self.n_slices = n_slices
-					self.DM_min = DM_min
-					self.DM_max = DM_max
 				
-				self.los_mask.append(True)
+				nside_tmp = nside_tmp[idx]
+				pix_idx_tmp = pix_idx_tmp[idx]
 				
-			except:
-				self.los_mask.append(False)
+				cloud_mask_tmp = cloud_mask_tmp[idx]
+				los_mask_tmp = los_mask_tmp[idx]
+				
+				cloud_delta_mu_tmp = cloud_delta_mu_tmp[idx]
+				cloud_delta_EBV_tmp = cloud_delta_EBV_tmp[idx]
+				
+				los_EBV_tmp = los_EBV_tmp[idx]
+			
+			self.pix_idx.append( pix_idx_tmp )
+			self.nside.append( nside_tmp )
+			
+			# Cloud fits
+			self.cloud_mask.append( cloud_mask_tmp.astype(np.bool) )
+			self.cloud_mu_anchor.append( np.cumsum(cloud_delta_mu_tmp, axis=2) )
+			self.cloud_delta_EBV.append( cloud_delta_EBV_tmp )
+			
+			# Piecewise-linear fits
+			self.los_mask.append( los_mask_tmp.astype(np.bool) )
+			self.los_EBV.append( los_EBV_tmp )
+			self.n_slices = los_EBV_tmp.shape[2]
+			
+			# Filler convergence information
+			shape = (cloud_delta_mu_tmp.shape[0], 2*cloud_delta_mu_tmp.shape[2])
+			self.cloud_GR.append( np.nan * np.ones(shape, dtype='f4') )
+			
+			shape = (cloud_delta_mu_tmp.shape[0])
+			self.cloud_lnp.append( np.nan * np.ones(shape, dtype='f4') )
+			
+			shape = (los_EBV_tmp.shape[0], los_EBV_tmp.shape[2])
+			self.los_GR.append( np.nan * np.ones(shape, dtype='f4') )
+			
+			shape = (los_EBV_tmp.shape[0])
+			self.los_lnp.append( np.nan * np.ones(shape, dtype='f4') )
+			
+		else: # Raw Bayestar output
+			
+			# Load each pixel
+			for name,item in f.iteritems():
+				# Load pixel position
+				try:
+					pix_idx_tmp = int(item.attrs['healpix_index'][0])
+					nside_tmp = int(item.attrs['nside'][0])
+				except:
+					continue
+				
+				# Check if pixel is in bounds
+				if bounds != None:
+					l, b = hputils.pix2lb_scalar(nside_tmp, pix_idx_tmp, nest=True)
+					
+					if (     (l < bounds[0]) or (l > bounds[1])
+					      or (b < bounds[2]) or (b > bounds[3])  ):
+						continue
+				
+				self.pix_idx.append(pix_idx_tmp)
+				self.nside.append(nside_tmp)
+				
+				# Load cloud fit
+				try:
+					cloud_samples_tmp = item['clouds'][:, :, :]
+					
+					tmp, n_cloud_samples, n_clouds = cloud_samples_tmp.shape
+					n_clouds -= 1
+					n_cloud_samples -= 1
+					n_clouds /= 2
+					
+					self.cloud_mu_anchor.append( np.cumsum(cloud_samples_tmp[:, 1:, 1:n_clouds+1], axis=2) )
+					self.cloud_delta_EBV.append( np.exp(cloud_samples_tmp[:, 1:, n_clouds+1:]) )
+					self.cloud_lnp.append(cloud_samples_tmp[:, 1:, 0])
+					self.cloud_GR.append(cloud_samples_tmp[:, 0, 1:])
+					
+					if self.n_cloud_samples != None:
+						if n_cloud_samples != self.n_cloud_samples:
+							raise ValueError('# of cloud fit samples in "%s" different from other pixels' % name)
+						if n_clouds != self.n_clouds:
+							raise ValueError('# of cloud fit clouds in "%s" different from other pixels' % name)
+					else:
+						self.n_cloud_samples = n_cloud_samples
+						self.n_clouds = n_clouds
+					
+					self.cloud_mask.append(True)
+					
+				except:
+					self.cloud_mask.append(False)
+				
+				# Load piecewise-linear fit
+				try:
+					los_samples_tmp = item['los'][:, :, :]
+					tmp, n_los_samples, n_slices = los_samples_tmp.shape
+					n_los_samples -= 1
+					n_slices -= 1
+					
+					DM_min = item['los'].attrs['DM_min']
+					DM_max = item['los'].attrs['DM_max']
+					
+					self.los_EBV.append( np.cumsum(np.exp(los_samples_tmp[:, 1:, 1:]), axis=2))
+					self.los_lnp.append(los_samples_tmp[:, 1:, 0])
+					self.los_GR.append(los_samples_tmp[:, 0, 1:])
+					
+					if self.n_los_samples != None:
+						if n_los_samples != self.n_los_samples:
+							raise ValueError('# of l.o.s. fit samples in "%s" different from other pixels' % name)
+						if n_slices != self.n_slices:
+							raise ValueError('# of l.o.s. regions in "%s" different from other pixels' % name)
+						if DM_min != self.DM_min:
+							raise ValueError('DM_min in "%s" different from other pixels' % name)
+						if DM_max != self.DM_max:
+							raise ValueError('DM_min in "%s" different from other pixels' % name)
+					else:
+						self.n_los_samples = n_los_samples
+						self.n_slices = n_slices
+						self.DM_min = DM_min
+						self.DM_max = DM_max
+					
+					self.los_mask.append(True)
+					
+				except:
+					self.los_mask.append(False)
+				
+				# Load stellar chains and create stacked image
+				star_samples = item['stellar chains'][:, 1:, 1:3]
+				n_stars, n_star_samples, n_star_dim = star_samples.shape
+				star_samples.shape = (n_stars * n_star_samples, n_star_dim)
+				
+				star_stack, tmp1, tmp2 = np.histogram2d(star_samples[:,0], star_samples[:,1],
+				                                        bins=[self.star_E_range, self.star_DM_range])
+				star_stack = star_stack.astype('i2')
+				
+				self.star_stack.append(star_stack)
+				self.n_stars.append(n_stars)
 		
 		f.close()
 	
@@ -691,26 +846,33 @@ class los_collection:
 			self.load_file_indiv(fname, bounds=bounds)
 		
 		# Combine pixel information
-		self.pix_idx = np.array(self.pix_idx).astype('i8')
-		self.nside = np.array(self.nside)
+		self.pix_idx = np.array(self.pix_idx).astype('i8').flatten()
+		self.nside = np.array(self.nside).flatten()
 		
 		# Combine cloud fits
-		self.cloud_mask = np.array(self.cloud_mask).astype(np.bool)
-		self.cloud_delta_mu = np.concatenate(self.cloud_delta_mu, axis=0)
-		self.cloud_delta_lnEBV = np.concatenate(self.cloud_delta_lnEBV, axis=0)
+		self.cloud_mask = np.array(self.cloud_mask).astype(np.bool).flatten()
+		self.cloud_mu_anchor = np.concatenate(self.cloud_mu_anchor, axis=0)
+		self.cloud_delta_EBV = np.concatenate(self.cloud_delta_EBV, axis=0)
 		self.cloud_lnp = np.concatenate(self.cloud_lnp, axis=0)
 		self.cloud_GR = np.concatenate(self.cloud_GR, axis=0)
 		
 		# Combine piecewise-linear fits
-		self.los_mask = np.array(self.los_mask).astype(np.bool)
-		self.los_EBV =  np.cumsum(np.exp(np.concatenate(self.los_delta_lnEBV, axis=0)), axis=2)
-		del self.los_delta_lnEBV
+		self.los_mask = np.array(self.los_mask).astype(np.bool).flatten()
+		self.los_EBV =  np.concatenate(self.los_EBV, axis=0)
+		#del self.los_delta_lnEBV
 		self.los_lnp = np.concatenate(self.los_lnp, axis=0)
 		self.los_GR = np.concatenate(self.los_GR, axis=0)
 		
+		# Combine stellar information
+		try:
+			self.star_stack = np.array(self.star_stack)
+			self.n_stars = np.array(self.n_stars)
+		except:
+			print 'No stellar surfaces included.'
+		
 		# Calculate derived information
-		self.cloud_mu_anchor = np.cumsum(self.cloud_delta_mu, axis=2)
-		self.cloud_delta_EBV = np.exp(self.cloud_delta_lnEBV)
+		#self.cloud_mu_anchor = np.cumsum(self.cloud_delta_mu, axis=2)
+		#self.cloud_delta_EBV = np.exp(self.cloud_delta_lnEBV)
 		
 		#self.los_delta_EBV = np.exp(self.los_delta_lnEBV)
 		#self.los_EBV = np.cumsum(self.los_delta_EBV, axis=2)
@@ -727,13 +889,15 @@ class los_collection:
 		# Locations
 		print '/locations'
 		dtype = [('nside', 'i4'), ('healpix_index', 'i8'),
-		         ('piecewise_mask', 'u1'), ('cloud_mask', 'u1')]
+		         ('piecewise_mask', 'u1'), ('cloud_mask', 'u1'),
+		         ('n_stars', 'u4')]
 		
 		data = np.empty(shape=self.nside.shape, dtype=dtype)
 		data['nside'][:] = self.nside[:]
 		data['healpix_index'][:] = self.pix_idx[:]
 		data['piecewise_mask'][:] = self.los_mask[:]
 		data['cloud_mask'][:] = self.cloud_mask[:]
+		data['n_stars'][:] = self.n_stars[:]
 		
 		dset = f.create_dataset('/locations', data.shape,
 		                                      dtype=dtype,
@@ -752,9 +916,6 @@ class los_collection:
 		                                      chunks=chunk_shape,
 		                                      compression='gzip',
 		                                      compression_opts=9)
-		
-		print 'los_EBV'
-		print self.los_EBV.shape
 		dset[:] = self.los_EBV[:]
 		dset.attrs['DM_min'] = self.DM_min
 		dset.attrs['DM_max'] = self.DM_max
@@ -776,6 +937,19 @@ class los_collection:
 		                                  compression='gzip',
 		                                  compression_opts=9)
 		dset[:] = data[:]
+		
+		# Stacked Stellar PDFs
+		print '/stacked pdfs'
+		shape = self.star_stacks
+		chunk_shape = (min(shape[0], 250), shape[1], shape[2])
+		
+		dset = f.create_dataset('/stacked pdfs', shape,
+		                                         dtype='i2',
+		                                         chunks=chunk_shape,
+		                                         compression='gzip',
+		                                         compression_opts=9)
+		dset[:] = self.star_stacks[:]
+		dset.attrs['bounds'] = np.array(self.star_bounds).flatten()
 		
 		print 'close'
 		f.close()
@@ -1208,6 +1382,103 @@ class los_collection:
 		return hputils.MapRasterizer(self.nside, self.pix_idx, img_shape,
 		                             clip=clip, proj=proj,
 		                             l_cent=l_cent, b_cent=b_cent)
+	
+	def get_xyz(self, oversample=1, max_points=None):
+		'''
+		Return the Cartesian 3D map coordinates.
+		'''
+		
+		l = np.empty(len(self.nside))
+		b = np.empty(len(self.nside))
+		
+		for n in np.unique(self.nside):
+			idx = (self.nside == n)
+			
+			l[idx], b[idx] = hputils.pix2lb(n, self.pix_idx[idx],
+			                                nest=True, use_negative_l=False)
+		
+		if max_points != None:
+			l = l[:max_points]
+			b = b[:max_points]
+		
+		l = np.radians(l)
+		b = np.radians(b)
+		
+		x = np.cos(l) * np.cos(b)
+		y = np.sin(l) * np.cos(b)
+		z = np.sin(b)
+		
+		d_anchor = np.power(10., self.los_mu_anchor / 5. + 1.)
+		d_anchor = np.hstack([0., d_anchor])
+		
+		d_cent = np.empty((d_anchor.size-1, oversample), dtype='f8')
+		
+		a_range = (np.arange(oversample) + 1.) / (oversample + 1.)
+		
+		print d_anchor
+		print a_range
+		
+		for i,a in enumerate(a_range):
+			d_cent[:, i] = a * d_anchor[1:] + (1. - a) * d_anchor[:-1]
+		
+		print '\nd_cent[1]'
+		print d_cent[1]
+		
+		print '\nd_cent'
+		print d_cent
+		
+		d_cent = d_cent.flatten()
+		
+		print '\nd_cent.flatten()'
+		print d_cent
+		
+		#d_cent = 0.5 * np.hstack([d_anchor[0], d_anchor[:1] + d_anchor[1:]])
+		
+		x_ret = []
+		y_ret = []
+		z_ret = []
+		
+		for d in d_cent:
+			x_ret.append(d * x)
+			y_ret.append(d * y)
+			z_ret.append(d * z)
+		
+		x_ret = np.hstack(x_ret)
+		y_ret = np.hstack(y_ret)
+		z_ret = np.hstack(z_ret)
+		
+		return x_ret, y_ret, z_ret
+	
+	def get_density(self, method='median', oversample=1, max_points=None):
+		'''
+		Return the map density in the same order as get_xyz().
+		'''
+		
+		d_anchor = np.power(10., self.los_mu_anchor / 5. + 1.)
+		bin_width = np.hstack([d_anchor[0], np.diff(d_anchor)])
+		
+		print d_anchor
+		print bin_width
+		
+		density_ret = []
+		
+		if max_points == None:
+			max_points = rho.shape[0]
+		
+		for i,w in enumerate(bin_width):
+			rho = self.los_EBV[:max_points, :, i]
+			
+			if i > 0:
+				rho -= self.los_EBV[:max_points, :, i-1]
+			
+			rho = self.take_measure(rho, method)
+			
+			for j in xrange(oversample):
+				density_ret.append(rho / w)
+		
+		density_ret = np.hstack(density_ret)
+		
+		return density_ret
 
 
 class job_completion_counter:

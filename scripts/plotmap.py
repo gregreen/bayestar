@@ -24,6 +24,8 @@
 
 import numpy as np
 
+from scipy.ndimage.filters import gaussian_filter
+
 import matplotlib as mplib
 #mplib.use('Agg')
 import matplotlib.pyplot as plt
@@ -176,6 +178,26 @@ class PixelPlotter:
 		if map_idx == -1:
 			return
 		
+		# Load and stretch stacked stellar pdfs
+		star_stack = self.los_coll.star_stack[map_idx].astype('f8')
+		
+		dE = self.los_coll.star_E_range[1] - self.los_coll.star_E_range[0]
+		dDM = self.los_coll.star_DM_range[1] - self.los_coll.star_DM_range[0]
+		sigma = [0.015/dE, 0.15/dDM]
+		star_stack = gaussian_filter(star_stack, sigma, mode='mirror')
+		
+		star_stack /= np.max(star_stack)
+		norm1 = 1. / np.power(np.max(star_stack, axis=0), 0.8)
+		norm2 = 1. / np.power(np.sum(star_stack, axis=0), 0.8)
+		norm = np.sqrt(norm1 * norm2)
+		norm[np.isinf(norm)] = 0.
+		star_stack = np.einsum('ij,j->ij', star_stack, norm)
+		
+		# Determine maximum E(B-V)
+		w_y = np.mean(star_stack, axis=1)
+		y_max = np.max(np.where(w_y > 1.e-2)[0])
+		EBV_stack_max = y_max * (5. / star_stack.shape[0])
+		
 		# Load piecewise-linear profiles
 		mu = self.los_coll.los_mu_anchor
 		EBV_all = self.los_coll.los_EBV[map_idx, :, :]
@@ -184,12 +206,15 @@ class PixelPlotter:
 		pix_idx = self.los_coll.pix_idx[map_idx]
 		l, b = hputils.pix2lb_scalar(nside, pix_idx, nest=True, use_negative_l=True)
 		
+		EBV_los_max = 1.5 * np.percentile(EBV_all[:, -1], 95.)
+		EBV_max = min([EBV_los_max, EBV_stack_max])
+		
 		# Load ln(p), if available
 		lnp = None
 		lnp_txt = None
 		
 		if self.los_coll.los_lnp != []:
-			lnp = self.los_coll.los_lnp[map_idx, :]
+			lnp = self.los_coll.los_lnp[map_idx, :] / self.los_coll.n_stars[map_idx]
 			GR = self.los_coll.los_GR[map_idx, :]
 			
 			lnp_min, lnp_max = np.percentile(lnp[1:], [10., 90.])
@@ -206,11 +231,18 @@ class PixelPlotter:
 		else:
 			lnp = [0. for EBV in EBV_all]
 		
-		# Plot samples
+		# Set up figure
 		fig = plt.figure(figsize=(8,5), dpi=150)
 		ax = fig.add_subplot(1,1,1)
-		fig.subplots_adjust(left=0.12, bottom=0.12)
+		fig.subplots_adjust(left=0.12, bottom=0.12, top=0.85)
 		
+		# Plot stacked stellar pdfs
+		bounds = [self.los_coll.star_bounds[1][0], self.los_coll.star_bounds[1][1],
+		          self.los_coll.star_bounds[0][0], self.los_coll.star_bounds[0][1]]
+		ax.imshow(np.sqrt(star_stack), extent=bounds, origin='lower',
+		          aspect='auto', cmap='Blues', interpolation='nearest')
+		
+		# Plot samples
 		alpha = 1. / np.power(EBV_all.shape[0], 0.55)
 		
 		for i,EBV in enumerate(EBV_all[1:]):
@@ -221,11 +253,16 @@ class PixelPlotter:
 		ax.plot(mu, EBV_all[0, :], 'g', lw=2, alpha=0.5)
 		
 		ax.set_xlim(mu[0], mu[-1])
+		ax.set_ylim(0., EBV_max)
 		
 		# Add labels
 		ax.set_xlabel(r'$\mu$', fontsize=16)
 		ax.set_ylabel(r'$\mathrm{E} \left( B - V \right)$', fontsize=16)
-		ax.set_title(r'$\ell = %.2f, \ b = %.2f$' % (l, b), fontsize=16)
+		
+		title_txt = '$\mathrm{nside} = %d, \ \mathrm{i} = %d$\n' % (nside, pix_idx)
+		title_txt += '$\ell = %.2f, \ b = %.2f$' % (l, b)
+		
+		ax.set_title(title_txt, fontsize=16, multialignment='center')
 		
 		if lnp_txt != None:
 			ylim = ax.get_ylim()
