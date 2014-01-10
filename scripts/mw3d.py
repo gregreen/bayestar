@@ -38,21 +38,22 @@ import maptools
 # Rendering functions
 #
 
-def vol_render_pts(x, y, z, density):
+def vol_render_pts(x, y, z, density, show_pts=False):
 	fig = mlab.figure(1, bgcolor=(1, 1, 1))
 	fig.scene.disable_render = True
-	
-	indices = np.arange(len(density))
 	
 	pts = mlab.pipeline.scalar_scatter(x, y, z, density)
 	
 	delaunay = mlab.pipeline.delaunay3d(pts)
 	vol = mlab.pipeline.volume(delaunay)
 	
+	if show_pts:
+		mlab.pipeline.glyph(pts, colormap='Paired', scale_mode='none', 
+		                    scale_factor=100.)
+	
 	fig.scene.disable_render = False
 	
 	return vol
-
 
 def set_opacity_transfer(vol, density, opacity):
 	otf = PiecewiseFunction()
@@ -90,17 +91,21 @@ def vol_render_mw(fnames, method='median', bounds=None, processes=1, max_samples
 	                                           processes=processes,
 	                                           max_samples=max_samples)
 	
-	x, y, z = los_coll.get_xyz()
-	rho = los_coll.get_density(method=method)
+	x, y, z = los_coll.get_xyz(oversample=3, max_points=20)
+	rho = los_coll.get_density(method=method, oversample=3, max_points=20)
+	
+	print '# of points: %d' % (rho.size)
 	
 	x += 0.1 * np.random.random(x.shape)
 	y += 0.1 * np.random.random(y.shape)
 	z += 0.1 * np.random.random(z.shape)
 	
-	vol = vol_render_pts(x, y, z, rho)
+	vol = vol_render_pts(x, y, z, rho, show_pts=True)
 	
-	set_opacity_transfer(vol, np.max(rho), 1.)
+	set_opacity_transfer(vol, np.max(rho), 0.0001)
 	set_bw_colorscheme(vol, 0., 1.)
+	
+	mlab.view(focalpoint=(0., 0., 0.))
 	
 	print 'showing...'
 	mlab.show()
