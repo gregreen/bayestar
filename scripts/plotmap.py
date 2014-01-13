@@ -469,7 +469,10 @@ def rasterizer_plotter_worker(dist_q, lock,
 			print 'Rasterizer finished.'
 			
 			if show:
+				print 'Showing ...'
 				plt.show()
+			
+			print 'Plots closed.'
 			
 			return
 

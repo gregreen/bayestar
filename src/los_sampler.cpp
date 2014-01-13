@@ -1459,7 +1459,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	double * log_Delta_EBV_bias = new double[N_regions+1];
 	
 	for(int i=0; i<N_regions+1; i++) {
-		sigma_log_Delta_EBV[i] = 1.5;
+		sigma_log_Delta_EBV[i] = sigma;
 		log_Delta_EBV_bias[i] = 0.;
 		
 		log_Delta_EBV_prior[i] = log(Delta_EBV_prior[i]) + log_Delta_EBV_bias[i];

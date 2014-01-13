@@ -22,6 +22,9 @@
 #  
 #  
 
+# TODO: Rationalize loading of Bayestar output files.
+
+
 import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 
@@ -127,7 +130,7 @@ def put_los_output_on_q(output_q, pix_idx, nside,
 
 
 def los_coll_load_file_worker(fname_q, output_q, bounds,
-                              star_E_range, star_DM_range,
+                              star_E_range=None, star_DM_range=None,
                               max_samples=None):
 	# Data on pixels
 	pix_idx = []
@@ -320,16 +323,17 @@ def los_coll_load_file_worker(fname_q, output_q, bounds,
 						los_mask.append(False)
 					
 					# Load stellar chains and create stacked image
-					star_samples = item['stellar chains'][:, 1:, 1:3]
-					n_stars, n_star_samples, n_star_dim = star_samples.shape
-					star_samples.shape = (n_stars * n_star_samples, n_star_dim)
-					
-					star_stack, tmp1, tmp2 = np.histogram2d(star_samples[:,0], star_samples[:,1],
-					                                        bins=[star_E_range, star_DM_range])
-					star_stack = star_stack.astype('i2')
-					
-					star_stack.append(star_stack)
-					n_stars.append(n_stars)
+					if (star_E_range != None) and (star_DM_range != None):
+						star_samples = item['stellar chains'][:, 1:, 1:3]
+						n_stars, n_star_samples, n_star_dim = star_samples.shape
+						star_samples.shape = (n_stars * n_star_samples, n_star_dim)
+						
+						star_stack, tmp1, tmp2 = np.histogram2d(star_samples[:,0], star_samples[:,1],
+						                                        bins=[star_E_range, star_DM_range])
+						star_stack = star_stack.astype('i2')
+						
+						star_stack.append(star_stack)
+						n_stars.append(n_stars)
 			
 			f.close()
 			fname_q.task_done()
@@ -512,8 +516,9 @@ class los_collection:
 		
 		for i in xrange(processes):
 			p = multiprocessing.Process(target=los_coll_load_file_worker,
-			                            args=(fname_q, output_q,
-			                                  bounds, max_samples)
+			                            args=(fname_q, output_q, bounds,
+			                                  self.star_E_range, self.star_DM_range,
+			                                  max_samples)
 			                           )
 			p.daemon = True
 			procs.append(p)
@@ -1378,6 +1383,9 @@ class los_collection:
 		los_coll object (same nside and healpix index values). The
 		class which is returned is a MapRasterizer object from hputils.
 		'''
+		
+		print self.pix_idx.shape
+		print self.los_EBV.shape
 		
 		return hputils.MapRasterizer(self.nside, self.pix_idx, img_shape,
 		                             clip=clip, proj=proj,
