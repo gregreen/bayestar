@@ -148,6 +148,8 @@ int main(int argc, char **argv) {
 	
 	bool clobber = false;
 	
+	bool test_mode = false;
+	
 	int verbosity = 0;
 	
 	
@@ -198,6 +200,8 @@ int main(int argc, char **argv) {
 		("clobber", "Overwrite existing output. Otherwise, will only process pixels with incomplete output.")
 		
 		("verbosity", po::value<int>(&verbosity), "Level of verbosity (0 = minimal, 2 = highest)")
+		
+		("test-los", "Allow user to test specific line-of-sight profiles manually.")
 	;
 	po::positional_options_description pd;
 	pd.add("input", 1).add("output", 1);
@@ -216,6 +220,7 @@ int main(int argc, char **argv) {
 	if(vm.count("SFD-prior")) { SFDPrior = true; }
 	if(vm.count("SFD-subpixel")) { SFDsubpixel = true; }
 	if(vm.count("clobber")) { clobber = true; }
+	if(vm.count("test-los")) { test_mode = true; }
 	
 	
 	// Convert error floor to mags
@@ -479,6 +484,11 @@ int main(int argc, char **argv) {
 			}
 			TLOSMCMCParams params(&img_stack, lnZ_filtered, p0, N_runs, N_threads, N_regions, EBV_max);
 			if(SFDsubpixel) { params.set_subpixel_mask(subpixel); }
+			
+			if(test_mode) {
+				test_extinction_profiles(params);
+			}
+			
 			if(N_clouds != 0) {
 				sample_los_extinction_clouds(output_fname, *it, cloud_options, params, N_clouds, verbosity);
 			}
