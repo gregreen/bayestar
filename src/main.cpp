@@ -38,215 +38,256 @@
 using namespace std;
 
 
-void mock_test() {
-	size_t nstars = 50;
-	unsigned int N_regions = 20;
-	double RV = 3.1;
-	double l = 90.;
-	double b = 10.;
-	uint64_t healpix_index = 1519628;
-	uint32_t nside = 512;
-	bool nested = true;
+struct TProgramOpts {
+	string input_fname;
+	string output_fname;
 	
-	TStellarModel emplib(DATADIR "PSMrLF.dat", DATADIR "PScolors.dat");
-	//TSyntheticStellarModel synthlib(DATADIR "PS1templates.h5");
-	TExtinctionModel ext_model(DATADIR "PSExtinction.dat");
-	TGalacticLOSModel los_model(l, b);
-	//los_model.load_lf("/home/greg/projects/bayestar/data/PSMrLF.dat");
-	TStellarData stellar_data(healpix_index, nside, nested, l, b);
+	bool save_surfs;
 	
-	std::cout << std::endl;
-	double mag_lim[5];
-	for(size_t i=0; i<5; i++) { mag_lim[i] = 22.5; }
-	draw_from_emp_model(nstars, RV, los_model, emplib, stellar_data, ext_model, mag_lim);
+	double err_floor;
 	
-	std::string group = "photometry";
-	std::stringstream dset;
-	dset << "pixel " << healpix_index;
-	remove("mock.h5");
-	stellar_data.save("mock.h5", group, dset.str());
+	bool synthetic;
+	unsigned int star_steps;
+	unsigned int star_samplers;
+	double star_p_replacement;
+	double min_EBV;
+	bool star_priors;
 	
-	// Prepare data structures for stellar parameters
-	TImgStack img_stack(stellar_data.star.size());
-	std::vector<bool> conv;
-	std::vector<double> lnZ;
+	double sigma_RV;
+	double mean_RV;
 	
-	std::string out_fname = "emp_out.h5";
-	remove(out_fname.c_str());
-	TMCMCOptions star_options(500, 20, 0.2, 4);
-	sample_indiv_emp(out_fname, star_options, los_model, emplib, ext_model, stellar_data, img_stack, conv, lnZ);
+	unsigned int N_regions;
+	unsigned int los_steps;
+	unsigned int los_samplers;
+	double los_p_replacement;
 	
-	// Fit line-of-sight extinction profile
-	img_stack.cull(conv);
-	TMCMCOptions los_options(250, 15, 0.1, 4);
-	//sample_los_extinction(out_fname, los_options, img_stack, N_regions, 1.e-50, 5., healpix_index);
+	unsigned int N_clouds;
+	unsigned int cloud_steps;
+	unsigned int cloud_samplers;
+	double cloud_p_replacement;
 	
-	/*
-	TLOSMCMCParams params(&img_stack, 1.e-100, -1.);
+	bool disk_prior;
+	bool SFD_prior;
+	bool SFD_subpixel;
+	double ev_cut;
+	
+	unsigned int N_runs;
+	unsigned int N_threads;
+	
+	bool clobber;
+	
+	bool test_mode;
+	
+	int verbosity;
+	
+	string LF_fname;
+	string template_fname;
+	string ext_model_fname;
+	
+	TProgramOpts() {
+		input_fname = "NONE";
+		output_fname = "NONE";
+		
+		save_surfs = false;
+		
+		err_floor = 20;
+		
+		synthetic = false;
+		star_steps = 1000;
+		star_samplers = 5;
+		star_p_replacement = 0.2;
+		min_EBV = 0.;
+		star_priors = true;
+		
+		sigma_RV = -1.;
+		mean_RV = 3.1;
+		
+		N_regions = 20;
+		los_steps = 3000;
+		los_samplers = 2;
+		los_p_replacement = 0.0;
+		
+		N_clouds = 1;
+		cloud_steps = 1000;
+		cloud_samplers = 80;
+		cloud_p_replacement = 0.2;
+		
+		disk_prior = false;
+		SFD_prior = false;
+		SFD_subpixel = false;
+		ev_cut = 15.;
+		
+		N_runs = 4;
+		N_threads = 1;
+		
+		clobber = false;
+		
+		test_mode = false;
+		
+		verbosity = 0;
+		
+		LF_fname = DATADIR "PSMrLF.dat";
+		template_fname = DATADIR "PScolors.dat";
+		ext_model_fname = DATADIR "PSExtinction.dat";
+	}
+};
+
+
+int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
+	namespace po = boost::program_options;
+	
+	std::string config_fname = "NONE";
+	
+	po::options_description config_desc("Configuration-file options");
+	config_desc.add_options()
+		("err-floor", po::value<double>(&(opts.err_floor)), "Error to add in quadrature (in millimags)")
+		("synthetic", "Use synthetic photometric library (default: use empirical library)")
+		("star-steps", po::value<unsigned int>(&(opts.star_steps)), "# of MCMC steps per star (per sampler)")
+		("star-samplers", po::value<unsigned int>(&(opts.star_samplers)), "# of samplers per dimension (stellar fit)")
+		("star-p-replacement", po::value<double>(&(opts.star_p_replacement)), "Probability of taking replacement step (stellar fit)")
+		("no-stellar-priors", "Turn off priors for individual stars.")
+		("min-EBV", po::value<double>(&(opts.min_EBV)), "Minimum stellar E(B-V) (default: 0)")
+		
+		("mean-RV", po::value<double>(&(opts.mean_RV)), "Mean R_V (per star) (default: 3.1)")
+		("sigma-RV", po::value<double>(&(opts.sigma_RV)), "Variation in R_V (per star) (default: -1, interpreted as no variance)")
+		
+		("regions", po::value<unsigned int>(&(opts.N_regions)), "# of piecewise-linear regions in l.o.s. extinction profile (default: 20)")
+		("los-steps", po::value<unsigned int>(&(opts.los_steps)), "# of MCMC steps in l.o.s. fit (per sampler)")
+		("los-samplers", po::value<unsigned int>(&(opts.los_samplers)), "# of samplers per dimension (l.o.s. fit)")
+		("los-p-replacement", po::value<double>(&(opts.los_p_replacement)), "Probability of taking replacement step (l.o.s. fit)")
+		
+		("clouds", po::value<unsigned int>(&(opts.N_clouds)), "# of clouds along the line of sight (default: 0).\n"
+		                                                      "Setting this option causes the sampler to use a discrete\n"
+		                                                      "cloud model for the l.o.s. extinction profile.")
+		("cloud-steps", po::value<unsigned int>(&(opts.cloud_steps)), "# of MCMC steps in cloud fit (per sampler)")
+		("cloud-samplers", po::value<unsigned int>(&(opts.cloud_samplers)), "# of samplers per dimension (cloud fit)")
+		("cloud-p-replacement", po::value<double>(&(opts.cloud_p_replacement)), "Probability of taking replacement step (cloud fit)")
+		
+		("disk-prior", "Assume that dust density roughly traces stellar disk density.")
+		("SFD-prior", "Use SFD E(B-V) as a prior on the total extinction in each pixel.")
+		("SFD-subpixel", "Use SFD E(B-V) as a subpixel template for the angular variation in reddening.")
+		("evidence-cut", po::value<double>(&(opts.ev_cut)), "Delta lnZ to use as threshold for including star\n"
+		                                                    "in l.o.s. fit (default: 15).")
+		
+		("runs", po::value<unsigned int>(&(opts.N_runs)), "# of times to run each chain (to check\n"
+		                                                  "for non-convergence) (default: 4)")
+		
+		("LF-file", po::value<string>(&(opts.LF_fname)), "File containing stellar luminosity function.")
+		("template-file", po::value<string>(&(opts.template_fname)), "File containing stellar color templates.")
+		("ext-file", po::value<string>(&(opts.ext_model_fname)), "File containing extinction coefficients.")
+	;
+	
+	po::options_description generic_desc(std::string("Usage: ") + argv[0] + " [Input filename] [Output filename] \n\nCommandline Options");
+	generic_desc.add_options()
+		("help", "Display this help message")
+		("show-config", "Display configuration-file options")
+		("version", "Display version number")
+		
+		("input", po::value<std::string>(&(opts.input_fname)), "Input HDF5 filename (contains stellar photometry)")
+		("output", po::value<std::string>(&(opts.output_fname)), "Output HDF5 filename (MCMC output and smoothed probability surfaces)")
+		
+		("config", po::value<std::string>(&config_fname), "Configuration file containing additional options.")
+		
+		("test-los", "Allow user to test specific line-of-sight profiles manually.")
+	;
+	
+	po::options_description dual_desc("Dual Options (both commandline and configuration file)");
+	dual_desc.add_options()
+		("save-surfs", "Save probability surfaces.")
+		("clobber", "Overwrite existing output. Otherwise, will\n"
+		            "only process pixels with incomplete output.")
+		("verbosity", po::value<int>(&(opts.verbosity)), "Level of verbosity (0 = minimal, 2 = highest)")
+		("threads", po::value<unsigned int>(&(opts.N_threads)), "# of threads to run on (default: 1)")
+	;
+	
+	po::positional_options_description pd;
+	pd.add("input", 1).add("output", 1);
 	
 	
-	double Delta_EBV[6] = {10000.01, 10000.02, 10000.05, 1.0, 0.05, 10000000000.02};
+	// Agglomerate different categories of options
+	po::options_description cmdline_desc;
+	cmdline_desc.add(generic_desc).add(dual_desc);
 	
-	gsl_rng *r;
-	seed_gsl_rng(&r);
-	gen_rand_los_extinction(&(Delta_EBV[0]), N_regions+1, r, params);
-	for(size_t i=0; i<=N_regions; i++) {
-		std::cerr << i << ": " << Delta_EBV[i] << std::endl;
+	po::options_description config_all_desc;
+	config_all_desc.add(config_desc).add(dual_desc);
+	
+	
+	// Parse options
+	
+	po::variables_map vm;
+	po::store(po::command_line_parser(argc, argv).options(cmdline_desc).positional(pd).run(), vm);
+	po::notify(vm);
+	
+	if(config_fname != "NONE") {
+		std::ifstream f_config(config_fname.c_str());
+		po::store(po::parse_config_file(f_config, config_all_desc, false), vm);
+		f_config.close();
+		
+		po::notify(vm);
 	}
 	
-	double *line_int = new double[img_stack.N_images];
-	los_integral(img_stack, line_int, &(Delta_EBV[0]), N_regions);
-	for(size_t i=0; i<img_stack.N_images; i++) {
-		std::cerr << i << " --> " << line_int[i] << std::endl;
-	}
-	delete[] line_int;
 	
-	std::cerr << "ln(p) = " << lnp_los_extinction(&(Delta_EBV[0]), N_regions, params) << std::endl;
-	*/
+	
+	if(vm.count("help")) {
+		cout << cmdline_desc << endl;
+		return 0;
+	}
+	
+	if(vm.count("show-config")) {
+		cout << config_all_desc << endl;
+		return 0;
+	}
+	
+	if(vm.count("version")) {
+		cout << "git commit " << GIT_BUILD_VERSION << endl;
+		return 0;
+	}
+	
+	if(vm.count("synthetic")) { opts.synthetic = true; }
+	if(vm.count("save-surfs")) { opts.save_surfs = true; }
+	if(vm.count("no-stellar-priors")) { opts.star_priors = false; }
+	if(vm.count("disk-prior")) { opts.disk_prior = true; }
+	if(vm.count("SFD-prior")) { opts.SFD_prior = true; }
+	if(vm.count("SFD-subpixel")) { opts.SFD_subpixel = true; }
+	if(vm.count("clobber")) { opts.clobber = true; }
+	if(vm.count("test-los")) { opts.test_mode = true; }
+	
+	
+	// Convert error floor to mags
+	opts.err_floor /= 1000.;
+	
+	if(opts.input_fname == "NONE") {
+		cerr << "Input filename required." << endl << endl;
+		cerr << cmdline_desc << endl;
+		return -1;
+	}
+	if(opts.output_fname == "NONE") {
+		cerr << "Output filename required." << endl << endl;
+		cerr << cmdline_desc << endl;
+		return -1;
+	}
+	
+	if(opts.N_regions != 0) {
+		if(120 % (opts.N_regions) != 0) {
+			cerr << "# of regions in extinction profile must divide 120 without remainder." << endl;
+			return -1;
+		}
+	}
+	
+	return 1;
 }
+
 
 int main(int argc, char **argv) {
 	gsl_set_error_handler_off();
-	
-	
-	/*
-	 *  Default commandline arguments
-	 */
-	
-	std::string input_fname = "NONE";
-	std::string output_fname = "NONE";
-	
-	bool saveSurfs = false;
-	
-	double err_floor = 20;
-	
-	bool synthetic = false;
-	unsigned int star_steps = 1000;
-	unsigned int star_samplers = 5;
-	double star_p_replacement = 0.2;
-	double minEBV = 0.;
-	bool star_priors = true;
-	
-	double sigma_RV = -1.;
-	double mean_RV = 3.1;
-	
-	unsigned int N_regions = 20;
-	unsigned int los_steps = 3000;
-	unsigned int los_samplers = 2;
-	double los_p_replacement = 0.0;
-	
-	unsigned int N_clouds = 1;
-	unsigned int cloud_steps = 1000;
-	unsigned int cloud_samplers = 80;
-	double cloud_p_replacement = 0.2;
-	
-	bool disk_prior = false;
-	bool SFDPrior = false;
-	bool SFDsubpixel = false;
-	double evCut = 15.;
-	
-	unsigned int N_runs = 4;
-	unsigned int N_threads = 1;
-	
-	bool clobber = false;
-	
-	bool test_mode = false;
-	
-	int verbosity = 0;
-	
 	
 	/*
 	 *  Parse commandline arguments
 	 */
 	
-	namespace po = boost::program_options;
-	po::options_description desc(std::string("Usage: ") + argv[0] + " [Input filename] [Output filename] \n\nOptions");
-	desc.add_options()
-		("help", "Display this help message")
-		("version", "Display version number")
-		("input", po::value<std::string>(&input_fname), "Input HDF5 filename (contains stellar photometry)")
-		("output", po::value<std::string>(&output_fname), "Output HDF5 filename (MCMC output and smoothed probability surfaces)")
-		
-		("save-surfs", "Save probability surfaces.")
-		
-		("err-floor", po::value<double>(&err_floor), "Error to add in quadrature (in millimags)")
-		("synthetic", "Use synthetic photometric library (default: use empirical library)")
-		("star-steps", po::value<unsigned int>(&star_steps), "# of MCMC steps per star (per sampler)")
-		("star-samplers", po::value<unsigned int>(&star_samplers), "# of samplers per dimension (stellar fit)")
-		("star-p-replacement", po::value<double>(&star_p_replacement), "Probability of taking replacement step (stellar fit)")
-		("no-stellar-priors", "Turn off priors for individual stars.")
-		("minEBV", po::value<double>(&minEBV), "Minimum stellar E(B-V) (default: 0)")
-		
-		("mean-RV", po::value<double>(&mean_RV), "Mean R_V (per star) (default: 3.1)")
-		("sigma-RV", po::value<double>(&sigma_RV), "Variation in R_V (per star) (default: -1, interpreted as no variance)")
-		
-		("regions", po::value<unsigned int>(&N_regions), "# of piecewise-linear regions in l.o.s. extinction profile (default: 20)")
-		("los-steps", po::value<unsigned int>(&los_steps), "# of MCMC steps in l.o.s. fit (per sampler)")
-		("los-samplers", po::value<unsigned int>(&los_samplers), "# of samplers per dimension (l.o.s. fit)")
-		("los-p-replacement", po::value<double>(&los_p_replacement), "Probability of taking replacement step (l.o.s. fit)")
-		
-		("clouds", po::value<unsigned int>(&N_clouds), "# of clouds along the line of sight (default: 0).\n"
-		                                               "Setting this option causes the sampler to use a discrete\n"
-		                                               "cloud model for the l.o.s. extinction profile.")
-		("cloud-steps", po::value<unsigned int>(&cloud_steps), "# of MCMC steps in cloud fit (per sampler)")
-		("cloud-samplers", po::value<unsigned int>(&cloud_samplers), "# of samplers per dimension (cloud fit)")
-		("cloud-p-replacement", po::value<double>(&cloud_p_replacement), "Probability of taking replacement step (cloud fit)")
-		
-		("disk-prior", "Assume that dust density roughly traces stellar disk density.")
-		("SFD-prior", "Use SFD E(B-V) as a prior on the total extinction in each pixel.")
-		("SFD-subpixel", "Use SFD E(B-V) as a subpixel template for the angular variation in reddening.")
-		("evidence-cut", po::value<double>(&evCut), "Delta lnZ to use as threshold for including star\n"
-		                                            "in l.o.s. fit (default: 15).")
-		
-		("runs", po::value<unsigned int>(&N_runs), "# of times to run each chain (to check for non-convergence) (default: 4)")
-		("threads", po::value<unsigned int>(&N_threads), "# of threads to run on (default: 1)")
-		
-		("clobber", "Overwrite existing output. Otherwise, will only process pixels with incomplete output.")
-		
-		("verbosity", po::value<int>(&verbosity), "Level of verbosity (0 = minimal, 2 = highest)")
-		
-		("test-los", "Allow user to test specific line-of-sight profiles manually.")
-	;
-	po::positional_options_description pd;
-	pd.add("input", 1).add("output", 1);
-	
-	po::variables_map vm;
-	po::store(po::command_line_parser(argc, argv).options(desc).positional(pd).run(), vm);
-	po::notify(vm);
-	
-	if(vm.count("help")) { cout << desc << endl; return 0; }
-	if(vm.count("version")) { cout << "git commit " << GIT_BUILD_VERSION << endl; return 0; }
-	
-	if(vm.count("synthetic")) { synthetic = true; }
-	if(vm.count("save-surfs")) { saveSurfs = true; }
-	if(vm.count("no-stellar-priors")) { star_priors = false; }
-	if(vm.count("disk-prior")) { disk_prior = true; }
-	if(vm.count("SFD-prior")) { SFDPrior = true; }
-	if(vm.count("SFD-subpixel")) { SFDsubpixel = true; }
-	if(vm.count("clobber")) { clobber = true; }
-	if(vm.count("test-los")) { test_mode = true; }
-	
-	
-	// Convert error floor to mags
-	err_floor /= 1000.;
-	
-	if(input_fname == "NONE") {
-		cerr << "Input filename required." << endl << endl;
-		cerr << desc << endl;
-		return -1;
-	}
-	if(output_fname == "NONE") {
-		cerr << "Output filename required." << endl << endl;
-		cerr << desc << endl;
-		return -1;
-	}
-	
-	if(N_regions != 0) {
-		if(120 % N_regions != 0) {
-			cerr << "# of regions in extinction profile must divide 120 without remainder." << endl;
-			return -1;
-		}
-	}
+	TProgramOpts opts;
+	int parse_res = get_program_opts(argc, argv, opts);
+	if(parse_res <= 0) { return parse_res; }
 	
 	time_t tmp_time = time(0);
 	char * dt = ctime(&tmp_time);
@@ -260,9 +301,9 @@ int main(int argc, char **argv) {
 	 *  MCMC Options
 	 */
 	
-	TMCMCOptions star_options(star_steps, star_samplers, star_p_replacement, N_runs);
-	TMCMCOptions cloud_options(cloud_steps, cloud_samplers, cloud_p_replacement, N_runs);
-	TMCMCOptions los_options(los_steps, los_samplers, los_p_replacement, N_runs);
+	TMCMCOptions star_options(opts.star_steps, opts.star_samplers, opts.star_p_replacement, opts.N_runs);
+	TMCMCOptions cloud_options(opts.cloud_steps, opts.cloud_samplers, opts.cloud_p_replacement, opts.N_runs);
+	TMCMCOptions los_options(opts.los_steps, opts.los_samplers, opts.los_p_replacement, opts.N_runs);
 	
 	
 	/*
@@ -271,28 +312,28 @@ int main(int argc, char **argv) {
 	
 	TStellarModel *emplib = NULL;
 	TSyntheticStellarModel *synthlib = NULL;
-	if(synthetic) {
+	if(opts.synthetic) {
 		synthlib = new TSyntheticStellarModel(DATADIR "PS1templates.h5");
 	} else {
-		emplib = new TStellarModel(DATADIR "PSMrLF.dat", DATADIR "PScolors.dat");
+		emplib = new TStellarModel(opts.LF_fname, opts.template_fname);
 	}
-	TExtinctionModel ext_model(DATADIR "PSExtinction.dat");
+	TExtinctionModel ext_model(opts.ext_model_fname);
 	
 	
 	/*
 	 *  Execute
 	 */
 	
-	omp_set_num_threads(N_threads);
+	omp_set_num_threads(opts.N_threads);
 	
 	// Get list of pixels in input file
 	vector<string> pix_name;
-	get_input_pixels(input_fname, pix_name);
+	get_input_pixels(opts.input_fname, pix_name);
 	cout << "# " << pix_name.size() << " pixels in input file." << endl << endl;
 	
 	// Remove the output file
-	if(clobber) {
-		remove(output_fname.c_str());
+	if(opts.clobber) {
+		remove(opts.output_fname.c_str());
 	}
 	
 	H5::Exception::dontPrint();
@@ -308,20 +349,20 @@ int main(int argc, char **argv) {
 		
 		cout << "# Pixel: " << *it << " (" << pixel_list_no + 1 << " of " << pix_name.size() << ")" << endl;
 		
-		TStellarData stellar_data(input_fname, *it, err_floor);
+		TStellarData stellar_data(opts.input_fname, *it, opts.err_floor);
 		TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
 		
 		cout << "# HEALPix index: " << stellar_data.healpix_index << " (nside = " << stellar_data.nside << ")" << endl;
 		cout << "# (l, b) = " << stellar_data.l << ", " << stellar_data.b << endl;
-		if(SFDPrior) { cout << "# E(B-V)_SFD = " << stellar_data.EBV << endl; }
+		if(opts.SFD_prior) { cout << "# E(B-V)_SFD = " << stellar_data.EBV << endl; }
 		cout << "# " << stellar_data.star.size() << " stars in pixel" << endl;
 		
 		
 		// Check if this pixel has already been fully processed
-		if(!clobber) {
+		if(!(opts.clobber)) {
 			bool process_pixel = false;
 			
-			H5::H5File *out_file = H5Utils::openFile(output_fname, H5Utils::READ | H5Utils::WRITE | H5Utils::DONOTCREATE);
+			H5::H5File *out_file = H5Utils::openFile(opts.output_fname, H5Utils::READ | H5Utils::WRITE | H5Utils::DONOTCREATE);
 			
 			if(out_file == NULL) {
 				process_pixel = true;
@@ -343,14 +384,14 @@ int main(int argc, char **argv) {
 					if(!H5Utils::dataset_exists("stellar chains", pix_group)) {
 						process_pixel = true;
 					} else {
-						if(saveSurfs) {
+						if(opts.save_surfs) {
 							if(!H5Utils::dataset_exists("stellar pdfs", pix_group)) {
 								process_pixel = true;
 							}
 						}
 						
 						if(!process_pixel) {
-							if(N_clouds != 0) {
+							if(opts.N_clouds != 0) {
 								if(!H5Utils::dataset_exists("clouds", pix_group)) {
 									process_pixel = true;
 								}
@@ -358,40 +399,13 @@ int main(int argc, char **argv) {
 						}
 						
 						if(!process_pixel) {
-							if(N_regions != 0) {
+							if(opts.N_regions != 0) {
 								if(!H5Utils::dataset_exists("los", pix_group)) {
 									process_pixel = true;
 								}
 							}
 						}
 					}
-					
-					// If pixel is missing data, remove all existing data, so that it can be regenerated
-					/*if(process_pixel) {
-						try {
-							pix_group->unlink("stellar chains");
-						} catch(H5::GroupIException unlink_err) {
-							cout << "Could not remove 'stellar chains'" << endl;
-						}
-						
-						try {
-							pix_group->unlink("stellar pdfs");
-						} catch(H5::GroupIException unlink_err) {
-							cout << "Could not remove 'stellar pdfs'" << endl;
-						}
-						
-						try {
-							pix_group->unlink("clouds");
-						} catch(H5::GroupIException unlink_err) {
-							cout << "Could not remove 'clouds'" << endl;
-						}
-						
-						try {
-							pix_group->unlink("los");
-						} catch(H5::GroupIException unlink_err) {
-							cout << "Could not remove 'los'" << endl;
-						}
-					}*/
 					
 					delete pix_group;
 					
@@ -420,17 +434,17 @@ int main(int argc, char **argv) {
 		vector<bool> conv;
 		vector<double> lnZ;
 		
-		bool gatherSurfs = (N_regions || N_clouds || saveSurfs);
+		bool gatherSurfs = (opts.N_regions || opts.N_clouds || opts.save_surfs);
 		
 		// Sample individual stars
-		if(synthetic) {
-			sample_indiv_synth(output_fname, star_options, los_model, *synthlib, ext_model,
-			                   stellar_data, img_stack, conv, lnZ, sigma_RV,
-			                   minEBV, saveSurfs, gatherSurfs, verbosity);
+		if(opts.synthetic) {
+			sample_indiv_synth(opts.output_fname, star_options, los_model, *synthlib, ext_model,
+			                   stellar_data, img_stack, conv, lnZ, opts.sigma_RV,
+			                   opts.min_EBV, opts.save_surfs, gatherSurfs, opts.verbosity);
 		} else {
-			sample_indiv_emp(output_fname, star_options, los_model, *emplib, ext_model,
-			                 stellar_data, img_stack, conv, lnZ, mean_RV, sigma_RV, minEBV,
-			                 saveSurfs, gatherSurfs, star_priors, verbosity);
+			sample_indiv_emp(opts.output_fname, star_options, los_model, *emplib, ext_model,
+			                 stellar_data, img_stack, conv, lnZ, opts.mean_RV, opts.sigma_RV, opts.min_EBV,
+			                 opts.save_surfs, gatherSurfs, opts.star_priors, opts.verbosity);
 		}
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);
@@ -440,8 +454,8 @@ int main(int argc, char **argv) {
 		group_name << "/" << *it;
 		
 		try {
-			H5Utils::add_watermark<uint32_t>(output_fname, group_name.str(), "nside", stellar_data.nside);
-			H5Utils::add_watermark<uint64_t>(output_fname, group_name.str(), "healpix_index", stellar_data.healpix_index);
+			H5Utils::add_watermark<uint32_t>(opts.output_fname, group_name.str(), "nside", stellar_data.nside);
+			H5Utils::add_watermark<uint64_t>(opts.output_fname, group_name.str(), "healpix_index", stellar_data.healpix_index);
 		} catch(H5::AttributeIException err_att_exists) { }
 		
 		// Filter based on convergence and lnZ
@@ -454,14 +468,14 @@ int main(int argc, char **argv) {
 			}
 		}
 		double lnZmax = percentile_const(lnZ_filtered, 95.0);
-		if(verbosity >= 2) { cout << "# ln(Z)_95pct = " << lnZmax << endl; }
+		if(opts.verbosity >= 2) { cout << "# ln(Z)_95pct = " << lnZmax << endl; }
 		
 		bool tmpFilter;
 		size_t nFiltered = 0;
 		std::vector<double> subpixel;
 		lnZ_filtered.clear();
 		for(size_t n=0; n<conv.size(); n++) {
-			tmpFilter = conv[n] && (lnZ[n] > lnZmax - (20. + evCut)) && !isnan(lnZ[n]) && !is_inf_replacement(lnZ[n]);
+			tmpFilter = conv[n] && (lnZ[n] > lnZmax - (20. + opts.ev_cut)) && !isnan(lnZ[n]) && !is_inf_replacement(lnZ[n]);
 			keep.push_back(tmpFilter);
 			if(tmpFilter) {
 				subpixel.push_back(stellar_data.star[n].EBV);
@@ -473,35 +487,35 @@ int main(int argc, char **argv) {
 		if(gatherSurfs) { img_stack.cull(keep); }
 		
 		// Fit line-of-sight extinction profile
-		if((nFiltered < conv.size()) && ((N_clouds != 0) || (N_regions != 0))) {
+		if((nFiltered < conv.size()) && ((opts.N_clouds != 0) || (opts.N_regions != 0))) {
 			cout << "# of stars filtered: " << nFiltered << " of " << conv.size();
 			cout << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
 			
-			double p0 = exp(-5. - evCut);
+			double p0 = exp(-5. - opts.ev_cut);
 			double EBV_max = -1.;
-			if(SFDPrior) {
-				if(SFDsubpixel) {
+			if(opts.SFD_prior) {
+				if(opts.SFD_subpixel) {
 					EBV_max = 1.;
 				} else {
 					EBV_max = stellar_data.EBV;
 				}
 			}
-			TLOSMCMCParams params(&img_stack, lnZ_filtered, p0, N_runs, N_threads, N_regions, EBV_max);
-			if(SFDsubpixel) { params.set_subpixel_mask(subpixel); }
+			TLOSMCMCParams params(&img_stack, lnZ_filtered, p0, opts.N_runs, opts.N_threads, opts.N_regions, EBV_max);
+			if(opts.SFD_subpixel) { params.set_subpixel_mask(subpixel); }
 			
-			if(test_mode) {
+			if(opts.test_mode) {
 				test_extinction_profiles(params);
 			}
 			
-			if(N_clouds != 0) {
-				sample_los_extinction_clouds(output_fname, *it, cloud_options, params, N_clouds, verbosity);
+			if(opts.N_clouds != 0) {
+				sample_los_extinction_clouds(opts.output_fname, *it, cloud_options, params, opts.N_clouds, opts.verbosity);
 			}
-			if(N_regions != 0) {
+			if(opts.N_regions != 0) {
 				params.gen_guess_covariance(1.);	// Covariance matrix for guess has (anti-)correlation length of 1 distance bin
-				if(disk_prior) {
-					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, verbosity);
+				if(opts.disk_prior) {
+					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, opts.verbosity);
 				}
-				sample_los_extinction(output_fname, *it, los_options, params, verbosity);
+				sample_los_extinction(opts.output_fname, *it, los_options, params, opts.verbosity);
 			}
 		}
 		
@@ -509,7 +523,7 @@ int main(int argc, char **argv) {
 		t_tot = (t_end.tv_sec - t_start.tv_sec) + 1.e-9 * (t_end.tv_nsec - t_start.tv_nsec);
 		t_star = (t_mid.tv_sec - t_start.tv_sec) + 1.e-9 * (t_mid.tv_nsec - t_start.tv_nsec);
 		
-		if(verbosity >= 1) {
+		if(opts.verbosity >= 1) {
 			cout << endl;
 			cout << "===================================================" << endl;
 		}
@@ -518,7 +532,7 @@ int main(int argc, char **argv) {
 		cout << " s (" << setprecision(2) << t_tot / (double)(stellar_data.star.size()) << " s / star)" << endl;
 		cout << "# Percentage of time spent on l.o.s. fit: ";
 		cout << setprecision(2) << 100. * (t_tot - t_star) / t_tot << " %" << endl;
-		if(verbosity >= 1) {
+		if(opts.verbosity >= 1) {
 			cout << "===================================================" << endl;
 		}
 		cout << endl;
@@ -530,7 +544,7 @@ int main(int argc, char **argv) {
 	 */
 	try {
 		string watermark = GIT_BUILD_VERSION;
-		H5Utils::add_watermark<string>(output_fname, "/", "bayestar git commit", watermark);
+		H5Utils::add_watermark<string>(opts.output_fname, "/", "bayestar git commit", watermark);
 	} catch(H5::AttributeIException err_att_exists) { }
 	
 	stringstream commandline_args;
@@ -539,7 +553,7 @@ int main(int argc, char **argv) {
 	}
 	try {
 		string commandline_args_str(commandline_args.str());
-		H5Utils::add_watermark<string>(output_fname, "/", "commandline invocation", commandline_args_str);
+		H5Utils::add_watermark<string>(opts.output_fname, "/", "commandline invocation", commandline_args_str);
 	} catch(H5::AttributeIException err_att_exists) { }
 	
 	
