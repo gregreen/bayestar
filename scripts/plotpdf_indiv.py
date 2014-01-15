@@ -134,6 +134,46 @@ def clouds2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	
 	ax.set_xlim(DM_lim[0], DM_lim[1]) 
 
+class TClouds:
+	def __init__(self, fname, group, DM_lim):
+		chain = hdf5io.TChain(fname, '%s/clouds' % group)
+		
+		mu_range = np.linspace(DM_lim[0], DM_lim[1], chain.get_nDim())
+		
+		self.lnp = chain.get_lnp()[0, 1:]
+		lnp_min, lnp_max = np.percentile(self.lnp, [10., 90.])
+		self.color = (self.lnp - lnp_min) / (lnp_max - lnp_min)
+		self.color[self.color > 1.] = 1.
+		self.color[self.color < 0.] = 0.
+		
+		# Plot all paths
+		self.N_clouds = chain.get_nDim() / 2
+		self.N_paths = chain.get_nSamples()
+		mu_tmp = np.cumsum(chain.get_samples(0)[:,:self.N_clouds], axis=1)
+		EBV_tmp = np.cumsum(np.exp(chain.get_samples(0)[:,self.N_clouds:]), axis=1)
+		
+		self.mu_all = np.zeros((self.N_paths, 2*(self.N_clouds+1)), dtype='f8')
+		self.EBV_all = np.zeros((self.N_paths, 2*(self.N_clouds+1)), dtype='f8')
+		self.mu_all[:,0] = mu_range[0]
+		self.mu_all[:,1:-1:2] = mu_tmp
+		self.mu_all[:,2:-1:2] = mu_tmp
+		self.mu_all[:,-1] = mu_range[-1]
+		self.EBV_all[:,2:-1:2] = EBV_tmp
+		self.EBV_all[:,3::2] = EBV_tmp
+	
+	def plot(self, ax, *args, **kwargs):
+		if 'alpha' not in kwargs:
+			kwargs['alpha'] = 1. / np.power(float(self.N_paths), 0.55)
+		
+		for i,(mu,EBV) in enumerate(zip(self.mu_all[1:], self.EBV_all[1:])):
+			c = (1.-self.color[i], 0., self.color[i])
+			kwargs['c'] = c
+			ax.plot(mu, EBV, *args, **kwargs)
+		
+		kwargs['c'] = 'g'
+		kwargs['alpha'] = 0.5
+		ax.plot(self.mu_all[0], self.EBV_all[0], *args, **kwargs)
+	
 
 def main():
 	# Parse commandline arguments
@@ -217,11 +257,13 @@ def main():
 	bounds = [x_min[0], x_max[0], x_min[1], x_max[1]]
 	DM_lim = [x_min[0], x_max[0]]
 	
-	x_txt = x_min[0] + 0.125 * (x_max[0] - x_min[0])
-	y_txt = x_max[1] - 0.125 * (x_max[1] - x_min[1])
+	x_lnZ = x_min[0] + 0.125 * (x_max[0] - x_min[0])
+	y_lnZ = x_max[1] - 0.125 * (x_max[1] - x_min[1])
+	
+	x_idx = x_max[0] - 0.05 * (x_max[0] - x_min[0])
 	
 	if EBV_max != None:
-		y_txt = EBV_max - 0.125 * (EBV_max - x_min[1])
+		y_lnZ = EBV_max - 0.125 * (EBV_max - x_min[1])
 	
 	f_stretch = lambda a: a
 	
@@ -230,9 +272,16 @@ def main():
 	elif args.stretch == 'sqrt':
 		f_stretch = lambda a: np.sqrt(a)
 	
+	clouds = None
+	if args.show_clouds:
+		#try:
+		clouds = TClouds(fname, group, DM_lim)
+		#except:
+		#	pass
 	
 	for i,p in enumerate(pdf_indiv):
 		print 'Plotting axis %d of %d ...' % (i+1, pdf_indiv.shape[0])
+		
 		k = i % (n_rows * n_cols) + 1
 		
 		if k == 1:
@@ -248,20 +297,23 @@ def main():
 		if lnZ[i] < lnZ_max - 10.:
 			c = 'r'
 		
-		ax.text(x_txt, y_txt, r'$%.1f$' % lnZ[i],
+		ax.text(x_lnZ, y_lnZ, r'$%.1f$' % lnZ[i],
 		        ha='left', va='top', fontsize=10, color=c)
+		
+		ax.text(x_idx, y_lnZ, r'$%d$' % i,
+		        ha='right', va='top', fontsize=10, color='k')
 		
 		if args.show_los:
 			try:
 				los2ax(ax, fname, group, DM_lim, c='k', alpha=0.015)
 			except:
 				pass
-	
+		
 		if args.show_clouds:
-			try:
-				clouds2ax(ax, fname, group, DM_lim, c='k')
-			except:
-				pass
+			#try:
+			clouds.plot(ax, c='k')
+			#except:
+			#	pass
 		
 		if EBV_max != None:
 			ax.set_ylim(x_min[1], EBV_max)

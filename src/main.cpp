@@ -124,9 +124,11 @@ int main(int argc, char **argv) {
 	unsigned int star_steps = 1000;
 	unsigned int star_samplers = 5;
 	double star_p_replacement = 0.2;
-	double sigma_RV = -1.;
 	double minEBV = 0.;
 	bool star_priors = true;
+	
+	double sigma_RV = -1.;
+	double mean_RV = 3.1;
 	
 	unsigned int N_regions = 20;
 	unsigned int los_steps = 3000;
@@ -172,9 +174,11 @@ int main(int argc, char **argv) {
 		("star-steps", po::value<unsigned int>(&star_steps), "# of MCMC steps per star (per sampler)")
 		("star-samplers", po::value<unsigned int>(&star_samplers), "# of samplers per dimension (stellar fit)")
 		("star-p-replacement", po::value<double>(&star_p_replacement), "Probability of taking replacement step (stellar fit)")
-		("sigma-RV", po::value<double>(&sigma_RV), "Variation in R_V (per star) (default: -1, interpreted as no variance)")
 		("no-stellar-priors", "Turn off priors for individual stars.")
 		("minEBV", po::value<double>(&minEBV), "Minimum stellar E(B-V) (default: 0)")
+		
+		("mean-RV", po::value<double>(&mean_RV), "Mean R_V (per star) (default: 3.1)")
+		("sigma-RV", po::value<double>(&sigma_RV), "Variation in R_V (per star) (default: -1, interpreted as no variance)")
 		
 		("regions", po::value<unsigned int>(&N_regions), "# of piecewise-linear regions in l.o.s. extinction profile (default: 20)")
 		("los-steps", po::value<unsigned int>(&los_steps), "# of MCMC steps in l.o.s. fit (per sampler)")
@@ -425,7 +429,7 @@ int main(int argc, char **argv) {
 			                   minEBV, saveSurfs, gatherSurfs, verbosity);
 		} else {
 			sample_indiv_emp(output_fname, star_options, los_model, *emplib, ext_model,
-			                 stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV,
+			                 stellar_data, img_stack, conv, lnZ, mean_RV, sigma_RV, minEBV,
 			                 saveSurfs, gatherSurfs, star_priors, verbosity);
 		}
 		
