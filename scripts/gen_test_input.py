@@ -233,8 +233,8 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 			
 			ret = ret[obs]
 	
-	np.set_printoptions(formatter={'float':lambda x: '%.3f' % x})
-	print ret['err']
+	#np.set_printoptions(formatter={'float':lambda x: '%.3f' % x})
+	#print ret['err']
 	
 	#print np.sum(ret['mag'] < 1.)
 	
