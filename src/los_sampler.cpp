@@ -28,6 +28,80 @@
 
 
 /*
+ *  Test l.o.s. fits
+ */
+
+void test_extinction_profiles(TLOSMCMCParams &params) {
+	bool exit = false;
+	
+	while(!exit) {
+		std::string response;
+		std::string yn;
+		
+		std::cout << std::endl << "Cloud ('c') or Piecewise-linear ('p') model ('-' to exit)? ";
+		std::cin >> response;
+		
+		if(response == "c") {
+			double dist, depth;
+			std::cout << "Cloud distance (DM): ";
+			std::cin >> dist;
+			std::cout << "Cloud depth (mags): ";
+			std::cin >> depth;
+			
+			double x[2];
+			x[0] = dist;
+			x[1] = log(depth);
+			
+			double lnp = lnp_los_extinction_clouds(&(x[0]), 2, params);
+			
+			std::cout << "ln(p) = " << lnp << std::endl;
+			
+			std::cout << "Show more information (y/n)? ";
+			std::cin >> yn;
+			
+			if(yn == "y") {
+				// Compute line integrals through probability surfaces
+				double *line_int = params.get_line_int(0);
+				los_integral_clouds(*(params.img_stack), params.subpixel.data(), line_int, &(x[0]), &(x[1]), 1);
+				
+				
+				std::cout << "  #   ln(p)  p_0/Z" << std::endl;
+				
+				double lnp_soft;
+				double ln_L = 0.;
+				
+				for(size_t i=0; i<params.img_stack->N_images; i++) {
+					if(line_int[i] > params.p0_over_Z[i]) {
+						lnp_soft = log(line_int[i]) + log(1. + params.p0_over_Z[i] / line_int[i]);
+					} else {
+						lnp_soft = params.ln_p0_over_Z[i] + log(1. + line_int[i] * params.inv_p0_over_Z[i]);
+					}
+					
+					ln_L += lnp_soft;
+					
+					std::cout << "  " << i << ": " << log(line_int[i]) << "  " << params.ln_p0_over_Z[i] << "  " << lnp_soft << std::endl;
+				}
+				
+				std::cout << std::endl;
+				std::cout << "ln(L) = " << ln_L << std::endl;
+				std::cout << "ln(prior) = " << lnp - ln_L << std::endl;
+			}
+		
+		} else if(response == "p") {
+			std::cout << "Not yet implemented.";
+		
+		} else if(response == "-") {
+			exit = true;
+		
+		} else {
+			std::cout << "Invalid option: '" << response << "'" << std::endl;
+		}
+	}
+}
+
+
+
+/*
  *  Discrete cloud model
  */
 

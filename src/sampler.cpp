@@ -923,7 +923,8 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                       TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                      double RV_sigma, double minEBV, const bool saveSurfs, const bool gatherSurfs, const bool use_priors, int verbosity) {
+                      double RV_mean, double RV_sigma, double minEBV,
+                      const bool saveSurfs, const bool gatherSurfs, const bool use_priors, int verbosity) {
 	// Parameters must be consistent - cannot save surfaces without gathering them
 	assert(!(saveSurfs & (!gatherSurfs)));
 	
@@ -934,6 +935,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	params.EBV_floor = minEBV;
 	params.use_priors = use_priors;
 	
+	params.RV_mean = RV_mean;
 	if(RV_sigma > 0.) {
 		params.vary_RV = true;
 		params.RV_variance = RV_sigma*RV_sigma;

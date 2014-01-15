@@ -123,7 +123,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                       TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                      double RV_sigma=-1., double minEBV=0., const bool saveSurfs=false, const bool gatherSurfs=true,
+                      double RV_mean=3.1, double RV_sigma=-1., double minEBV=0., const bool saveSurfs=false, const bool gatherSurfs=true,
                       const bool use_priors=true, int verbosity=1);
 
 // Auxiliary functions

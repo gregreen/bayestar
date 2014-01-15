@@ -124,9 +124,11 @@ int main(int argc, char **argv) {
 	unsigned int star_steps = 1000;
 	unsigned int star_samplers = 5;
 	double star_p_replacement = 0.2;
-	double sigma_RV = -1.;
 	double minEBV = 0.;
 	bool star_priors = true;
+	
+	double sigma_RV = -1.;
+	double mean_RV = 3.1;
 	
 	unsigned int N_regions = 20;
 	unsigned int los_steps = 3000;
@@ -147,6 +149,8 @@ int main(int argc, char **argv) {
 	unsigned int N_threads = 1;
 	
 	bool clobber = false;
+	
+	bool test_mode = false;
 	
 	int verbosity = 0;
 	
@@ -170,9 +174,11 @@ int main(int argc, char **argv) {
 		("star-steps", po::value<unsigned int>(&star_steps), "# of MCMC steps per star (per sampler)")
 		("star-samplers", po::value<unsigned int>(&star_samplers), "# of samplers per dimension (stellar fit)")
 		("star-p-replacement", po::value<double>(&star_p_replacement), "Probability of taking replacement step (stellar fit)")
-		("sigma-RV", po::value<double>(&sigma_RV), "Variation in R_V (per star) (default: -1, interpreted as no variance)")
 		("no-stellar-priors", "Turn off priors for individual stars.")
 		("minEBV", po::value<double>(&minEBV), "Minimum stellar E(B-V) (default: 0)")
+		
+		("mean-RV", po::value<double>(&mean_RV), "Mean R_V (per star) (default: 3.1)")
+		("sigma-RV", po::value<double>(&sigma_RV), "Variation in R_V (per star) (default: -1, interpreted as no variance)")
 		
 		("regions", po::value<unsigned int>(&N_regions), "# of piecewise-linear regions in l.o.s. extinction profile (default: 20)")
 		("los-steps", po::value<unsigned int>(&los_steps), "# of MCMC steps in l.o.s. fit (per sampler)")
@@ -198,6 +204,8 @@ int main(int argc, char **argv) {
 		("clobber", "Overwrite existing output. Otherwise, will only process pixels with incomplete output.")
 		
 		("verbosity", po::value<int>(&verbosity), "Level of verbosity (0 = minimal, 2 = highest)")
+		
+		("test-los", "Allow user to test specific line-of-sight profiles manually.")
 	;
 	po::positional_options_description pd;
 	pd.add("input", 1).add("output", 1);
@@ -216,6 +224,7 @@ int main(int argc, char **argv) {
 	if(vm.count("SFD-prior")) { SFDPrior = true; }
 	if(vm.count("SFD-subpixel")) { SFDsubpixel = true; }
 	if(vm.count("clobber")) { clobber = true; }
+	if(vm.count("test-los")) { test_mode = true; }
 	
 	
 	// Convert error floor to mags
@@ -420,7 +429,7 @@ int main(int argc, char **argv) {
 			                   minEBV, saveSurfs, gatherSurfs, verbosity);
 		} else {
 			sample_indiv_emp(output_fname, star_options, los_model, *emplib, ext_model,
-			                 stellar_data, img_stack, conv, lnZ, sigma_RV, minEBV,
+			                 stellar_data, img_stack, conv, lnZ, mean_RV, sigma_RV, minEBV,
 			                 saveSurfs, gatherSurfs, star_priors, verbosity);
 		}
 		
@@ -479,6 +488,11 @@ int main(int argc, char **argv) {
 			}
 			TLOSMCMCParams params(&img_stack, lnZ_filtered, p0, N_runs, N_threads, N_regions, EBV_max);
 			if(SFDsubpixel) { params.set_subpixel_mask(subpixel); }
+			
+			if(test_mode) {
+				test_extinction_profiles(params);
+			}
+			
 			if(N_clouds != 0) {
 				sample_los_extinction_clouds(output_fname, *it, cloud_options, params, N_clouds, verbosity);
 			}

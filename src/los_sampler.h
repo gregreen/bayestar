@@ -146,6 +146,8 @@ public:
 	virtual void transform(const double *const x, double *const y);
 };
 
+// Testing functions
+void test_extinction_profiles(TLOSMCMCParams &params);
 
 // Sample piecewise-linear model
 
