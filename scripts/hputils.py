@@ -85,6 +85,28 @@ def wrap_longitude(lon, delta_lon, degrees=True):
 		return np.mod(lon_shifted, 2. * np.pi)
 
 
+def lb_in_bounds(l, b, bounds):
+	'''
+	Determine whether the given (l, b) coordinates
+	are within the provided bounds.
+	
+	The bounds are in the format:
+	
+	    l_0, l_1, b_0, b_1
+	
+	l and b can be either floats or numpy arrays. In the
+	first case, a boolean will be returned, and in the
+	second, a numpy boolean array will be returned.
+	'''
+	
+	l_0 = np.mod(bounds[0], 360.)
+	l_1 = np.mod(bounds[1] - l_0, 360.)
+	
+	l_p = np.mod(l - l_0, 360.)
+	
+	return (l_p >= 0.) & (l_p <= l_1) & (b >= bounds[2]) & (b <= bounds[3])
+
+
 def shift_lon_lat(lon, lat, delta_lon, delta_lat,
                   degrees=True, clip=False):
 	'''

@@ -27,6 +27,7 @@ from os.path import abspath, expanduser
 
 import numpy as np
 import scipy.optimize as opt
+from scipy.ndimage.filters import gaussian_filter
 
 import matplotlib as mplib
 import matplotlib.pyplot as plt
@@ -147,6 +148,7 @@ def find_contour_levels(pdf, pctiles):
 	
 	return np.array(levels)
 
+
 def main():
 	# Parse commandline arguments
 	parser = argparse.ArgumentParser(prog='plotpdf',
@@ -193,15 +195,54 @@ def main():
 	if args.show_pdfs:
 		dset = '%s/stellar chains' % group
 		chain = hdf5io.TChain(fname, dset)
-		lnZ = chain.get_lnZ()[:]
-		lnZ_max = np.max(lnZ[np.isfinite(lnZ)])
-		lnZ_idx = (lnZ > lnZ_max - 10.)
-		print np.sum(lnZ_idx), np.sum(~lnZ_idx)
 		
-		dset = '%s/stellar pdfs' % group
-		pdf = hdf5io.TProbSurf(fname, dset)
-		x_min, x_max = pdf.x_min, pdf.x_max
-		pdf_stack = np.sum(pdf.get_p()[lnZ_idx], axis=0)
+		conv = chain.get_convergence()[:]
+		
+		lnZ = chain.get_lnZ()[:]
+		lnZ_max = np.percentile(lnZ[np.isfinite(lnZ)], 98.)
+		lnZ_idx = (lnZ > lnZ_max - 10.)
+		#print np.sum(lnZ_idx), np.sum(~lnZ_idx)
+		
+		print 'ln(Z_98) = %.2f' % (lnZ_max)
+		
+		for Delta_lnZ in [2.5, 5., 10., 15., 100.]:
+			tmp = np.sum(lnZ < lnZ_max - Delta_lnZ) / float(lnZ.size)
+			print '%.2f %% fail D = %.1f cut' % (100.*tmp, Delta_lnZ)
+		
+		pdf_stack = None
+		
+		try:
+			dset = '%s/stellar pdfs' % group
+			pdf = hdf5io.TProbSurf(fname, dset)
+			x_min, x_max = pdf.x_min, pdf.x_max
+			pdf_stack = np.sum(pdf.get_p()[lnZ_idx], axis=0)
+			
+		except:
+			print 'Using chains to create image of stacked pdfs...'
+			
+			star_samples = chain.get_samples()[:, :, 0:2]
+			
+			idx = conv & lnZ_idx
+			
+			star_samples = star_samples[idx]
+			
+			n_stars_tmp, n_star_samples, n_star_dim = star_samples.shape
+			star_samples.shape = (n_stars_tmp * n_star_samples, n_star_dim)
+			
+			res = (501, 121)
+			
+			E_range = np.linspace(x_min[1], x_max[1], res[0]*2+1)
+			DM_range = np.linspace(x_min[0], x_max[0], res[1]*2+1)
+			
+			pdf_stack, tmp1, tmp2 = np.histogram2d(star_samples[:,0],
+			                                       star_samples[:,1],
+			                                       bins=[E_range, DM_range])
+			
+			pdf_stack = gaussian_filter(pdf_stack.astype('f8'),
+			                            sigma=(4, 2), mode='reflect')
+			pdf_stack = pdf_stack.reshape([res[0], 2, res[1], 2]).mean(3).mean(1)
+			pdf_stack *= 100. / np.max(pdf_stack)
+			pdf_stack = pdf_stack.T
 		
 		# Normalize peak to unity at each distance
 		pdf_stack /= np.max(pdf_stack)
