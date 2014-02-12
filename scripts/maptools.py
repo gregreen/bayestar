@@ -22,8 +22,6 @@
 #  
 #  
 
-# TODO: Rationalize loading of Bayestar output files.
-
 
 import numpy as np
 from scipy.ndimage.filters import gaussian_filter
@@ -239,8 +237,8 @@ def load_output_file_unified(f, bounds=None,
 	dset = f['locations']
 	nside = dset['nside'][:]
 	pix_idx = dset['healpix_index'][:]
-	cloud_mask = dset['cloud_mask'][:]
-	los_mask = dset['piecewise_mask'][:]
+	cloud_mask = dset['cloud_mask'][:].astype(np.bool)
+	los_mask = dset['piecewise_mask'][:].astype(np.bool)
 	n_stars = dset['n_stars'][:]
 	
 	# Cloud model
@@ -786,6 +784,81 @@ class LOSData:
 			if self._has_stack:
 				self.star_stack = [self.star_stack[0][idx]]
 	
+	def save_unified(self, fname, save_stacks=False):
+		if not self._compact:
+			self.concatenate()
+		
+		f = h5py.File(fname, 'w')
+		
+		# Pixel locations
+		shape = (self.pix_idx[0].size,)
+		
+		dtype = [('nside', 'i4'),
+		         ('healpix_index', 'i8'),
+		         ('cloud_mask', 'i1'),
+		         ('piecewise_mask', 'i1'),
+		         ('n_stars', 'i4')]
+		
+		data = np.empty(shape=shape, dtype=dtype)
+		
+		data['nside'][:] = self.nside[0][:]
+		data['healpix_index'][:] = self.pix_idx[0][:]
+		data['piecewise_mask'][:] = self.los_mask[0][:]
+		data['cloud_mask'][:] = self.cloud_mask[0][:]
+		data['n_stars'][:] = self.n_stars[0][:]
+		
+		dset = f.create_dataset('locations', shape=shape, dtype=dtype,
+		                                     compression='gzip', compression_opts=9,
+		                                     chunks=True)
+		dset[:] = data[:]
+		
+		# Cloud model
+		if self._has_cloud:
+			n_pix, n_samples, n_clouds = self.cloud_mu[0].shape
+			shape = (n_pix, n_samples+1, 2*n_clouds+1)
+			
+			dset = f.create_dataset('cloud', shape=shape, dtype='f4',
+			                                 compression='gzip', compression_opts=9,
+			                                 chunks=True)
+			
+			dset[:, 1:, 1:n_clouds+1] = self.cloud_mu[0][:]
+			dset[:, 1:, n_clouds+1:] = self.cloud_delta_EBV[0][:]
+			dset[:, 1:, 0] = self.cloud_lnp[0][:]
+			dset[:, 0, 1:] = self.cloud_GR[0][:]
+		
+		# Piecewise-linear model
+		if self._has_los:
+			n_pix, n_samples, n_slices = self.los_EBV[0].shape
+			shape = (n_pix, n_samples+1, n_slices+1)
+			
+			dset = f.create_dataset('piecewise', shape=shape, dtype='f4',
+			                                     compression='gzip', compression_opts=9,
+			                                     chunks=True)
+			
+			dset[:, 1:, 1:] = self.los_EBV[0][:]
+			dset[:, 1:, 0] = self.los_lnp[0][:]
+			dset[:, 0, 1:] = self.los_GR[0][:]
+			
+			f['piecewise'].attrs['DM_min'] = self.DM_EBV_lim[0]
+			f['piecewise'].attrs['DM_max'] = self.DM_EBV_lim[1]
+		
+		# Stacked pdfs
+		if save_stacks and self._has_stack:
+			shape = self.stack[0].shape
+			
+			dset = f.create_dataset('stacked_pdfs', shape=shape, dtype='f4',
+			                                        compression='gzip', compression_opts=9,
+			                                        chunks=True)
+			
+			dset[:] = self.star_stack[0][:]
+			
+			dset.attrs['EBV_min'] = self.DM_EBV_lim[2]
+			dset.attrs['EBV_max'] = self.DM_EBV_lim[3]
+			dset.attrs['DM_min'] = self.DM_EBV_lim[0]
+			dset.attrs['DM_max'] = self.DM_EBV_lim[1]
+		
+		f.close()
+	
 	def get_pix_idx(self):
 		return self.pix_idx[0]
 	
@@ -904,6 +977,7 @@ class LOSMapper:
 		
 		self.los_DM_anchor = self.data.get_los_DM_range()
 		self.n_slices = self.data.get_n_los_slices()
+		self.los_dmu = self.los_DM_anchor[1] - self.los_DM_anchor[0]
 	
 	
 	def calc_cloud_EBV(self, mu):
@@ -967,9 +1041,9 @@ class LOSMapper:
 		'''
 		
 		if fit == 'piecewise':
-			return np.percentile(np.diff(self.los_EBV), pctile) / self.los_dmu	# TODO: Include first distance bin
+			return np.percentile(np.diff(self.data.los_EBV[0]), pctile) / self.los_dmu	# TODO: Include first distance bin
 		elif fit == 'cloud':
-			return np.percentile(self.cloud_delta_EBV, pctile) / delta_mu
+			return np.percentile(self.data.cloud_delta_EBV[0], pctile) / delta_mu
 		else:
 			raise ValueError('Unrecognized fit type: "%s"' % fit)
 	
@@ -1305,8 +1379,159 @@ def test_plot_comparison():
 		plt.close(fig)
 
 
+def test_unified():
+	in_fname = glob.glob('/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
+	out_fname = '/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2_unified.h5'
+	img_path = '/nfs_pan1/www/ggreen/cloudmaps/AquilaSouthLarge2/comp2'
+	
+	print 'Loading Bayestar output files ...'
+	mapper_1 = LOSMapper(in_fname, processes=8)
+	
+	print 'Saving as unified file ...'
+	mapper_1.data.save_unified(out_fname)
+	
+	print 'Loading unified file ...'
+	mapper_2 = LOSMapper([out_fname], processes=1)
+	
+	print 'Plotting comparison ...'
+	mapper_1.data.sort()
+	mapper_2.data.sort()
+	
+	size = (500, 500)
+	rasterizer = mapper_1.gen_rasterizer(size)
+	bounds = rasterizer.get_lb_bounds()
+	
+	mu_range = np.linspace(4., 19., 31)
+	
+	Delta = np.empty((3, 500), dtype='f8')
+	Delta[:] = np.nan
+	
+	for i, mu in enumerate(mu_range):
+		tmp, tmp, pix_val_1 = mapper_1.gen_EBV_map(mu, fit='piecewise',
+		                                               method='median',
+		                                               reduce_nside=False)
+		tmp, tmp, pix_val_2 = mapper_2.gen_EBV_map(mu, fit='piecewise',
+		                                               method='median',
+		                                               reduce_nside=False)
+		img_1 = rasterizer(pix_val_1)
+		img_2 = rasterizer(pix_val_2)
+		img_3 = rasterizer(pix_val_2 - pix_val_1)
+		
+		tmp = np.percentile(pix_val_2 - pix_val_1, [10., 50., 90.])
+		
+		Delta[0, i] = tmp[0]
+		Delta[1, i] = tmp[1]
+		Delta[2, i] = tmp[2]
+		
+		print 'Plotting figure %d (mu = %.3f), Delta E(B-V) = %.3f' % (i, mu, tmp[1])
+		
+		EBV_max = 0.70
+		diff_max = 0.20
+		
+		fig = plt.figure(figsize=(19.2, 10.8), dpi=100)
+		
+		ax_1 = fig.add_subplot(1,3,1, axisbg=(0.6, 0.8, 0.95, 0.95))
+		ax_2 = fig.add_subplot(1,3,2, axisbg=(0.6, 0.8, 0.95, 0.95))
+		ax_3 = fig.add_subplot(1,3,3)
+		
+		fig.subplots_adjust(left=0.08, right=0.96,
+		                    top=0.95, bottom=0.32,
+		                    wspace=0.)
+		
+		ax_2.set_yticklabels([])
+		ax_3.set_yticklabels([])
+		
+		ax_1.xaxis.set_major_locator(ticker.MaxNLocator(5))
+		ax_2.xaxis.set_major_locator(ticker.MaxNLocator(5, prune='lower'))
+		ax_3.xaxis.set_major_locator(ticker.MaxNLocator(5, prune='lower'))
+		
+		ax_1.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+		ax_2.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+		ax_3.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+		
+		ax_1.yaxis.set_major_locator(ticker.MaxNLocator(5))
+		ax_2.yaxis.set_major_locator(ticker.MaxNLocator(5))
+		ax_3.yaxis.set_major_locator(ticker.MaxNLocator(5))
+		
+		ax_1.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+		ax_2.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+		ax_3.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+		
+		d = 10.**(mu / 5. - 2.)
+		
+		fig.suptitle(r'$\mu = %.2f \ (d = %.2f \, \mathrm{kpc})$' % (mu, d),
+		             fontsize=20, ha='center')
+		ax_1.set_ylabel(r'$b$', fontsize=18)
+		ax_2.set_xlabel(r'$\ell$', fontsize=18)
+		
+		im_1 = ax_1.imshow(img_1.T, aspect='auto', origin='lower',
+		                            cmap='binary', interpolation='nearest',
+		                            vmin=0., vmax=EBV_max,
+		                            extent=bounds)
+		ax_2.imshow(img_2.T, aspect='auto', origin='lower',
+		                     cmap='binary', interpolation='nearest',
+		                     vmin=0., vmax=EBV_max,
+		                     extent=bounds)
+		im_3 = ax_3.imshow(img_3.T, aspect='auto', origin='lower',
+		                            cmap='RdBu', interpolation='nearest',
+		                            vmin=-diff_max, vmax=diff_max,
+		                            extent=bounds)
+		
+		#
+		# Colorbars
+		#
+		
+		cax_1 = fig.add_axes([0.08, 0.24, 0.42, 0.025])
+		cax_2 = fig.add_axes([0.54, 0.24, 0.42, 0.025])
+		
+		fig.colorbar(im_1, cax=cax_1, orientation='horizontal')
+		#fig.colorbar(im_3, cax=cax_2, orientation='horizontal')
+		
+		x = np.linspace(-diff_max, diff_max, 1000)
+		x.shape = (1, x.size)
+		
+		cax_2.imshow(x, origin='lower', cmap='RdBu',
+		                interpolation='bilinear', aspect='auto',
+		                vmin=-diff_max, vmax=diff_max,
+		                extent=[-diff_max, diff_max, -1., 1.])
+		
+		cax_2.axvline(x=Delta[1,i], lw=5., c='k', alpha=0.5)
+		
+		cax_2.set_yticks([])
+		cax_2.xaxis.set_major_locator(ticker.MaxNLocator(N=10))
+		
+		cax_1.set_xlabel(r'$\mathrm{E} \left( B - V \right)$', fontsize=16)
+		cax_2.set_xlabel(r'$\Delta \mathrm{E} \left( B - V \right)$', fontsize=16)
+		
+		#
+		# Difference vs. distance
+		#
+		
+		ax = fig.add_axes([0.08, 0.06, 0.88, 0.12])
+		
+		ax.fill_between(mu_range[:i+1], Delta[0,:i+1], Delta[2,:i+1],
+		                facecolor='b', alpha=0.5)
+		ax.plot(mu_range[:i+1], Delta[1,:i+1], c='b', alpha=0.5)
+		
+		ax.axhline(0., c='k', lw=2., alpha=0.5)
+		
+		ax.set_xlim(mu_range[0], mu_range[-1])
+		ax.set_ylim(-1.5*diff_max, 1.5*diff_max)
+		
+		ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=3))
+		ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+		ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=8))
+		ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+		
+		ax.set_xlabel(r'$\mu$', fontsize=18)
+		ax.set_ylabel(r'$\Delta \mathrm{E} \left( B - V \right)$', fontsize=16)
+		
+		fig.savefig('%s/unified_test.%.5d.png' % (img_path, i), dpi=100)
+		plt.close(fig)
+
+
 def main():
-	test_plot_comparison()
+	test_unified()
 	
 	return 0
 

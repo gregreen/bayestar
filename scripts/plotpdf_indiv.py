@@ -174,7 +174,42 @@ class TClouds:
 		kwargs['c'] = 'g'
 		kwargs['alpha'] = 0.5
 		ax.plot(self.mu_all[0], self.EBV_all[0], *args, **kwargs)
+
+
+class TLOS:
+	def __init__(self, fname, group, DM_lim):
+		chain = hdf5io.TChain(fname, '%s/los' % group)
+		
+		self.mu = np.linspace(DM_lim[0], DM_lim[1], chain.get_nDim())
+		self.alpha = 1. / np.power(chain.get_nSamples(), 0.55)
+		self.EBV_all = np.cumsum(np.exp(chain.get_samples(0)), axis=1)
+		
+		self.lnp = chain.get_lnp()[0, 1:]
+		lnp_min, lnp_max = np.percentile(self.lnp, [10., 90.])
+		
+		self.color = (self.lnp - lnp_min) / (lnp_max - lnp_min)
+		self.color[self.color > 1.] = 1.
+		self.color[self.color < 0.] = 0.
 	
+	def plot(self, ax, *args, **kwargs):
+		if 'alpha' not in kwargs:
+			kwargs['alpha'] = self.alpha
+		
+		# Plot all paths
+		for i,EBV in enumerate(self.EBV_all[1:]):
+			c = (1.-self.color[i], 0., self.color[i])
+			kwargs['c'] = c
+			ax.plot(self.mu, EBV, *args, **kwargs)
+		
+		kwargs['c'] = 'g'
+		kwargs['lw'] = 1.5
+		kwargs['alpha'] = 0.5
+		
+		ax.plot(self.mu, self.EBV_all[0], *args, **kwargs)
+		
+		ax.set_xlim(self.mu[0], self.mu[-1]) 
+		
+
 
 def main():
 	# Parse commandline arguments
@@ -308,10 +343,11 @@ def main():
 	
 	clouds = None
 	if args.show_clouds:
-		#try:
 		clouds = TClouds(fname, group, DM_lim)
-		#except:
-		#	pass
+	
+	los = None
+	if args.show_los:
+		los = TLOS(fname, group, DM_lim)
 	
 	for i,p in enumerate(pdf_indiv):
 		print 'Plotting axis %d of %d ...' % (i+1, pdf_indiv.shape[0])
@@ -338,16 +374,10 @@ def main():
 		        ha='right', va='top', fontsize=10, color='k')
 		
 		if args.show_los:
-			try:
-				los2ax(ax, fname, group, DM_lim, c='k', alpha=0.015)
-			except:
-				pass
+			los.plot(ax)
 		
 		if args.show_clouds:
-			#try:
 			clouds.plot(ax, c='k')
-			#except:
-			#	pass
 		
 		if EBV_max != None:
 			ax.set_ylim(x_min[1], EBV_max)

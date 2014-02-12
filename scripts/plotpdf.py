@@ -36,6 +36,34 @@ from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 
 import hdf5io
 
+
+def los_integral(surfs, DEBV, EBV_lim=(0., 5.), subsampling=1):
+	n_stars, n_DM, n_EBV = surfs.shape
+	n_regions = DEBV.size - 1
+	
+	assert (n_DM % n_regions == 0)
+	
+	n_pix_per_bin = n_DM / n_regions
+	n_samples = subsampling * n_pix_per_bin
+	
+	EBV_per_pix = (EBV_lim[1] - EBV_lim[0]) / float(n_EBV)
+	
+	EBV = np.hstack([np.cumsum(DEBV), [0.]]) - EBV_lim[0]
+	
+	x = np.arange(subsampling * n_DM).astype('f4') / n_pix_per_bin
+	x_floor = x.astype('i4')
+	a = (x - x_floor.astype('f4'))
+	
+	y = ((1. - a) * EBV[x] + a * EBV[x+1]) * EBV_per_pix
+	y_floor = y.astype('i4')
+	a = (y - y_floor.astype('f4'))
+	
+	p = ( (1. - a) * surfs[:, np.arange(n_DM), y_floor]
+	           + a * surfs[:, np.arange(n_DM), y_floor+1] )
+	
+	return np.sum(p, axis=1)
+
+
 def los2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	chain = hdf5io.TChain(fname, '%s/los' % group)
 	
@@ -174,6 +202,8 @@ def main():
 	#                    help='Show only converged stars.')
 	parser.add_argument('-fig', '--figsize', type=float, nargs=2, default=(7, 5.),
 	                          help='Figure width and height in inches.')
+	parser.add_argument('-y', '--EBV-max', type=float, default=None,
+	                          help='Upper limit of E(B-V) for the y-axis.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -191,7 +221,8 @@ def main():
 	x_min, x_max = [4., 0.], [19., 5.]
 	pdf_stack = None
 	pdf_indiv = None
-	EBV_max = None
+	EBV_max = args.EBV_max
+	
 	if args.show_pdfs:
 		dset = '%s/stellar chains' % group
 		chain = hdf5io.TChain(fname, dset)
@@ -251,9 +282,10 @@ def main():
 		pdf_stack = np.einsum('ij,i->ij', pdf_stack, norm)
 		
 		# Determine maximum E(B-V)
-		w_y = np.mean(pdf_stack, axis=0)
-		y_max = np.max(np.where(w_y > 1.e-2)[0])
-		EBV_max = y_max * (5. / pdf_stack.shape[1])
+		if EBV_max == None:
+			w_y = np.mean(pdf_stack, axis=0)
+			y_max = np.max(np.where(w_y > 1.e-2)[0])
+			EBV_max = y_max * (5. / pdf_stack.shape[1])
 		
 		# Save individual stellar pdfs to show
 		if args.show_individual:

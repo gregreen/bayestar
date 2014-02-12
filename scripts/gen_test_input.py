@@ -36,7 +36,10 @@ import matplotlib as mplib
 from model import TGalacticModel, TStellarModel
 from wrap_bayestar import write_infile, write_true_params
 
-fh = 0.003 #0.0051
+fh = 0.0030 #0.0051
+#LF_fname = os.path.expanduser('~/projects/bayestar/data/LF_intermediate.dat')
+#L1 = 5000.
+
 
 class TSample1D:
 	'''
@@ -117,13 +120,13 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	cos_l, sin_l = np.cos(l), np.sin(l)
 	cos_b, sin_b = np.cos(b), np.sin(b)
 	
-	gal_model = TGalacticModel(fh=fh)
+	gal_model = TGalacticModel(fh=fh)#, LF_fname=LF_fname, L1=L1)
 	stellar_model = TStellarModel(os.path.expanduser('~/projects/bayestar/data/PScolors.dat'))
 	R = np.array([3.172, 2.271, 1.682, 1.322, 1.087])
 	
 	mu_max = mag_lim[1] - gal_model.Mr_min + 3.
 	mu_min = min(0., mu_max-25.)
-	Mr_max = min(mag_lim[1], gal_model.Mr_max)
+	Mr_max = min(mag_lim[1]+3., gal_model.Mr_max)
 	
 	dN_dDM = lambda mu: gal_model.dn_dDM(mu, cos_l, sin_l, cos_b, sin_b)
 	
@@ -373,6 +376,8 @@ def main():
 		                         n_bands=args.n_bands, scale=args.scale_errors)
 		print '%d stars observed' % (len(params))
 	
+	#params['mag'][:,4] -= 0.05
+	
 	# Write Bayestar input file
 	if args.output != None:
 		mag_lim = np.array(args.limiting_mag)
@@ -399,7 +404,7 @@ def main():
 	#	print '%.3f  %.3f  %.3f  %.3f' % (p['DM'], p['EBV'], p['Mr'], p['FeH']), p['mag'], p['err']
 	
 	if args.show:
-		model = TGalacticModel(fh=fh)
+		model = TGalacticModel(fh=fh)#, LF_fname=LF_fname, L1=L1)
 		l = np.pi/180. * args.gal_lb[0]
 		b = np.pi/180. * args.gal_lb[1]
 		cos_l, sin_l = np.cos(l), np.sin(l)
@@ -425,6 +430,8 @@ def main():
 		ax.plot(x, model.LF(x)/quad(model.LF, x[0], x[-1], full_output=1)[0],
 		                                               'g-', lw=1.3, alpha=0.5)
 		ax.set_xlim(xlim)
+		ylim = ax.get_ylim()
+		ax.set_ylim(0., ylim[1])
 		ax.set_xlabel(r'$M_{r}$', fontsize=14)
 		
 		ax = fig.add_subplot(2,2,3)
