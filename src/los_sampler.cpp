@@ -756,6 +756,49 @@ void sample_los_extinction(const std::string& out_fname, const std::string& grou
 	
 	clock_gettime(CLOCK_MONOTONIC, &t_end);
 	
+	/*
+	std::vector<double> best_dbl;
+	std::vector<float> best;
+	double * line_int_best = new double[params.img_stack->N_images];
+	
+	std::cout << "get_best" << std::endl;
+	chain.get_best(best_dbl);
+	
+	std::cout << "exp" << std::endl;
+	double tmp_tot = 0;
+	for(int i=0; i<best_dbl.size(); i++) {
+		best.push_back( exp(best_dbl[i]) );
+		tmp_tot += best[i];
+		std::cout << best[i] << "  " << tmp_tot << std::endl;
+	}
+	
+	std::cout << "los_integral" << std::endl;
+	los_integral(*(params.img_stack), params.subpixel.data(), line_int_best, best.data(), ndim-1);
+	
+	double lnp_soft;
+	double ln_L = 0.;
+	
+	std::cout << std::endl;
+	std::cout << "Line integrals:" << std::endl;
+	for(size_t i=0; i<params.img_stack->N_images; i++) {
+		if(line_int_best[i] > params.p0_over_Z[i]) {
+			lnp_soft = log(line_int_best[i]) + log(1. + params.p0_over_Z[i] / line_int_best[i]);
+		} else {
+			lnp_soft = params.ln_p0_over_Z[i] + log(1. + line_int_best[i] * params.inv_p0_over_Z[i]);
+		}
+		
+		ln_L += lnp_soft;
+		
+		std::cout << "  " << i << ": " << log(line_int_best[i]) << "  " << params.ln_p0_over_Z[i] << "  " << lnp_soft << std::endl;
+	}
+	
+	std::cout << std::endl;
+	std::cout << "ln(L) = " << ln_L << std::endl;
+	std::cout << std::endl;
+	
+	delete[] line_int_best;
+	*/
+	
 	if(verbosity >= 2) { sampler.print_stats(); }
 	
 	if(verbosity >= 1) {

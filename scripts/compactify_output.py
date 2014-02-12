@@ -49,18 +49,18 @@ def main():
 	# Load in line-of-sight data
 	print 'Loading Bayestar output files ...'
 	fnames = glob.glob(args.input)
-	los_coll = maptools.los_collection(fnames, bounds=args.bounds,
-	                                           processes=args.processes)
+	mapper = maptools.LOSMapper(fnames, bounds=args.bounds,
+	                                     processes=args.processes)
 	
 	# Save to unified output file
 	if args.unified != None:
 		print 'Saving to unified output file ...'
-		los_coll.save_unified(args.unified)
+		mapper.data.save_unified(args.unified)
 	
 	# Save to summary output file
-	if args.summary != None:
-		print 'Saving to summary output file ...'
-		los_coll.save_summary(args.summary)
+	#if args.summary != None:
+	#	print 'Saving to summary output file ...'
+	#	los_coll.save_summary(args.summary)
 	
 	print 'Done.'
 	

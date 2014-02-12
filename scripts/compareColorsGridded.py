@@ -120,13 +120,23 @@ def read_photometry(fname, target_name):
 	for name,item in phot.iteritems():
 		if 'pixel' in name:
 			t_name = item.attrs['target_name']
+			
+			if type(t_name) == np.ndarray:
+				t_name = str(t_name[0]).lstrip().rstrip()
+			else:
+				t_name = str(t_name).lstrip().rstrip()
+			
+			print t_name
+			print target_name
+			
 			l = item.attrs['l']
 			b = item.attrs['b']
+			
 			if t_name == target_name:
 				mags = item['mag'][:]
 				errs = item['err'][:]
 				EBV_SFD = item['EBV'][:]
-				pix_idx = int(name.split()[1])
+				pix_idx = int(name.split()[1].split('-')[1])
 				return mags, errs, EBV_SFD, t_name, pix_idx, l, b
 	return None
 

@@ -64,6 +64,18 @@ class TGalacticModel:
         self.fh_outer = self.fh * (self.Rbr/self.R0)**(self.nh-self.nh_outer)
         self.L_epsilon = 0.
         
+        
+        # Bulge (Robin et al. 2003, i.e. Besancon)
+        self.R_c = 2540.
+        self.x_0 = 1590.
+        self.y_0 = 424.
+        self.z_0 = 424.
+        self.alpha = 78.9 * np.pi / 180.
+        self.beta = 3.5 * np.pi / 180.
+        self.gamma = 91.3 * np.pi / 180.
+        self.f_bulge = 1. # (Ratio of bulge to thin disk at the GC)
+        self.bulge_rot = rotation_matrix(self.alpha, self.beta, self.gamma)
+        
         # Drimmel & Spergel (2001)
         self.H_ISM = 134.4
         self.L_ISM = 2260.
@@ -143,6 +155,33 @@ class TGalacticModel:
             else:
                 return self.rho_0 * self.fh_outer * (r_eff2/self.R0/self.R0)**(self.nh_outer/2.)
     
+    def Cartesian_2_bulge(self, x, y, z):
+        r = np.array([x, y, z]).T
+        
+        if type(x) == float:
+	        return np.einsum('ij,j', self.bulge_rot, r)
+	    
+        return np.einsum('ij,jk', self.bulge_rot, r).T
+    
+    def rho_bulge(self, x, y, z):
+        x, y, z = self.Cartesian_2_bulge(x, y, z)
+        
+        r_s = np.power( ((x/self.x_0)**2 + (y/self.y_0)**2)**2 + (z/self.z_0)**4, 0.25)
+        
+        rho = np.exp(-0.5 * r_s**2)
+        
+        if type(x) == np.ndarray:
+            idx = (x**2 + y**2 > self.R_c**2.)
+            
+            d = np.sqrt(x[idx]**2 + y[idx]**2) - self.R_c
+            rho[idx] *= np.exp(-2. * d**2)
+        else:
+            if x**2. + y**2. > self.R_c**2.:
+                d = np.sqrt(x**2. + y**2.) - self.R_c
+                rho *= np.exp(-2. * d**2.)
+        
+        return self.f_bulge * rho
+    
     def H_ISM_of_R(self, r):
         return self.H_ISM + self.dH_dR_ISM * np.where(r > self.R_flair_ISM, r - self.R_flair_ISM, 0.)
     
@@ -164,7 +203,8 @@ class TGalacticModel:
         x,y,z = self.Cartesian_coords(DM, cos_l, sin_l, cos_b, sin_b)
         r = np.sqrt(x*x + y*y)
         
-        return self.rho_rz(r, z, component='halo') / self.rho_rz(r, z, component='disk')
+        return self.rho_rz(r, z, component='halo') / self.rho(DM, cos_l, sin_l,
+                                                                  cos_b, sin_b)
     
     def rho_rz(self, r, z, component=None):
         if component == 'disk':
@@ -182,7 +222,12 @@ class TGalacticModel:
         x,y,z = self.Cartesian_coords(DM, cos_l, sin_l, cos_b, sin_b)
         r = np.sqrt(x*x + y*y)
         
-        return self.rho_rz(r, z, component=component)
+        rho = self.rho_rz(r, z, component=component)
+        
+        #if self.f_bulge > 0.:
+        #	rho += self.rho_bulge(x, y, z)
+        
+        return rho
     
     def dn_dDM(self, DM, cos_l, sin_l, cos_b, sin_b, radius=1.,
                component=None, correct=False):
@@ -326,6 +371,24 @@ class TGalacticModel:
         log_Delta_EBV[idx] = -8.
         
         return DM, log_Delta_EBV, sigma, mean_Delta_EBV, norm
+
+
+def rotation_matrix(alpha, beta, gamma):
+    Rx = np.array([[1., 0.,             0.],
+                   [0., np.cos(gamma), -np.sin(gamma)],
+                   [0., np.sin(gamma),  np.cos(gamma)]])
+    
+    Ry = np.array([[ np.cos(beta), 0., np.sin(beta)],
+                   [ 0.,           1., 0.],
+                   [-np.sin(beta), 0., np.cos(beta)]])
+    
+    Rz = np.array([[np.cos(gamma), -np.sin(gamma), 0.],
+                   [np.sin(gamma),  np.cos(gamma), 0.],
+                   [0.,             0.,            1.]])
+    
+    R = np.einsum('ij,jk,kl', Rx, Ry, Rz)
+    
+    return R
 
 
 def downsample_by_four(x):

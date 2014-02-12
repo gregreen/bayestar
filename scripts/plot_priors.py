@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator, MaxNLocator
 from matplotlib.patches import Rectangle
 import numpy as np
-from scipy.integrate import quad, Inf
+from scipy.integrate import quad
 from math import pi, sqrt, log, exp, sin, cos
 from os.path import abspath
 

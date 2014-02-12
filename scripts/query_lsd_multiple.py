@@ -27,7 +27,7 @@ from os.path import abspath
 
 import healpy as hp
 import numpy as np
-import pyfits
+#import pyfits
 import h5py
 
 import lsd
@@ -50,7 +50,7 @@ def mapper(qresult, target_tp, target_radius):
 		
 		# Group together stars belonging to the same target
 		for target_idx, block_idx in iterators.index_by_key(min_idx):
-			yield (target_idx, (d[:,target_idx], obj[block_idx]))
+			yield (target_idx, (d[block_idx,target_idx], obj[block_idx]))
 
 
 def reducer(keyvalue, max_per_pixel):
@@ -78,6 +78,8 @@ def reducer(keyvalue, max_per_pixel):
 	obj['err'][mask_zero_err] = 1.e10
 	obj['err'][mask_nan_err] = 1.e10
 	obj['err'][mask_zero_mag] = 1.e10
+	
+	#obj['EBV'][:] = d[:]
 	
 	# Combine and apply the masks
 	mask_detect = np.sum(obj['mean'], axis=1).astype(np.bool)
@@ -107,7 +109,7 @@ def to_file(f, target_idx, target_name, gal_lb, EBV, data):
 		f = h5py.File(fname, 'a')
 		close_file = True
 	
-	ds_name = '/photometry/pixel %d' % target_idx
+	ds_name = '/photometry/pixel 512-%d' % target_idx
 	ds = f.create_dataset(ds_name, data.shape, data.dtype, chunks=True,
 	                      compression='gzip', compression_opts=9)
 	ds[:] = data[:]
@@ -154,8 +156,8 @@ def great_circle_dist(tp0, tp1):
 	M = tp1.shape[0]
 	out = np.empty((N,M), dtype=tp0.dtype)
 	
-	dist = lambda p0, t0, p1, t1: np.arccos(np.sin(t0)*np.sin(t1)
-	                              + np.cos(t0)*np.cos(t1)*np.cos(p0-p1))
+	dist = lambda p0, t0, p1, t1: np.arccos(np.cos(t0)*np.cos(t1)
+	                              + np.sin(t0)*np.sin(t1)*np.cos(p0-p1))
 	
 	if N <= M:
 		for n in xrange(N):

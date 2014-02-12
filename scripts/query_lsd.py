@@ -38,6 +38,8 @@ import lsd
 
 import iterators
 
+import hputils
+
 
 def lb2pix(nside, l, b, nest=True):
 	theta = np.pi/180. * (90. - b)
@@ -372,10 +374,7 @@ def main():
 		l_center, b_center = pix2lb(nside, pix_index, nest=nest)
 		
 		if values.bounds != None:
-			if (     (l_center < values.bounds[0])
-			      or (l_center > values.bounds[1]) 
-			      or (b_center < values.bounds[2]) 
-			      or (b_center > values.bounds[3]) ):
+			if not hputils.lb_in_bounds(l_center, b_center, values.bounds):
 				N_pix_out_of_bounds += 1
 				continue
 		

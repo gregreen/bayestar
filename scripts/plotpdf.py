@@ -27,6 +27,7 @@ from os.path import abspath, expanduser
 
 import numpy as np
 import scipy.optimize as opt
+from scipy.ndimage.filters import gaussian_filter
 
 import matplotlib as mplib
 import matplotlib.pyplot as plt
@@ -34,6 +35,34 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 
 import hdf5io
+
+
+def los_integral(surfs, DEBV, EBV_lim=(0., 5.), subsampling=1):
+	n_stars, n_DM, n_EBV = surfs.shape
+	n_regions = DEBV.size - 1
+	
+	assert (n_DM % n_regions == 0)
+	
+	n_pix_per_bin = n_DM / n_regions
+	n_samples = subsampling * n_pix_per_bin
+	
+	EBV_per_pix = (EBV_lim[1] - EBV_lim[0]) / float(n_EBV)
+	
+	EBV = np.hstack([np.cumsum(DEBV), [0.]]) - EBV_lim[0]
+	
+	x = np.arange(subsampling * n_DM).astype('f4') / n_pix_per_bin
+	x_floor = x.astype('i4')
+	a = (x - x_floor.astype('f4'))
+	
+	y = ((1. - a) * EBV[x] + a * EBV[x+1]) * EBV_per_pix
+	y_floor = y.astype('i4')
+	a = (y - y_floor.astype('f4'))
+	
+	p = ( (1. - a) * surfs[:, np.arange(n_DM), y_floor]
+	           + a * surfs[:, np.arange(n_DM), y_floor+1] )
+	
+	return np.sum(p, axis=1)
+
 
 def los2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	chain = hdf5io.TChain(fname, '%s/los' % group)
@@ -147,6 +176,7 @@ def find_contour_levels(pdf, pctiles):
 	
 	return np.array(levels)
 
+
 def main():
 	# Parse commandline arguments
 	parser = argparse.ArgumentParser(prog='plotpdf',
@@ -172,6 +202,8 @@ def main():
 	#                    help='Show only converged stars.')
 	parser.add_argument('-fig', '--figsize', type=float, nargs=2, default=(7, 5.),
 	                          help='Figure width and height in inches.')
+	parser.add_argument('-y', '--EBV-max', type=float, default=None,
+	                          help='Upper limit of E(B-V) for the y-axis.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -189,19 +221,59 @@ def main():
 	x_min, x_max = [4., 0.], [19., 5.]
 	pdf_stack = None
 	pdf_indiv = None
-	EBV_max = None
+	EBV_max = args.EBV_max
+	
 	if args.show_pdfs:
 		dset = '%s/stellar chains' % group
 		chain = hdf5io.TChain(fname, dset)
-		lnZ = chain.get_lnZ()[:]
-		lnZ_max = np.max(lnZ[np.isfinite(lnZ)])
-		lnZ_idx = (lnZ > lnZ_max - 10.)
-		print np.sum(lnZ_idx), np.sum(~lnZ_idx)
 		
-		dset = '%s/stellar pdfs' % group
-		pdf = hdf5io.TProbSurf(fname, dset)
-		x_min, x_max = pdf.x_min, pdf.x_max
-		pdf_stack = np.sum(pdf.get_p()[lnZ_idx], axis=0)
+		conv = chain.get_convergence()[:]
+		
+		lnZ = chain.get_lnZ()[:]
+		lnZ_max = np.percentile(lnZ[np.isfinite(lnZ)], 98.)
+		lnZ_idx = (lnZ > lnZ_max - 10.)
+		#print np.sum(lnZ_idx), np.sum(~lnZ_idx)
+		
+		print 'ln(Z_98) = %.2f' % (lnZ_max)
+		
+		for Delta_lnZ in [2.5, 5., 10., 15., 100.]:
+			tmp = np.sum(lnZ < lnZ_max - Delta_lnZ) / float(lnZ.size)
+			print '%.2f %% fail D = %.1f cut' % (100.*tmp, Delta_lnZ)
+		
+		pdf_stack = None
+		
+		try:
+			dset = '%s/stellar pdfs' % group
+			pdf = hdf5io.TProbSurf(fname, dset)
+			x_min, x_max = pdf.x_min, pdf.x_max
+			pdf_stack = np.sum(pdf.get_p()[lnZ_idx], axis=0)
+			
+		except:
+			print 'Using chains to create image of stacked pdfs...'
+			
+			star_samples = chain.get_samples()[:, :, 0:2]
+			
+			idx = conv & lnZ_idx
+			
+			star_samples = star_samples[idx]
+			
+			n_stars_tmp, n_star_samples, n_star_dim = star_samples.shape
+			star_samples.shape = (n_stars_tmp * n_star_samples, n_star_dim)
+			
+			res = (501, 121)
+			
+			E_range = np.linspace(x_min[1], x_max[1], res[0]*2+1)
+			DM_range = np.linspace(x_min[0], x_max[0], res[1]*2+1)
+			
+			pdf_stack, tmp1, tmp2 = np.histogram2d(star_samples[:,0],
+			                                       star_samples[:,1],
+			                                       bins=[E_range, DM_range])
+			
+			pdf_stack = gaussian_filter(pdf_stack.astype('f8'),
+			                            sigma=(4, 2), mode='reflect')
+			pdf_stack = pdf_stack.reshape([res[0], 2, res[1], 2]).mean(3).mean(1)
+			pdf_stack *= 100. / np.max(pdf_stack)
+			pdf_stack = pdf_stack.T
 		
 		# Normalize peak to unity at each distance
 		pdf_stack /= np.max(pdf_stack)
@@ -210,9 +282,10 @@ def main():
 		pdf_stack = np.einsum('ij,i->ij', pdf_stack, norm)
 		
 		# Determine maximum E(B-V)
-		w_y = np.mean(pdf_stack, axis=0)
-		y_max = np.max(np.where(w_y > 1.e-2)[0])
-		EBV_max = y_max * (5. / pdf_stack.shape[1])
+		if EBV_max == None:
+			w_y = np.mean(pdf_stack, axis=0)
+			y_max = np.max(np.where(w_y > 1.e-2)[0])
+			EBV_max = y_max * (5. / pdf_stack.shape[1])
 		
 		# Save individual stellar pdfs to show
 		if args.show_individual:

@@ -167,8 +167,8 @@ def rasterizer_worker(dist_q, img_q,
 
 
 class PixelPlotter:
-	def __init__(self, los_coll, model='piecewise'):
-		self.los_coll = los_coll
+	def __init__(self, data, model='piecewise'):
+		self.data = data
 		self.model = model
 	
 	def __call__(self, map_idx):
@@ -179,12 +179,12 @@ class PixelPlotter:
 			return
 		
 		# Load and stretch stacked stellar pdfs
-		star_stack = self.los_coll.star_stack[map_idx].astype('f8')
+		star_stack = self.data.star_stack[0][map_idx].astype('f8')
 		
-		dE = self.los_coll.star_E_range[1] - self.los_coll.star_E_range[0]
-		dDM = self.los_coll.star_DM_range[1] - self.los_coll.star_DM_range[0]
-		sigma = [0.015/dE, 0.15/dDM]
-		star_stack = gaussian_filter(star_stack, sigma, mode='mirror')
+		#dE = self.los_coll.star_E_range[1] - self.los_coll.star_E_range[0]
+		#dDM = self.los_coll.star_DM_range[1] - self.los_coll.star_DM_range[0]
+		#sigma = [0.015/dE, 0.15/dDM]
+		#star_stack = gaussian_filter(star_stack, sigma, mode='mirror')
 		
 		star_stack /= np.max(star_stack)
 		norm1 = 1. / np.power(np.max(star_stack, axis=0), 0.8)
@@ -199,11 +199,11 @@ class PixelPlotter:
 		EBV_stack_max = y_max * (5. / star_stack.shape[0])
 		
 		# Load piecewise-linear profiles
-		mu = self.los_coll.los_mu_anchor
-		EBV_all = self.los_coll.los_EBV[map_idx, :, :]
+		mu = self.data.get_los_DM_range()
+		EBV_all = self.data.los_EBV[0][map_idx, :, :]
 		
-		nside = self.los_coll.nside[map_idx]
-		pix_idx = self.los_coll.pix_idx[map_idx]
+		nside = self.data.nside[0][map_idx]
+		pix_idx = self.data.pix_idx[0][map_idx]
 		l, b = hputils.pix2lb_scalar(nside, pix_idx, nest=True, use_negative_l=True)
 		
 		EBV_los_max = 1.5 * np.percentile(EBV_all[:, -1], 95.)
@@ -213,9 +213,9 @@ class PixelPlotter:
 		lnp = None
 		lnp_txt = None
 		
-		if self.los_coll.los_lnp != []:
-			lnp = self.los_coll.los_lnp[map_idx, :] / self.los_coll.n_stars[map_idx]
-			GR = self.los_coll.los_GR[map_idx, :]
+		if self.data.los_lnp != []:
+			lnp = self.data.los_lnp[0][map_idx, :] / self.data.n_stars[0][map_idx]
+			GR = self.data.los_GR[0][map_idx, :]
 			
 			lnp_min, lnp_max = np.percentile(lnp[1:], [10., 90.])
 			GR_max = np.max(GR)
@@ -237,8 +237,7 @@ class PixelPlotter:
 		fig.subplots_adjust(left=0.12, bottom=0.12, top=0.85)
 		
 		# Plot stacked stellar pdfs
-		bounds = [self.los_coll.star_bounds[1][0], self.los_coll.star_bounds[1][1],
-		          self.los_coll.star_bounds[0][0], self.los_coll.star_bounds[0][1]]
+		bounds = self.data.DM_EBV_lim
 		ax.imshow(np.sqrt(star_stack), extent=bounds, origin='lower',
 		          aspect='auto', cmap='Blues', interpolation='nearest')
 		
@@ -276,7 +275,7 @@ class PixelPlotter:
 
 
 def rasterizer_plotter_worker(dist_q, lock,
-                              los_coll,
+                              mapper,
                               figsize, dpi, size,
                               model, method, mask,
                               proj, l_cent, b_cent, bounds,
@@ -291,9 +290,9 @@ def rasterizer_plotter_worker(dist_q, lock,
 	np.random.seed(seed=seed)
 	
 	# Set up rasterizer
-	rasterizer = los_coll.gen_rasterizer(size, proj=proj,
-	                                           l_cent=l_cent,
-	                                           b_cent=b_cent)
+	rasterizer = mapper.gen_rasterizer(size, proj=proj,
+	                                         l_cent=l_cent,
+	                                         b_cent=b_cent)
 	bounds = rasterizer.get_lb_bounds()
 	
 	# Set up grid lines and labels
@@ -335,7 +334,7 @@ def rasterizer_plotter_worker(dist_q, lock,
 	pix_identifier = []
 	
 	if show:
-		pix_plotter = PixelPlotter(los_coll)
+		pix_plotter = PixelPlotter(mapper)
 	
 	# Generate images
 	while True:
@@ -343,11 +342,11 @@ def rasterizer_plotter_worker(dist_q, lock,
 			n, mu = dist_q.get_nowait()
 			
 			# Rasterize E(B-V)
-			tmp, tmp, pix_val = los_coll.gen_EBV_map(mu, fit=model,
-			                                             method=method,
-			                                             mask_sigma=mask,
-			                                             delta_mu=delta_mu,
-			                                             reduce_nside=False)
+			tmp, tmp, pix_val = mapper.gen_EBV_map(mu, fit=model,
+			                                           method=method,
+			                                           mask_sigma=mask,
+			                                           delta_mu=delta_mu,
+			                                           reduce_nside=False)
 			
 			img = rasterizer(pix_val)
 			
@@ -412,7 +411,7 @@ def rasterizer_plotter_worker(dist_q, lock,
 			if l_lines != None:
 				if bounds != None:
 					if (bounds[2] > -80.) | (bounds[3] < 80.):
-						print bounds
+						#print bounds
 						
 						for l, (x_0, y_0), (x_1, y_1) in l_labels:
 							ax.text(x_0, y_0, r'$%d^{\circ}$' % l, fontsize=20,
@@ -570,10 +569,11 @@ def main():
 	
 	# Load in line-of-sight data
 	fnames = args.input
-	los_coll = maptools.los_collection(fnames, bounds=args.bounds,
-	                                           processes=args.processes,
-	                                           max_samples=args.max_samples)
 	
+	mapper = maptools.LOSMapper(fnames, bounds=args.bounds,
+	                                    max_samples=args.max_samples,
+	                                    processes=args.processes,
+	                                    load_stacked_pdfs=args.show)
 	
 	# Get upper limit on E(B-V)
 	method_tmp = method
@@ -587,7 +587,7 @@ def main():
 		mu_eval = None
 		
 		if method == 'sigma':
-			mu_eval = np.array(los_coll.los_mu_anchor)
+			mu_eval = np.array(mapper.data.get_los_DM_range())
 			idx = (mu_eval >= args.dists[0]) & (mu_eval <= args.dists[1])
 			mu_eval = mu_eval[idx]
 			
@@ -597,11 +597,11 @@ def main():
 		for mu in mu_eval:
 			print 'Determining max E(B-V) from mu = %.2f ...' % mu
 			
-			nside_tmp, pix_idx_tmp, EBV = los_coll.gen_EBV_map(mu,
-			                                                   fit=args.model,
-			                                                   method=method_tmp,
-			                                                   mask_sigma=args.mask,
-			                                                   delta_mu=args.delta_mu)
+			nside_tmp, pix_idx_tmp, EBV = mapper.gen_EBV_map(mu,
+			                                                 fit=args.model,
+			                                                 method=method_tmp,
+			                                                 mask_sigma=args.mask,
+			                                                 delta_mu=args.delta_mu)
 			idx = np.isfinite(EBV)
 			EBV_max_tmp = np.percentile(EBV[idx], 95.)
 			
@@ -609,8 +609,8 @@ def main():
 				EBV_max = EBV_max_tmp
 		
 	else:
-		EBV_max = los_coll.est_dEBV_pctile(95., delta_mu=args.delta_mu,
-		                                        fit=args.model)
+		EBV_max = mapper.est_dEBV_pctile(95., delta_mu=args.delta_mu,
+		                                      fit=args.model)
 	
 	mask = args.mask
 	
@@ -633,7 +633,7 @@ def main():
 	
 	# Plot at each distance
 	pix_identifiers = []
-	nside_max = los_coll.get_nside_levels()[-1]
+	nside_max = mapper.get_nside_levels()[-1]
 	
 	# Set up queue for rasterizer workers to pull from
 	dist_q = multiprocessing.Queue()
@@ -652,7 +652,7 @@ def main():
 	for i in xrange(n_rasterizers):
 		p = multiprocessing.Process(target=rasterizer_plotter_worker,
 		                            args=(dist_q, lock,
-		                                  los_coll,
+		                                  mapper,
 		                                  args.figsize, args.dpi, size,
 		                                  args.model, method, mask,
 		                                  proj, l_cent, b_cent, args.bounds,

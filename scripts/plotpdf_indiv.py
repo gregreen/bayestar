@@ -27,6 +27,7 @@ from os.path import abspath, expanduser
 
 import numpy as np
 import scipy.optimize as opt
+from scipy.ndimage.filters import gaussian_filter
 
 import matplotlib as mplib
 import matplotlib.pyplot as plt
@@ -173,7 +174,42 @@ class TClouds:
 		kwargs['c'] = 'g'
 		kwargs['alpha'] = 0.5
 		ax.plot(self.mu_all[0], self.EBV_all[0], *args, **kwargs)
+
+
+class TLOS:
+	def __init__(self, fname, group, DM_lim):
+		chain = hdf5io.TChain(fname, '%s/los' % group)
+		
+		self.mu = np.linspace(DM_lim[0], DM_lim[1], chain.get_nDim())
+		self.alpha = 1. / np.power(chain.get_nSamples(), 0.55)
+		self.EBV_all = np.cumsum(np.exp(chain.get_samples(0)), axis=1)
+		
+		self.lnp = chain.get_lnp()[0, 1:]
+		lnp_min, lnp_max = np.percentile(self.lnp, [10., 90.])
+		
+		self.color = (self.lnp - lnp_min) / (lnp_max - lnp_min)
+		self.color[self.color > 1.] = 1.
+		self.color[self.color < 0.] = 0.
 	
+	def plot(self, ax, *args, **kwargs):
+		if 'alpha' not in kwargs:
+			kwargs['alpha'] = self.alpha
+		
+		# Plot all paths
+		for i,EBV in enumerate(self.EBV_all[1:]):
+			c = (1.-self.color[i], 0., self.color[i])
+			kwargs['c'] = c
+			ax.plot(self.mu, EBV, *args, **kwargs)
+		
+		kwargs['c'] = 'g'
+		kwargs['lw'] = 1.5
+		kwargs['alpha'] = 0.5
+		
+		ax.plot(self.mu, self.EBV_all[0], *args, **kwargs)
+		
+		ax.set_xlim(self.mu[0], self.mu[-1]) 
+		
+
 
 def main():
 	# Parse commandline arguments
@@ -222,10 +258,46 @@ def main():
 	lnZ_idx = np.ones(lnZ.shape).astype(np.bool) #(lnZ > lnZ_max - 30.)
 	#print np.sum(lnZ_idx), np.sum(~lnZ_idx)
 	
-	dset = '%s/stellar pdfs' % group
-	pdf = hdf5io.TProbSurf(fname, dset)
-	x_min, x_max = pdf.x_min, pdf.x_max
-	pdf_stack = np.sum(pdf.get_p()[lnZ_idx], axis=0)
+	# Load stellar pdfs
+	try:
+		dset = '%s/stellar pdfs' % group
+		pdf = hdf5io.TProbSurf(fname, dset)
+		x_min, x_max = pdf.x_min, pdf.x_max
+		pdf_stack = np.sum(pdf.get_p()[lnZ_idx], axis=0)
+		
+		pdf_indiv = pdf.get_p()
+		
+	except:
+		res = (501, 121)
+		
+		E_range = np.linspace(x_min[1], x_max[1], res[0]*2+1)
+		DM_range = np.linspace(x_min[0], x_max[0], res[1]*2+1)
+		
+		star_samples = chain.get_samples()[:, :, 0:2]
+		
+		n_stars_tmp, n_star_samples, n_star_dim = star_samples.shape
+		
+		pdf_indiv = np.empty((n_stars_tmp, res[1], res[0]), dtype='f8')
+		
+		for i in xrange(star_samples.shape[0]):
+			tmp_pdf, tmp, tmp = np.histogram2d(star_samples[i,:,0],
+			                                   star_samples[i,:,1],
+			                                   bins=[E_range, DM_range])
+			tmp_pdf = gaussian_filter(tmp_pdf, sigma=(4, 2), mode='reflect')
+			tmp_pdf = tmp_pdf.reshape([res[0], 2, res[1], 2]).mean(3).mean(1)
+			tmp_pdf /= np.sum(tmp_pdf)
+			pdf_indiv[i] = tmp_pdf.T
+		
+		star_samples.shape = (n_stars_tmp * n_star_samples, n_star_dim)
+		
+		pdf_stack, tmp1, tmp2 = np.histogram2d(star_samples[:,0], star_samples[:,1],
+		                                       bins=[E_range, DM_range])
+		
+		pdf_stack = gaussian_filter(pdf_stack.astype('f8'),
+		                            sigma=(4, 2), mode='reflect')
+		pdf_stack = pdf_stack.reshape([res[0], 2, res[1], 2]).mean(3).mean(1)
+		pdf_stack *= 100. / np.max(pdf_stack)
+		pdf_stack = pdf_stack.T
 	
 	# Normalize peak to unity at each distance
 	pdf_stack /= np.max(pdf_stack)
@@ -237,9 +309,6 @@ def main():
 	w_y = np.mean(pdf_stack, axis=0)
 	y_max = np.max(np.where(w_y > 1.e-2)[0])
 	EBV_max = y_max * (5. / pdf_stack.shape[1])
-	
-	# Save individual stellar pdfs to show
-	pdf_indiv = pdf.get_p()
 	
 	# Set matplotlib style attributes
 	mplib.rc('text', usetex=True)
@@ -274,10 +343,11 @@ def main():
 	
 	clouds = None
 	if args.show_clouds:
-		#try:
 		clouds = TClouds(fname, group, DM_lim)
-		#except:
-		#	pass
+	
+	los = None
+	if args.show_los:
+		los = TLOS(fname, group, DM_lim)
 	
 	for i,p in enumerate(pdf_indiv):
 		print 'Plotting axis %d of %d ...' % (i+1, pdf_indiv.shape[0])
@@ -304,16 +374,10 @@ def main():
 		        ha='right', va='top', fontsize=10, color='k')
 		
 		if args.show_los:
-			try:
-				los2ax(ax, fname, group, DM_lim, c='k', alpha=0.015)
-			except:
-				pass
+			los.plot(ax)
 		
 		if args.show_clouds:
-			#try:
 			clouds.plot(ax, c='k')
-			#except:
-			#	pass
 		
 		if EBV_max != None:
 			ax.set_ylim(x_min[1], EBV_max)
