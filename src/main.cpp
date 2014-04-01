@@ -84,6 +84,8 @@ struct TProgramOpts {
 	string template_fname;
 	string ext_model_fname;
 	
+	TGalStructParams gal_struct_params;
+	
 	TProgramOpts() {
 		input_fname = "NONE";
 		output_fname = "NONE";
@@ -102,20 +104,20 @@ struct TProgramOpts {
 		sigma_RV = -1.;
 		mean_RV = 3.1;
 		
-		N_regions = 20;
-		los_steps = 3000;
+		N_regions = 30;
+		los_steps = 4000;
 		los_samplers = 2;
 		los_p_replacement = 0.0;
 		
 		N_clouds = 1;
-		cloud_steps = 1000;
+		cloud_steps = 2000;
 		cloud_samplers = 80;
 		cloud_p_replacement = 0.2;
 		
 		disk_prior = false;
 		SFD_prior = false;
 		SFD_subpixel = false;
-		ev_cut = 15.;
+		ev_cut = 10.;
 		
 		N_runs = 4;
 		N_threads = 1;
@@ -133,6 +135,14 @@ struct TProgramOpts {
 };
 
 
+template<typename T>
+string to_string(const T& x) {
+	stringstream ss;
+	ss << x;
+	return ss.str();
+}
+
+
 int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
 	namespace po = boost::program_options;
 	
@@ -140,42 +150,73 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
 	
 	po::options_description config_desc("Configuration-file options");
 	config_desc.add_options()
-		("err-floor", po::value<double>(&(opts.err_floor)), "Error to add in quadrature (in millimags)")
+		("err-floor", po::value<double>(&(opts.err_floor)), ("Error to add in quadrature (in millimags) (default: " + to_string(opts.err_floor) + ")").c_str())
 		("synthetic", "Use synthetic photometric library (default: use empirical library)")
-		("star-steps", po::value<unsigned int>(&(opts.star_steps)), "# of MCMC steps per star (per sampler)")
-		("star-samplers", po::value<unsigned int>(&(opts.star_samplers)), "# of samplers per dimension (stellar fit)")
-		("star-p-replacement", po::value<double>(&(opts.star_p_replacement)), "Probability of taking replacement step (stellar fit)")
+		("star-steps", po::value<unsigned int>(&(opts.star_steps)), ("# of MCMC steps per star (per sampler) (default: " + to_string(opts.star_steps) + ")").c_str())
+		("star-samplers", po::value<unsigned int>(&(opts.star_samplers)), ("# of samplers per dimension (stellar fit) (default: " + to_string(opts.star_samplers) + ")").c_str())
+		("star-p-replacement", po::value<double>(&(opts.star_p_replacement)), ("Probability of taking replacement step (stellar fit) (default: " + to_string(opts.star_p_replacement) + ")").c_str())
 		("no-stellar-priors", "Turn off priors for individual stars.")
-		("min-EBV", po::value<double>(&(opts.min_EBV)), "Minimum stellar E(B-V) (default: 0)")
+		("min-EBV", po::value<double>(&(opts.min_EBV)), ("Minimum stellar E(B-V) (default: " + to_string(opts.min_EBV) + ")").c_str())
 		
-		("mean-RV", po::value<double>(&(opts.mean_RV)), "Mean R_V (per star) (default: 3.1)")
-		("sigma-RV", po::value<double>(&(opts.sigma_RV)), "Variation in R_V (per star) (default: -1, interpreted as no variance)")
+		("mean-RV", po::value<double>(&(opts.mean_RV)), ("Mean R_V (per star) (default: " + to_string(opts.mean_RV) + ")").c_str())
+		("sigma-RV", po::value<double>(&(opts.sigma_RV)), ("Variation in R_V (per star) (default: " + to_string(opts.sigma_RV) + ", interpreted as no variance)").c_str())
 		
-		("regions", po::value<unsigned int>(&(opts.N_regions)), "# of piecewise-linear regions in l.o.s. extinction profile (default: 20)")
-		("los-steps", po::value<unsigned int>(&(opts.los_steps)), "# of MCMC steps in l.o.s. fit (per sampler)")
-		("los-samplers", po::value<unsigned int>(&(opts.los_samplers)), "# of samplers per dimension (l.o.s. fit)")
-		("los-p-replacement", po::value<double>(&(opts.los_p_replacement)), "Probability of taking replacement step (l.o.s. fit)")
+		("regions", po::value<unsigned int>(&(opts.N_regions)), ("# of piecewise-linear regions in l.o.s. extinction profile (default: " + to_string(opts.N_regions) + ")").c_str())
+		("los-steps", po::value<unsigned int>(&(opts.los_steps)), ("# of MCMC steps in l.o.s. fit (per sampler) (default: " + to_string(opts.los_steps) + ")").c_str())
+		("los-samplers", po::value<unsigned int>(&(opts.los_samplers)), ("# of samplers per dimension (l.o.s. fit) (default: " + to_string(opts.los_samplers) + ")").c_str())
+		("los-p-replacement", po::value<double>(&(opts.los_p_replacement)), ("Probability of taking replacement step (l.o.s. fit) (default: " + to_string(opts.los_p_replacement) + ")").c_str())
 		
-		("clouds", po::value<unsigned int>(&(opts.N_clouds)), "# of clouds along the line of sight (default: 0).\n"
-		                                                      "Setting this option causes the sampler to use a discrete\n"
-		                                                      "cloud model for the l.o.s. extinction profile.")
-		("cloud-steps", po::value<unsigned int>(&(opts.cloud_steps)), "# of MCMC steps in cloud fit (per sampler)")
-		("cloud-samplers", po::value<unsigned int>(&(opts.cloud_samplers)), "# of samplers per dimension (cloud fit)")
-		("cloud-p-replacement", po::value<double>(&(opts.cloud_p_replacement)), "Probability of taking replacement step (cloud fit)")
+		("clouds", po::value<unsigned int>(&(opts.N_clouds)), ("# of clouds along the line of sight (default: " + to_string(opts.N_clouds) + ")\n"
+		                                                       "Setting this option causes the sampler to also fit a discrete "
+		                                                       "cloud model of the l.o.s. extinction profile.").c_str())
+		("cloud-steps", po::value<unsigned int>(&(opts.cloud_steps)), ("# of MCMC steps in cloud fit (per sampler) (default: " + to_string(opts.cloud_steps) + ")").c_str())
+		("cloud-samplers", po::value<unsigned int>(&(opts.cloud_samplers)), ("# of samplers per dimension (cloud fit) (default: " + to_string(opts.cloud_samplers) + ")").c_str())
+		("cloud-p-replacement", po::value<double>(&(opts.cloud_p_replacement)), ("Probability of taking replacement step (cloud fit) (default: " + to_string(opts.cloud_p_replacement) + ")").c_str())
 		
 		("disk-prior", "Assume that dust density roughly traces stellar disk density.")
 		("SFD-prior", "Use SFD E(B-V) as a prior on the total extinction in each pixel.")
 		("SFD-subpixel", "Use SFD E(B-V) as a subpixel template for the angular variation in reddening.")
-		("evidence-cut", po::value<double>(&(opts.ev_cut)), "Delta lnZ to use as threshold for including star\n"
-		                                                    "in l.o.s. fit (default: 15).")
+		("evidence-cut", po::value<double>(&(opts.ev_cut)), ("Delta lnZ to use as threshold for including star "
+		                                                    "in l.o.s. fit (default: " + to_string(opts.ev_cut) + ")").c_str())
 		
-		("runs", po::value<unsigned int>(&(opts.N_runs)), "# of times to run each chain (to check\n"
-		                                                  "for non-convergence) (default: 4)")
+		("runs", po::value<unsigned int>(&(opts.N_runs)), ("# of times to run each chain (to check\n"
+		                                                  "for non-convergence) (default: " + to_string(opts.N_runs) + ")").c_str())
 		
 		("LF-file", po::value<string>(&(opts.LF_fname)), "File containing stellar luminosity function.")
 		("template-file", po::value<string>(&(opts.template_fname)), "File containing stellar color templates.")
 		("ext-file", po::value<string>(&(opts.ext_model_fname)), "File containing extinction coefficients.")
 	;
+	
+	po::options_description gal_desc("Galactic Structural Parameters (all distances in pc)");
+	gal_desc.add_options()
+		("R0", po::value<double>(&(opts.gal_struct_params.R0)), ("Solar Galactocentric distance (default: " + to_string(opts.gal_struct_params.R0) + ")").c_str())
+		("Z0", po::value<double>(&(opts.gal_struct_params.Z0)), ("Solar height above Galactic midplane (default: " + to_string(opts.gal_struct_params.Z0) + ")").c_str())
+		
+		("H_thin", po::value<double>(&(opts.gal_struct_params.H1)), ("Thin-disk scale height (default: " + to_string(opts.gal_struct_params.H1) + ")").c_str())
+		("L_thin", po::value<double>(&(opts.gal_struct_params.L1)), ("Thin-disk scale length (default: " + to_string(opts.gal_struct_params.L1) + ")").c_str())
+		
+		("f_thick", po::value<double>(&(opts.gal_struct_params.f_thick)), ("Thick-disk fraction, defined locally (default: " + to_string(opts.gal_struct_params.f_thick) + ")").c_str())
+		("H_thick", po::value<double>(&(opts.gal_struct_params.H2)), ("Thick-disk scale height (default: " + to_string(opts.gal_struct_params.H2) + ")").c_str())
+		("L_thick", po::value<double>(&(opts.gal_struct_params.L2)), ("Thin-disk scale length (default: " + to_string(opts.gal_struct_params.L2) + ")").c_str())
+		
+		("L_epsilon", po::value<double>(&(opts.gal_struct_params.L_epsilon)), ("Disk softening scale (default: " + to_string(opts.gal_struct_params.L_epsilon) + ")").c_str())
+		
+		("f_halo", po::value<double>(&(opts.gal_struct_params.fh)), ("Halo fraction, defined locally (default: " + to_string(opts.gal_struct_params.fh) + ")").c_str())
+		("q_halo", po::value<double>(&(opts.gal_struct_params.qh)), ("Halo flattening parameter (default: " + to_string(opts.gal_struct_params.qh) + ")").c_str())
+		("n_halo", po::value<double>(&(opts.gal_struct_params.nh)), ("Halo density slope (default: " + to_string(opts.gal_struct_params.nh) + ")").c_str())
+		("R_break", po::value<double>(&(opts.gal_struct_params.R_br)), ("Halo break radius (default: " + to_string(opts.gal_struct_params.R_br) + ")").c_str())
+		("n_halo_outer", po::value<double>(&(opts.gal_struct_params.nh_outer)), ("Halo outer density slope, past break (default: " + to_string(opts.gal_struct_params.nh_outer) + ")").c_str())
+		
+		("H_ISM", po::value<double>(&(opts.gal_struct_params.H_ISM)), ("Dust scale height (default: " + to_string(opts.gal_struct_params.H_ISM) + ")").c_str())
+		("L_ISM", po::value<double>(&(opts.gal_struct_params.L_ISM)), ("Dust scale length (default: " + to_string(opts.gal_struct_params.L_ISM) + ")").c_str())
+		("dH_dR_ISM", po::value<double>(&(opts.gal_struct_params.dH_dR_ISM)), ("Dust flare slope (default: " + to_string(opts.gal_struct_params.dH_dR_ISM) + ")").c_str())
+		("R_flair_ISM", po::value<double>(&(opts.gal_struct_params.R_flair_ISM)), ("Dust flair slope (default: " + to_string(opts.gal_struct_params.R_flair_ISM) + ")").c_str())
+		
+		("mu_FeH_inf", po::value<double>(&(opts.gal_struct_params.mu_FeH_inf)), ("Disk metallicity at large elevation above midplane (default: " + to_string(opts.gal_struct_params.mu_FeH_inf) + ")").c_str())
+		("delta_mu_FeH", po::value<double>(&(opts.gal_struct_params.delta_mu_FeH)), ("Disk metallicity at midplane, minus metallicity at large elevation (default: " + to_string(opts.gal_struct_params.delta_mu_FeH) + ")").c_str())
+		("H_mu_FeH", po::value<double>(&(opts.gal_struct_params.H_mu_FeH)), ("Disk metallicity scale height (default: " + to_string(opts.gal_struct_params.H_mu_FeH) + ")").c_str())
+	;
+	config_desc.add(gal_desc);
 	
 	po::options_description generic_desc(std::string("Usage: ") + argv[0] + " [Input filename] [Output filename] \n\nCommandline Options");
 	generic_desc.add_options()
@@ -196,8 +237,8 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
 		("save-surfs", "Save probability surfaces.")
 		("clobber", "Overwrite existing output. Otherwise, will\n"
 		            "only process pixels with incomplete output.")
-		("verbosity", po::value<int>(&(opts.verbosity)), "Level of verbosity (0 = minimal, 2 = highest)")
-		("threads", po::value<unsigned int>(&(opts.N_threads)), "# of threads to run on (default: 1)")
+		("verbosity", po::value<int>(&(opts.verbosity)), ("Level of verbosity (0 = minimal, 2 = highest) (default: " + to_string(opts.verbosity) + ")").c_str())
+		("threads", po::value<unsigned int>(&(opts.N_threads)), ("# of threads to run on (default: " + to_string(opts.N_threads) + ")").c_str())
 	;
 	
 	po::positional_options_description pd;
@@ -350,7 +391,7 @@ int main(int argc, char **argv) {
 		cout << "# Pixel: " << *it << " (" << pixel_list_no + 1 << " of " << pix_name.size() << ")" << endl;
 		
 		TStellarData stellar_data(opts.input_fname, *it, opts.err_floor);
-		TGalacticLOSModel los_model(stellar_data.l, stellar_data.b);
+		TGalacticLOSModel los_model(stellar_data.l, stellar_data.b, opts.gal_struct_params);
 		
 		cout << "# HEALPix index: " << stellar_data.healpix_index << " (nside = " << stellar_data.nside << ")" << endl;
 		cout << "# (l, b) = " << stellar_data.l << ", " << stellar_data.b << endl;

@@ -250,7 +250,7 @@ def main():
 			pdf_indiv = pdf.get_p()[idx]
 			pdf_stack = np.sum(pdf_indiv, axis=0)
 			
-			if args.show_indivual:
+			if args.show_individual:
 				idx = np.arange(pdf_indiv.shape[0])
 				np.random.shuffle(idx)
 				pdf_indiv = pdf_indiv[idx[:4]]

@@ -33,13 +33,14 @@
 #include <fstream>
 
 
+
 /****************************************************************************************************************************
  * 
- * TGalacticModel
+ * TGalStructParams
  * 
  ****************************************************************************************************************************/
 
-TGalacticModel::TGalacticModel() {
+TGalStructParams::TGalStructParams() {
 	// Solar position
 	R0 = 8000;
 	Z0 = 25;
@@ -62,12 +63,6 @@ TGalacticModel::TGalacticModel() {
 	nh = -2.62;
 	R_br = 27800;
 	nh_outer = -3.8;
-	fh_outer = fh * pow(R_br/R0, nh - nh_outer);
-	R_epsilon2 = 500. * 500.;
-	
-	// ISM disk (from Besancon model)
-	//L_ISM = 4500;
-	//h_ISM = 140;
 	
 	// Drimmel & Spergel (2001)
 	H_ISM = 134.4;
@@ -79,34 +74,26 @@ TGalacticModel::TGalacticModel() {
 	mu_FeH_inf = -0.82;
 	delta_mu_FeH = 0.55;
 	H_mu_FeH = 500;
+}
+
+
+/****************************************************************************************************************************
+ * 
+ * TGalacticModel
+ * 
+ ****************************************************************************************************************************/
+
+TGalacticModel::TGalacticModel() {
+	TGalStructParams gal_struct_params;
+	set_struct_params(gal_struct_params);
 	
 	// IMF and SFR
 	disk_abundance = new TStellarAbundance(0);
 	halo_abundance = new TStellarAbundance(1);
 }
 
-TGalacticModel::TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
-                               double _f_thick, double _H2, double _L2,
-                               double _fh, double _qh, double _nh,
-                               double _R_br, double _nh_outer, double _R_epsilon,
-                               double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
-	: R0(_R0), Z0(_Z0), H1(_H1), L1(_L1), f_thick(_f_thick), H2(_H2), L2(_L2),
-	  fh(_fh), qh(_qh), nh(_nh), R_br(_R_br), nh_outer(_nh_outer), R_epsilon2(_R_epsilon*_R_epsilon),
-	  mu_FeH_inf(_mu_FeH_inf), delta_mu_FeH(_delta_mu_FeH), H_mu_FeH(_H_mu_FeH)//,
-	  //lf(NULL)
-{
-	fh_outer = fh * pow(R_br/R0, nh - nh_outer);
-	L_epsilon = 0.;
-	
-	// ISM disk (from Besancon model)
-	//L_ISM = 4500;
-	//h_ISM = 140;
-	
-	// Drimmel & Spergel (2001)
-	H_ISM = 134.4;
-	L_ISM = 2260.;
-	dH_dR_ISM = 0.0148;
-	R_flair_ISM = 4400.;
+TGalacticModel::TGalacticModel(const TGalStructParams& gal_struct_params) {
+	set_struct_params(gal_struct_params);
 	
 	disk_abundance = new TStellarAbundance(0);
 	halo_abundance = new TStellarAbundance(1);
@@ -116,6 +103,44 @@ TGalacticModel::~TGalacticModel() {
 	delete disk_abundance;
 	delete halo_abundance;
 	//if(lf != NULL) { delete lf; }
+}
+
+void TGalacticModel::set_struct_params(const TGalStructParams& gal_struct_params) {
+	// Solar position
+	R0 = gal_struct_params.R0;
+	Z0 = gal_struct_params.Z0;
+	
+	// Thin disk
+	L1 = gal_struct_params.L1;
+	H1 = gal_struct_params.H1;
+	
+	// Thick disk
+	f_thick = gal_struct_params.f_thick;
+	L2 = gal_struct_params.L2;
+	H2 = gal_struct_params.H2;
+	
+	// Smoothing radial scale of disk
+	L_epsilon = gal_struct_params.L_epsilon;
+	
+	// Halo
+	fh = gal_struct_params.fh;
+	qh = gal_struct_params.qh;
+	nh = gal_struct_params.nh;
+	R_br = gal_struct_params.R_br;
+	nh_outer = gal_struct_params.nh_outer;
+	fh_outer = fh * pow(R_br/R0, nh - nh_outer);
+	R_epsilon2 = gal_struct_params.R_epsilon * gal_struct_params.R_epsilon;
+	
+	// Smooth ISM disk
+	H_ISM = gal_struct_params.H_ISM;
+	L_ISM = gal_struct_params.L_ISM;
+	dH_dR_ISM = gal_struct_params.dH_dR_ISM;
+	R_flair_ISM = gal_struct_params.R_flair_ISM;
+	
+	// Metallicity
+	mu_FeH_inf = gal_struct_params.mu_FeH_inf;
+	delta_mu_FeH = gal_struct_params.delta_mu_FeH;
+	H_mu_FeH = gal_struct_params.H_mu_FeH;
 }
 
 double TGalacticModel::rho_halo(double R, double Z) const {
@@ -237,15 +262,9 @@ TGalacticLOSModel::TGalacticLOSModel(double _l, double _b)
 	init(_l, _b);
 }
 
-TGalacticLOSModel::TGalacticLOSModel(double _l, double _b, double _R0, double _Z0, double _H1, double _L1,
-                                     double _f_thick, double _H2, double _L2,
-                                     double _fh, double _qh, double _nh, double _R_br,
-                                     double _nh_outer, double _R_epsilon,
-                                     double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
-	: TGalacticModel(_R0, _Z0, _H1, _L1, _f_thick, _H2, _L2, _fh, _qh, _nh, _R_br, _nh_outer, _R_epsilon,
-	                 _mu_FeH_inf, _delta_mu_FeH, _H_mu_FeH)
+TGalacticLOSModel::TGalacticLOSModel(double _l, double _b, const TGalStructParams& gal_struct_params)
+	: TGalacticModel(gal_struct_params)
 {
-	fh_outer = fh * pow(R_br/R0, nh-nh_outer);
 	init(_l, _b);
 }
 

@@ -199,19 +199,30 @@ private:
 	void load(const std::string &fn);
 };*/
 
+struct TGalStructParams {
+	double R0, Z0;					// Solar position
+	double H1, L1;					// Thin disk
+	double f_thick, H2, L2;				// Thick disk
+	double L_epsilon;				// Disk smoothing scale
+	double fh, qh, nh, R_br, nh_outer, R_epsilon;	// Halo
+	double mu_FeH_inf, delta_mu_FeH, H_mu_FeH;	// Metallicity
+	double H_ISM, L_ISM, dH_dR_ISM, R_flair_ISM;	// Smooth ISM disk
+	
+	TGalStructParams();
+};
+
+
 // A model of the galaxy, for producing priors on number density and metallicity of stars
 class TGalacticModel {
 public:
 	// Set default model parameters
 	TGalacticModel();
-	
-	// Set custom model parameters
-	TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
-	               double _f_thick, double _H2, double _L2,
-	               double _fh, double _qh, double _nh, double _R_br, double _nh_outer, double _R_epsilon,
-	               double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH);
+	TGalacticModel(const TGalStructParams& gal_struct_params);
 	
 	~TGalacticModel();
+	
+	// Set custom model parameters
+	void set_struct_params(const TGalStructParams& gal_struct_params);
 	
 	// Stellar density
 	double rho_halo(double R, double Z) const;
@@ -266,10 +277,7 @@ public:
 	TGalacticLOSModel(double _l, double _b);
 	
 	// Set custom model parameters
-	TGalacticLOSModel(double _l, double _b, double _R0, double _Z0, double _H1, double _L1,
-	                  double _f_thick, double _H2, double _L2, double _fh, double _qh,
-	                  double _nh, double _R_br, double _nh_outer, double _R_epsilon,
-	                  double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH);
+	TGalacticLOSModel(double _l, double _b, const TGalStructParams& gal_struct_params);
 	
 	~TGalacticLOSModel();
 	
