@@ -109,7 +109,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
                     mag_lim=(23., 22., 22., 21., 20.),
                     EBV_of_mu=None, EBV_uniform=False,
                     redraw=True, n_bands=4,
-                    scale=1.):
+                    scale=1., model_kwargs={}, t_fname=None):
 	dtype = [('DM', 'f8'), ('EBV', 'f8'),
 	         ('Mr', 'f8'), ('FeH', 'f8'),
 	         ('mag', '5f8'), ('err', '5f8')]
@@ -120,8 +120,13 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	cos_l, sin_l = np.cos(l), np.sin(l)
 	cos_b, sin_b = np.cos(b), np.sin(b)
 	
-	gal_model = TGalacticModel(fh=fh)#, LF_fname=LF_fname, L1=L1)
-	stellar_model = TStellarModel(os.path.expanduser('~/projects/bayestar/data/PScolors.dat'))
+	gal_model = TGalacticModel(**model_kwargs)
+	
+	if t_fname == None:
+		t_fname = os.path.expanduser('~/projects/bayestar/data/PScolors.dat')
+	
+	stellar_model = TStellarModel(t_fname)
+	
 	R = np.array([3.172, 2.271, 1.682, 1.322, 1.087])
 	
 	mu_max = mag_lim[1] - gal_model.Mr_min + 3.
@@ -159,27 +164,41 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		                                     sin_l, cos_b, sin_b)
 		
 		# Determine which component stars belong to
-		halo = np.random.random(size) < gal_model.f_halo(ret['DM'][idx], cos_l,
-		                                                 sin_l, cos_b, sin_b)
-		thin = ~halo & (np.random.random(size) < 0.63)
-		thick = ~halo & ~thin
+		f_halo, f_bulge = gal_model.f_halo_bulge(ret['DM'][idx], cos_l,
+		                                         sin_l, cos_b, sin_b)
+		tmp_rand = np.random.random(size)
+		
+		halo = (tmp_rand < f_halo)
+		
+		bulge = (tmp_rand < f_halo + f_bulge)
+		bulge &= ~halo
+		
+		thin = ~halo & ~bulge & (np.random.random(size) < 0.63)
+		thick = ~halo & ~bulge & ~thin
+		
+		print '  # of bulge stars: %d' % (np.sum(bulge))
 		
 		# Assign metallicities to halo stars
 		while np.any(halo):
 			ret['FeH'][idx[halo]] = np.random.normal(-1.46, 0.3, size=np.sum(halo))
-			halo &= (ret['FeH'][idx] <= -2.5) | (ret['FeH'][idx] >= 0.)
+			halo &= (ret['FeH'][idx] <= -3.0) | (ret['FeH'][idx] >= 0.5)
 		
 		# Assign metallicities to thin-disk stars
 		while np.any(thin):
 			ret['FeH'][idx[thin]] = np.random.normal(gal_model.mu_FeH_D(z[thin])-0.067,
 			                                         0.2, size=np.sum(thin))
-			thin &= (ret['FeH'][idx] <= -2.5) | (ret['FeH'][idx] >= 0.)
+			thin &= (ret['FeH'][idx] <= -3.0) | (ret['FeH'][idx] >= 0.5)
 		
 		# Assign metallicities to thick-disk stars
 		while np.any(thick):
 			ret['FeH'][idx[thick]] = np.random.normal(gal_model.mu_FeH_D(z[thick])-0.067+0.14,
 			                                          0.2, size=np.sum(thick))
-			thick &= (ret['FeH'][idx] <= -2.5) | (ret['FeH'][idx] >= 0.)
+			thick &= (ret['FeH'][idx] <= -3.0) | (ret['FeH'][idx] >= 0.5)
+		
+		# Assign metallicities to bulge stars
+		while np.any(bulge):
+			ret['FeH'][idx[bulge]] = np.random.normal(0., 0.40, size=np.sum(bulge))
+			bulge &= (ret['FeH'][idx] <= -3.0) | (ret['FeH'][idx] >= 0.5)
 		
 		# Calculate absolute stellar magnitudes
 		absmags_tmp = stellar_model.absmags(ret['Mr'][idx], ret['FeH'][idx])
@@ -318,12 +337,25 @@ def main():
 	                    help='Plot distribution of DM, Mr and E(B-V).')
 	parser.add_argument('-err', '--scale-errors', type=float, default=1.,
 	                    help='Stretch uncertainties by given amount.')
+	parser.add_argument('-LF', '--luminosity-function', type=str, default=None,
+	                    help='Filename of luminosity function.')
+	parser.add_argument('-t', '--templates', type=str, default=None,
+	                    help='Filename of stellar templates.')
 	#parser.add_argument('-b', '--binary', action='store_true', help='Generate binary stars.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
 		offset = 1
 	args = parser.parse_args(sys.argv[offset:])
+	
+	# Parameters for Galactic and stellar models
+	LF_fname = args.luminosity_function
+	t_fname = args.templates
+	
+	model_kwargs = {'fh':fh}
+	
+	if LF_fname != None:
+		model_kwargs['LF_fname'] = LF_fname
 	
 	# Determine number of stars to draw
 	redraw = False
@@ -333,7 +365,7 @@ def main():
 		if args.radius == None:
 			print 'Either -N or -rad must be specified'
 		
-		model = TGalacticModel(fh=fh)
+		model = TGalacticModel(**model_kwargs)
 		N_stars = model.tot_num_stars(args.gal_lb[0], args.gal_lb[1], args.radius)
 		N_stars = np.random.poisson(lam=N_stars)
 	else:
@@ -373,7 +405,8 @@ def main():
 		                         N_stars, EBV_spread=args.mean_EBV,
 		                         mag_lim=args.limiting_mag, EBV_of_mu=EBV_of_mu,
 		                         EBV_uniform=args.EBV_uniform, redraw=redraw,
-		                         n_bands=args.n_bands, scale=args.scale_errors)
+		                         n_bands=args.n_bands, scale=args.scale_errors,
+		                         model_kwargs=model_kwargs, t_fname=t_fname)
 		print '%d stars observed' % (len(params))
 	
 	#params['mag'][:,4] -= 0.05
@@ -404,7 +437,7 @@ def main():
 	#	print '%.3f  %.3f  %.3f  %.3f' % (p['DM'], p['EBV'], p['Mr'], p['FeH']), p['mag'], p['err']
 	
 	if args.show:
-		model = TGalacticModel(fh=fh)#, LF_fname=LF_fname, L1=L1)
+		model = TGalacticModel(**model_kwargs)
 		l = np.pi/180. * args.gal_lb[0]
 		b = np.pi/180. * args.gal_lb[1]
 		cos_l, sin_l = np.cos(l), np.sin(l)

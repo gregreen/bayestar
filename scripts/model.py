@@ -49,8 +49,8 @@ class TGalacticModel:
     fh, qh, nh, fh_outer, nh_outer, Rbr = None, None, None, None, None, None
     H_mu, Delta_mu, mu_FeH_inf = None, None, None
     
-    def __init__(self, R0=8000., Z0=25., L1=2150., H1=245., f=0.13,
-                       L2=3261., H2=743., fh=0.0051, qh=0.70, nh=-2.62,
+    def __init__(self, R0=8000., Z0=25., L1=2600., H1=300., f=0.12,
+                       L2=3600., H2=900., fh=0.0051, qh=0.70, nh=-2.62,
                        nh_outer=-3.8, Rbr=27.8, rho_0=0.0058, Rep=500.,
                        H_mu=500., Delta_mu=0.55, mu_FeH_inf=-0.82,
                        LF_fname=expanduser('~/projects/bayestar/data/PSMrLF.dat')):
@@ -63,7 +63,6 @@ class TGalacticModel:
         self.H_mu, self.Delta_mu, self.mu_FeH_inf = H_mu, Delta_mu, mu_FeH_inf
         self.fh_outer = self.fh * (self.Rbr/self.R0)**(self.nh-self.nh_outer)
         self.L_epsilon = 0.
-        
         
         # Bulge (Robin et al. 2003, i.e. Besancon)
         self.R_c = 2540.
@@ -143,10 +142,14 @@ class TGalacticModel:
         if type(r_eff2) == np.ndarray:
             ret = np.empty(r_eff2.size, dtype=np.float64)
             
+            r_eff2.shape = (r.size,)
+            
             idx = (r_eff2 <= self.Rbr*self.Rbr)
             
             ret[idx] = self.rho_0 * self.fh * np.power(r_eff2[idx]/self.R0/self.R0, self.nh/2.)
             ret[~idx] = self.rho_0 * self.fh_outer * np.power(r_eff2[~idx]/self.R0/self.R0, self.nh_outer/2.)
+            
+            ret.shape = r.shape
             
             return ret
         else:
@@ -156,29 +159,48 @@ class TGalacticModel:
                 return self.rho_0 * self.fh_outer * (r_eff2/self.R0/self.R0)**(self.nh_outer/2.)
     
     def Cartesian_2_bulge(self, x, y, z):
-        r = np.array([x, y, z]).T
+        r = np.array([x, y, z])
         
-        if type(x) == float:
-	        return np.einsum('ij,j', self.bulge_rot, r)
-	    
-        return np.einsum('ij,jk', self.bulge_rot, r).T
+        shape = r.shape
+        r.shape = (3, r.size/3)
+        
+        ret = np.einsum('ij,jk->jk', self.bulge_rot, r)
+        
+        ret.shape = shape
+        
+        '''
+        if type(x) != np.ndarray:
+            ret = np.einsum('ij,j', self.bulge_rot, r)
+        elif type(x) == np.ndarray:
+            print self.bulge_rot.shape
+            print r.shape
+            ret = np.einsum('ij,j...->i...', self.bulge_rot, r)
+        else:
+            print 'type:', type(x)
+            raise TypeError('x is of wrong type')
+        '''
+        
+        return ret
     
     def rho_bulge(self, x, y, z):
-        x, y, z = self.Cartesian_2_bulge(x, y, z)
+        x_b, y_b, z_b = self.Cartesian_2_bulge(x, y, z)
         
-        r_s = np.power( ((x/self.x_0)**2 + (y/self.y_0)**2)**2 + (z/self.z_0)**4, 0.25)
+        r_s = np.power( ((x_b/self.x_0)**2 + (y_b/self.y_0)**2)**2 + (z_b/self.z_0)**4, 0.25)
         
         rho = np.exp(-0.5 * r_s**2)
         
         if type(x) == np.ndarray:
-            idx = (x**2 + y**2 > self.R_c**2.)
+            idx = (x_b**2 + y_b**2 > self.R_c**2.)
             
-            d = np.sqrt(x[idx]**2 + y[idx]**2) - self.R_c
-            rho[idx] *= np.exp(-2. * d**2)
+            d = np.sqrt(x_b[idx]**2 + y_b[idx]**2) - self.R_c
+            
+            rho[idx] *= np.exp(-0.5 * (d / 500.)**2)
         else:
-            if x**2. + y**2. > self.R_c**2.:
-                d = np.sqrt(x**2. + y**2.) - self.R_c
-                rho *= np.exp(-2. * d**2.)
+            if x_b**2. + y_b**2. > self.R_c**2.:
+                d = np.sqrt(x_b**2. + y_b**2.) - self.R_c
+                rho *= np.exp(-0.5 * (d/500.)**2.)
+        
+        #return x_b**2 + y_b**2 - self.R_c**2
         
         return self.f_bulge * rho
     
@@ -206,6 +228,21 @@ class TGalacticModel:
         return self.rho_rz(r, z, component='halo') / self.rho(DM, cos_l, sin_l,
                                                                   cos_b, sin_b)
     
+    def f_halo_bulge(self, DM, cos_l, sin_l, cos_b, sin_b):
+        x, y, z = self.Cartesian_coords(DM, cos_l, sin_l, cos_b, sin_b)
+        r = np.sqrt(x*x + y*y)
+        
+        rho_disk = self.rho_rz(r, z, component='disk')
+        rho_halo = self.rho_rz(r, z, component='halo')
+        rho_bulge = self.rho_bulge(x, y, z)
+        
+        rho_tot = rho_disk + rho_halo + rho_bulge
+        
+        f_halo = rho_halo / rho_tot
+        f_bulge = rho_bulge / rho_tot
+        
+        return f_halo, f_bulge
+    
     def rho_rz(self, r, z, component=None):
         if component == 'disk':
             return self.rho_thin(r,z) + self.rho_thick(r,z)
@@ -218,16 +255,24 @@ class TGalacticModel:
         else:
             return self.rho_thin(r,z) + self.rho_thick(r,z) + self.rho_halo(r,z)
     
+    def rho_xyz(self, x, y, z, component=None):
+        if component == None:
+            r = np.sqrt(x*x + y*y)
+            rho = self.rho_rz(r, z)
+            rho += self.rho_bulge(x, y, z)
+            return rho
+        elif component in ['disk', 'thin', 'thick', 'halo']:
+            r = np.sqrt(x*x + y*y)
+            return self.rho_rz(r, z, component=component)
+        elif component == 'bulge':
+            return self.rho_bulge(x, y, z)
+        else:
+            raise ValueError("Unrecognized Galactic component: '%s'" % component)
+    
     def rho(self, DM, cos_l, sin_l, cos_b, sin_b, component=None):
         x,y,z = self.Cartesian_coords(DM, cos_l, sin_l, cos_b, sin_b)
-        r = np.sqrt(x*x + y*y)
         
-        rho = self.rho_rz(r, z, component=component)
-        
-        #if self.f_bulge > 0.:
-        #	rho += self.rho_bulge(x, y, z)
-        
-        return rho
+        return self.rho_xyz(x, y, z, component=component)
     
     def dn_dDM(self, DM, cos_l, sin_l, cos_b, sin_b, radius=1.,
                component=None, correct=False):
@@ -237,9 +282,9 @@ class TGalacticModel:
         dN_dDM_tmp = self.rho(DM, cos_l, sin_l, cos_b, sin_b, component) * dV_dDM
         
         if correct:
-            return dN_dDM_tmp * self.dn_dDM_corr(DM, m_max)
-        else:
-            return dN_dDM_tmp
+            dN_dDM_tmp *= self.dn_dDM_corr(DM, m_max)
+        
+        return dN_dDM_tmp
     
     def dn_dDM_corr(self, DM, m_max=23.):
         Mr_max = m_max - DM
@@ -772,12 +817,100 @@ def print_rho(l, b):
     for DM in np.linspace(0., 20., 21):
         print 'rho(DM = %.1f) = %.5f' % (DM, model.dA_dmu(l, b, DM) / np.power(10., DM / 5.))
 
-def main():
-    l, b = 45.3516, 1.41762
+
+def ndmesh(*args):
+    args = map(np.asarray,args)
+    return np.broadcast_arrays(*[x[(slice(None),)+(None,)*i] for i, x in enumerate(args)])
+
+
+def test_plot_bulge():
+    m = TGalacticModel()
+    m.L_epsilon = 500.
     
-    print_rho(l, b)
-    plot_EBV_prior_profile(l, b)
-    test_EBV_prior(l, b)
+    '''
+    x = np.linspace(-5000., 5000., 1000)
+    y = np.zeros(1000)
+    z = np.zeros(1000)
+    
+    rho = m.rho_bulge(x, y, z)
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
+    ax.plot(x, rho)
+    plt.show()
+    '''
+    
+    x = np.linspace(-10000., 10000., 150)
+    y = np.linspace(-10000., 10000., 150)
+    z = np.linspace(-10000., 10000., 150)
+    
+    x, y, z = ndmesh(x, y, z)
+    
+    rho_disk = m.rho_xyz(x, y, z, component='disk')
+    rho_halo = m.rho_xyz(x, y, z, component='halo')
+    rho_bulge = m.rho_xyz(x, y, z, component='bulge')
+    
+    rho = [rho_disk, rho_halo, rho_bulge, rho_disk+rho_halo+rho_bulge, rho_bulge / (rho_disk+rho_halo+rho_bulge)]
+    
+    n_disk = np.sum(rho_disk)
+    n_halo = np.sum(rho_halo)
+    n_bulge = np.sum(rho_bulge)
+    n_tot = n_disk + n_halo + n_bulge
+    
+    print 'Disk fraction: %.3g' % (n_disk / n_tot)
+    print 'Halo fraction: %.3g' % (n_halo / n_tot)
+    print 'Bulge fraction: %.3g' % (n_bulge / n_tot)
+    
+    fig = plt.figure()
+    
+    vmax = np.max(np.sum(rho_disk, axis=1))
+    vmin = np.percentile(np.sum(rho_disk, axis=1), 5.)
+    
+    for n_dim in xrange(3):
+        for n_comp, comp in enumerate(rho):
+            ax = fig.add_subplot(len(rho), 3, 1+3*n_comp+n_dim)
+            ax.imshow(np.log(np.sum(comp, axis=2-n_dim)), origin='lower', interpolation='none',
+                      vmin=np.log(vmin), vmax=np.log(vmax),
+                      extent=(-10., 10., -10., 10.))
+    
+    plt.show()
+    
+    '''
+    from mayavi import mlab
+    
+    s = mlab.pipeline.scalar_field(rho_disk+rho_halo+rho_bulge)
+    mlab.pipeline.image_plane_widget(s, plane_orientation='x_axes', slice_index=10)
+    mlab.pipeline.image_plane_widget(s, plane_orientation='y_axes', slice_index=10)
+    mlab.pipeline.image_plane_widget(s, plane_orientation='z_axes', slice_index=10)
+    #mlab.pipeline.volume(s)
+    mlab.show()
+    '''
+
+def test_bug():
+    A = np.random.random((3, 3))
+    x = np.random.random((3, 4, 2))
+
+    x_prime = np.einsum('...ij,j...->i...', A, x)
+    x_prime_2 = np.einsum('ij,jkl->ikl', A, x)
+    
+    print np.allclose(x_prime, x_prime_2)
+    
+    print A
+    print x
+    print x_prime
+    
+    print x_prime.shape
+
+def main():
+    #test_bug()
+    
+    #l, b = 45.3516, 1.41762
+    
+    test_plot_bulge()
+    
+    #print_rho(l, b)
+    #plot_EBV_prior_profile(l, b)
+    #test_EBV_prior(l, b)
     
     #plot_EBV_prior_profile(90, 0.)
     #plot_EBV_prior_profile(10., -20.)

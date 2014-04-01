@@ -169,6 +169,7 @@ def main():
 	
 	# Intialize Galactic model
 	model = TGalacticModel(fh=0.0030)
+	model.L_epsilon = 500.
 	
 	# Precompute trigonometric functions
 	l, b  = deg2rad(l), deg2rad(b)
@@ -180,41 +181,71 @@ def main():
 	                                correct=values.correct)
 	N_disk = quad(f_disk, 0.01, 20., epsrel=1.e-5)[0]
 	print '# of stars in disk: %d' % int(N_disk)
+	
 	f_halo = lambda x: model.dn_dDM(x, cos_l, sin_l, cos_b, sin_b,
 	                                radius, component='halo',
 	                                correct=values.correct)
 	N_halo = quad(f_halo, 0.01, 40., epsrel=1.e-5)[0]
 	print '# of stars in halo: %d' % int(N_halo)
 	
+	f_bulge = lambda x: model.dn_dDM(x, cos_l, sin_l, cos_b, sin_b,
+	                                 radius, component='bulge',
+	                                 correct=values.correct)
+	N_bulge = quad(f_bulge, 0.01, 40., epsrel=1.e-5)[0]
+	print '# of stars in bulge: %d' % int(N_bulge)
+	
 	# Calculate dn/dDM and rho
 	DM_range = np.linspace(4., 20., 500)
-	dn_dDM_disk, dn_dDM_halo = np.empty(500, dtype=float), np.empty(500, dtype=float)
-	rho_disk, rho_halo = np.empty(500, dtype=float), np.empty(500, dtype=float)
+	dn_dDM_disk, dn_dDM_halo, dn_dDM_bulge = [np.empty(500, dtype='f8') for i in xrange(3)]
+	rho_disk, rho_halo, rho_bulge = [np.empty(500, dtype='f8') for i in xrange(3)]
+	
 	for i,DM in enumerate(DM_range):
 		rho_halo[i] = model.rho(DM, cos_l, sin_l, cos_b, sin_b, component='halo')
 		rho_disk[i] = model.rho(DM, cos_l, sin_l, cos_b, sin_b, component='disk')
-		dn_dDM_halo[i] = 1./(N_halo+N_disk) * model.dn_dDM(DM,
+		rho_bulge[i] = model.rho(DM, cos_l, sin_l, cos_b, sin_b, component='bulge')
+		
+		dn_dDM_halo[i] = 1./(N_halo+N_disk+N_bulge) * model.dn_dDM(DM,
 		                                          cos_l, sin_l,
 		                                          cos_b, sin_b,
 		                                          radius, component='halo',
 		                                          correct=values.correct)
-		dn_dDM_disk[i] = 1./(N_halo+N_disk) * model.dn_dDM(DM,
+		dn_dDM_disk[i] = 1./(N_halo+N_disk+N_bulge) * model.dn_dDM(DM,
 		                                          cos_l, sin_l,
 		                                          cos_b, sin_b,
 		                                          radius, component='disk',
 		                                          correct=values.correct)
-	rho = rho_disk + rho_halo
-	dn_dDM = dn_dDM_halo + dn_dDM_disk
+		
+		dn_dDM_bulge[i] = 1./(N_halo+N_disk+N_bulge) * model.dn_dDM(DM,
+		                                          cos_l, sin_l,
+		                                          cos_b, sin_b,
+		                                          radius, component='bulge',
+		                                          correct=values.correct)
+	
+	rho_bulge[~np.isfinite(rho_bulge)] = 0.
+	dn_dDM_bulge[~np.isfinite(dn_dDM_bulge)] = 0.
+	
+	print np.sum(dn_dDM_bulge)
+	
+	rho = rho_disk + rho_halo + rho_bulge
+	dn_dDM = dn_dDM_halo + dn_dDM_disk + dn_dDM_bulge
 	
 	# Plot dn/dDM
 	y_min = min(dn_dDM_disk.min(), dn_dDM_halo.min())
+	
 	ax[0].fill_between(DM_range, y_min, dn_dDM, alpha=0.4, facecolor='k', label='__nolabel__')
+	
 	ax[0].fill_between(DM_range, y_min, dn_dDM_disk, alpha=0.4, facecolor='g')
 	rect = Rectangle((0,0), 0, 0, facecolor='g', label=r'$\mathrm{disk}$', alpha=0.6)
 	ax[0].add_patch(rect)
+	
 	ax[0].fill_between(DM_range, y_min, dn_dDM_halo, alpha=0.4, facecolor='b')
 	rect = Rectangle((0,0), 0, 0, facecolor='b', label=r'$\mathrm{halo}$', alpha=0.6)
 	ax[0].add_patch(rect)
+	
+	ax[0].fill_between(DM_range, y_min, dn_dDM_bulge, alpha=0.4, facecolor='r')
+	rect = Rectangle((0,0), 0, 0, facecolor='r', label=r'$\mathrm{bulge}$', alpha=0.6)
+	ax[0].add_patch(rect)
+	
 	ax[0].set_title(r'$\mathrm{Probability}$', fontsize=20)
 	ax[0].set_xlabel(r'$\mu$', fontsize=20)
 	ax[0].set_ylabel(r'$p(\mu)$', fontsize=18)
@@ -230,6 +261,7 @@ def main():
 	ax[1].fill_between(DM_range, y_min, rho, alpha=0.4, facecolor='k')
 	ax[1].fill_between(DM_range, y_min, rho_disk, alpha=0.4, facecolor='g')
 	ax[1].fill_between(DM_range, y_min, rho_halo, alpha=0.4, facecolor='b')
+	ax[1].fill_between(DM_range, y_min, rho_bulge, alpha=0.4, facecolor='r')
 	ax[1].set_title(r'$\mathrm{Density}$', fontsize=20)
 	ax[1].set_xlabel(r'$\mu$', fontsize=20)
 	ax[1].set_ylabel(r'$n (\mu)$', fontsize=18)
