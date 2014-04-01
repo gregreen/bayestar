@@ -254,11 +254,62 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 		}
 	}
 	
+	//int n_filtered = 0;
+	//int n_M_dwarfs = 0;
+	
 	TMagnitudes mag_tmp;
 	for(size_t i=0; i<length; i++) {
 		mag_tmp.set(data_buf[i], err_floor);
 		star.push_back(mag_tmp);
+		
+		//int n_informative = 0;
+		
+		// Remove g-band
+		//mag_tmp.m[0] = 0.;
+		//mag_tmp.err[0] = 1.e10;
+		
+		//double g_err = mag_tmp.err[0];
+		//mag_tmp.err[0] = sqrt(g_err*g_err + 0.1*0.1);
+		
+		// Filter bright end
+                // TODO: Put this into query_lsd.py
+		/*for(int j=0; j<NBANDS; j++) {
+			if((mag_tmp.err[j] < 1.e9) && (mag_tmp.m[j] < 14.)) {
+				mag_tmp.err[j] = 1.e10;
+				mag_tmp.m[j] = 0.;
+			}
+			
+			if(mag_tmp.err[j] < 1.e9) {
+				n_informative++;
+			}
+		}*/
+		
+		// Filter M dwarfs based on color cut
+		//bool M_dwarf = false;
+		/*bool M_dwarf = true;
+		
+		double A_g = 3.172;
+		double A_r = 2.271;
+		double A_i = 1.682;
+		
+		if(mag_tmp.m[0] - A_g / (A_g - A_r) * (mag_tmp.m[0] - mag_tmp.m[1] - 1.2) > 20.) {
+			M_dwarf = false;
+		} else if(mag_tmp.m[1] - mag_tmp.m[2] - (A_r - A_i) / (A_g - A_r) * (mag_tmp.m[0] - mag_tmp.m[1]) < 0.) {
+			M_dwarf = false;
+		} else {
+			n_M_dwarfs++;
+		}
+		*/
+		
+		/*if(n_informative >= 4) { //&& (!M_dwarf)) {
+			star.push_back(mag_tmp);
+		} else {
+			n_filtered++;
+		}*/
 	}
+	
+	//std::cerr << "# of stars filtered: " << n_filtered << std::endl;
+	//std::cerr << "# of M dwarfs: " << n_M_dwarfs << std::endl;
 	
 	/*
 	 *  Attributes
@@ -287,6 +338,10 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	att = dataset.openAttribute("EBV");
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	att.read(att_dtype, reinterpret_cast<void*>(&EBV));
+	
+	// TEST: Force l, b to anticenter
+	//l = 180.;
+	//b = 0.;
 	
 	if((EBV <= 0.) || (EBV > default_EBV) || isnan(EBV)) { EBV = default_EBV; }
 	

@@ -1235,10 +1235,12 @@ def test_load_multiple():
 
 
 def test_plot_comparison():
-	img_path = '/nfs_pan1/www/ggreen/cloudmaps/AquilaSouthLarge2/comp'
+	img_path = '/nfs_pan1/www/ggreen/cloudmaps/AquilaSouthLarge2/comp/anticenter'
 	
 	fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
-	fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/nogiant/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
+	fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/anticenter/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
+	#fnames_1 = ['/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.%.5d.h5' % i for i in xrange(25)]
+	#fnames_2 = ['/n/fink1/ggreen/bayestar/output/gbright_giant/AquilaSouthLarge2/AquilaSouthLarge2.%.5d.h5' % i for i in xrange(25)]
 	
 	mapper_1 = LOSMapper(fnames_1, processes=4)
 	mapper_2 = LOSMapper(fnames_2, processes=4)
@@ -1401,17 +1403,17 @@ def test_unified():
 	rasterizer = mapper_1.gen_rasterizer(size)
 	bounds = rasterizer.get_lb_bounds()
 	
-	mu_range = np.linspace(4., 19., 31)
+	mu_range = np.linspace(4., 19., 500)
 	
 	Delta = np.empty((3, 500), dtype='f8')
 	Delta[:] = np.nan
 	
 	for i, mu in enumerate(mu_range):
 		tmp, tmp, pix_val_1 = mapper_1.gen_EBV_map(mu, fit='piecewise',
-		                                               method='median',
+		                                               method='sample',
 		                                               reduce_nside=False)
 		tmp, tmp, pix_val_2 = mapper_2.gen_EBV_map(mu, fit='piecewise',
-		                                               method='median',
+		                                               method='sample',
 		                                               reduce_nside=False)
 		img_1 = rasterizer(pix_val_1)
 		img_2 = rasterizer(pix_val_2)
@@ -1531,7 +1533,7 @@ def test_unified():
 
 
 def main():
-	test_unified()
+	test_plot_comparison()
 	
 	return 0
 

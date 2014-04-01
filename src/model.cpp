@@ -57,7 +57,7 @@ TGalacticModel::TGalacticModel() {
 	L_epsilon = 500;
 	
 	// Halo
-	fh = 0.0030; //0.0051;	// TODO: Remember to note this.
+	fh = 0.0030; //0.0051;
 	qh = 0.70;
 	nh = -2.62;
 	R_br = 27800;
@@ -664,6 +664,9 @@ bool TStellarModel::load_seds(std::string seds_fname) {
 	Mr_max_seds = Mr_max;
 	FeH_min_seds = FeH_min;
 	FeH_max_seds = FeH_max;
+	
+	std::cout << "# " << Mr_min_seds << " < Mr < " << Mr_max_seds << std::endl;
+	std::cout << "# " << FeH_min_seds << " < FeH < " << FeH_max_seds << std::endl;
 	
 	return true;
 }

@@ -136,6 +136,20 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 	double logP = 0.;
 	
 	/*
+	 * Don't allow NaN parameters
+	 */
+	if(isnan(x[0]) || isnan(x[1]) || isnan(x[2])) {
+		#pragma omp critical (cout)
+		{
+		std::cerr << "Encountered NaN parameter value!" << std::endl;
+		std::cerr << "  " << x[0] << std::endl;
+		std::cerr << "  " << x[1] << std::endl;
+		std::cerr << "  " << x[2] << std::endl;
+		}
+		return neg_inf_replacement;
+	}
+	
+	/*
 	 *  Likelihood
 	 */
 	bool del_sed = false;
@@ -722,6 +736,11 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	//std::cout << "E(B-V) guess: " << x[0] << " = " << "E(" << b2 << " - " << b1 << ") / (R_" << b2 << " - R_" << b1 << ")" << std::endl;
 	//std::cout << "DM guess: " << x[1] << std::endl;
 	//}
+	
+	/*#pragma omp critical (cout)
+	{
+	std::cerr << "Guess: " << x[0] << " " << x[1] << " " << x[2] << " " << x[3] << std::endl;
+	}*/
 	
 	delete tmp_sed;
 }

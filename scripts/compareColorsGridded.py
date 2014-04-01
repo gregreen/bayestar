@@ -105,52 +105,45 @@ class TStellarModel:
 			
 			return ret
 
-def read_photometry(fname, target_name):
+def read_photometry(fname, pixel):
 	f = h5py.File(fname, 'r')
-	
-	# Hack to get the file to read properly
-	#try:
-	#	f.items()
-	#except:
-	#	pass
-	
-	phot = f['photometry']
+	dset = f['/photometry/pixel %d-%d' % (pixel[0], pixel[1])]
 	
 	# Load in photometry from selected target
-	for name,item in phot.iteritems():
-		if 'pixel' in name:
-			t_name = item.attrs['target_name']
-			
-			if type(t_name) == np.ndarray:
-				t_name = str(t_name[0]).lstrip().rstrip()
-			else:
-				t_name = str(t_name).lstrip().rstrip()
-			
-			print t_name
-			print target_name
-			
-			l = item.attrs['l']
-			b = item.attrs['b']
-			
-			if t_name == target_name:
-				mags = item['mag'][:]
-				errs = item['err'][:]
-				EBV_SFD = item['EBV'][:]
-				pix_idx = int(name.split()[1].split('-')[1])
-				return mags, errs, EBV_SFD, t_name, pix_idx, l, b
-	return None
+	l = dset.attrs['l']
+	b = dset.attrs['b']
+	
+	mags = dset['mag'][:]
+	errs = dset['err'][:]
+	EBV_SFD = dset['EBV'][:]
+	
+	f.close()
+	
+	return mags, errs, EBV_SFD, l, b
 
-def read_evidences(fname, pix_idx):
+def read_inferences(fname, pix_idx):
 	f = h5py.File(fname, 'r')
+	
+	dtype = [('lnZ','f8'), ('conv',np.bool),
+	         ('DM','f8'), ('EBV','f8'),
+	         ('Mr','f8'), ('FeH','f8')]
 	
 	ret = None
 	
-	dset = '/pixel %d/stellar chains' % pix_idx
+	dset = '/pixel %d-%d/stellar chains' % (pix_idx[0], pix_idx[1])
 	
 	try:
 		lnZ = f[dset].attrs['ln(Z)'][:]
-		conv = f[dset].attrs['converged'][:]
-		ret = lnZ, conv.astype(np.bool)
+		conv = f[dset].attrs['converged'][:].astype(np.bool)
+		best = f[dset][:, 1, 1:]
+		
+		ret = np.empty(len(lnZ), dtype=dtype)
+		ret['lnZ'] = lnZ
+		ret['conv'] = conv
+		ret['EBV'] = best[:,0]
+		ret['DM'] = best[:,1]
+		ret['Mr'] = best[:,2]
+		ret['FeH'] = best[:,3]
 	except:
 		print 'Dataset "%s" does not exist.' % dset
 	
@@ -208,10 +201,15 @@ def main():
 	                    help='Stellar templates (in ASCII format).')
 	parser.add_argument('--photometry', '-ph', type=str, required=True,
 	                    help='Bayestar input file with photometry.')
-	parser.add_argument('--evidences', '-ev', type=str, default=None,
-	                    help='Bayestar output file with evidences.')
-	parser.add_argument('--name', '-n', type=str, required=True,
-	                    help='Region name.')
+	parser.add_argument('--bayestar', '-bayes', type=str, default=None,
+	                    help='Bayestar output file with inferences.')
+	parser.add_argument('--color', '-c', type=str, default='lnZ',
+	                    choices=('lnZ', 'conv', 'EBV', 'DM', 'Mr', 'FeH'),
+	                    help='Field by which to color stars.')
+	#parser.add_argument('--name', '-n', type=str, required=True,
+	#                    help='Region name.')
+	parser.add_argument('--pixel', '-pix', type=int, nargs=2, required=True,
+	                    help='HEALPix nside and pixel index.')
 	parser.add_argument('--output', '-o', type=str, default=None, help='Plot filename.')
 	parser.add_argument('--show', '-sh', action='store_true', help='Show plot.')
 	
@@ -228,35 +226,41 @@ def main():
 	Delta_lnZ = 15.
 	
 	# Load photometry
-	ret = read_photometry(args.photometry, args.name)
+	ret = read_photometry(args.photometry, args.pixel)
 	if ret == None:
-		print 'Target "%s" not found.' % args.name
+		print 'Pixel not found.'
 		return 0
-	mags, errs, EBV, t_name, pix_idx, l, b = ret
+	mags, errs, EBV, l, b = ret
 	mags = dereddened_mags(mags, EBV)
 	colors = -np.diff(mags, axis=1)
 	
-	# Load evidences
-	lnZ = np.zeros(len(mags), dtype='f8')
-	conv = np.ones(len(mags), dtype=np.bool)
-	if args.evidences != None:
-		ret = read_evidences(args.evidences, pix_idx)
-		if ret != None:
-			lnZ, conv = ret
-	idx = np.isfinite(lnZ)
-	n_rejected = np.sum(lnZ < np.percentile(lnZ[idx], 95.) - 15.)
-	pct_rejected = 100. * float(n_rejected) / np.float(lnZ.size)
-	n_nonconv = np.sum(~conv)
-	pct_nonconv = 100. * float(n_nonconv) / np.float(conv.size)
-	
-	print '  name: %s' % (args.name)
+	#print '  name: %s' % (args.name)
 	print '  (l, b): %.2f, %.2f' % (l, b)
-	print '  E(B-V): %.4f' % (np.percentile(EBV, 95.))
+	print '  E(B-V)_SFD: %.4f' % (np.percentile(EBV, 95.))
 	print '  # of stars: %d' % (len(mags))
-	print '  # rejected: %d (%.2f %%)' % (n_rejected, pct_rejected)
-	print '  # nonconverged: %d (%.2f %%)' % (n_nonconv, pct_nonconv)
-	print '  ln(Z_max): %.2f' % (np.max(lnZ[idx]))
-	print '  ln(Z_95): %.2f' % (np.percentile(lnZ[idx], 95.))
+	
+	# Load bayestar inferences
+	params = None
+	vmin, vmax = None, None
+	
+	if args.bayestar != None:
+                params = read_inferences(args.bayestar, args.pixel)
+		idx = np.isfinite(params['lnZ'])
+		
+		n_rejected = np.sum(params['lnZ'] < np.percentile(params['lnZ'][idx], 95.) - 15.)
+		pct_rejected = 100. * float(n_rejected) / np.float(len(params))
+		n_nonconv = np.sum(~params['conv'])
+		pct_nonconv = 100. * float(n_nonconv) / float(len(params))
+		
+		if args.color != None:
+			vmin, vmax = np.percentile(params[args.color], [2., 98.])
+		
+		print vmin, vmax
+		
+		print '  # rejected: %d (%.2f %%)' % (n_rejected, pct_rejected)
+		print '  # nonconverged: %d (%.2f %%)' % (n_nonconv, pct_nonconv)
+		print '  ln(Z_max): %.2f' % (np.max(params['lnZ'][idx]))
+		print '  ln(Z_95): %.2f' % (np.percentile(params['lnZ'][idx], 95.))
 	
 	# Compute mask for each color
 	idx = []
@@ -310,6 +314,7 @@ def main():
 	#plt.register_cmap(br_cmap)
 	
 	logger = []
+	cbar_ret = None
 	
 	# Grid of axes
 	for row in xrange(3):
@@ -319,16 +324,25 @@ def main():
 			color_x = colors[:,col]
 			idx_xy = idx[col] & idx[row+1]
 			
+			#print colors.shape
+			#print color_x.shape
+			#print idx_xy.shape
+			
 			ax = axgrid[3*row + col]
 			fig.add_axes(ax)
 			
 			logger.append(KnotLogger(ax, s=25))
 			
 			# Empirical
-			ax.scatter(color_x[idx_xy], color_y[idx_xy],
-			           c=lnZ[idx_xy], cmap=br_cmap,
-			           vmin=lnZ_max-Delta_lnZ, vmax=lnZ_max,
-			           s=1.2, alpha=0.12, edgecolor='none')
+			c = 'k'
+			if (params != None) and (args.color != None):
+				#print params[args.color].shape
+				c = params[args.color][idx_xy]
+			
+			cbar_ret = ax.scatter(color_x[idx_xy], color_y[idx_xy],
+			                      c=c, #cmap=br_cmap,
+			                      vmin=vmin, vmax=vmax,
+			                      s=3., alpha=0.30, edgecolor='none')
 			
 			#idx_rej = lnZ < lnZ_max - Delta_lnZ
 			#idx_tmp = idx_xy & ~idx_rej
@@ -379,11 +393,12 @@ def main():
 	cw = 0.05
 	ch = 2. * h - 0.02
 	
-	cax = fig.add_axes([cx, cy, cw, ch])
-	norm = mplib.colors.Normalize(vmin=lnZ_max-Delta_lnZ, vmax=lnZ_max)
-	mappable = mplib.cm.ScalarMappable(cmap=br_cmap, norm=norm)
-	mappable.set_array(np.array([lnZ_max-Delta_lnZ, lnZ_max]))
-	fig.colorbar(mappable, cax=cax, ticks=[0., -3., -6., -9., -12., -15.])
+	if (params != None) and (args.color != None):
+		cax = fig.add_axes([cx, cy, cw, ch])
+		norm = mplib.colors.Normalize(vmin=vmax, vmax=vmax)
+		mappable = mplib.cm.ScalarMappable(norm=norm)#cmap=br_cmap, norm=norm)
+		mappable.set_array(np.array([vmin, vmax]))
+		fig.colorbar(cbar_ret, cax=cax)#, ticks=[0., -3., -6., -9., -12., -15.])
 	
 	cax.yaxis.set_label_position('right')
 	cax.yaxis.tick_right()

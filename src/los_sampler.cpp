@@ -1544,7 +1544,8 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	}*/
 	
 	// Normalization information
-	double sigma = 1.5;
+	double sigma = 1.4;
+	double log_Delta_EBV_floor = -8.;
 	double dEBV_ds = 0.2;		// mag kpc^{-1}
 	
 	// Determine normalization
@@ -1594,7 +1595,7 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		log_Delta_EBV_prior[i] += log_norm;
 		
 		// Floor on log(Delta EBV) prior
-		if(log_Delta_EBV_prior[i] < -8.) { log_Delta_EBV_prior[i] = -8.; }
+		if(log_Delta_EBV_prior[i] < log_Delta_EBV_floor) { log_Delta_EBV_prior[i] = log_Delta_EBV_floor; }
 		
 		Delta_EBV_prior[i] = exp(log_Delta_EBV_prior[i]);
 		

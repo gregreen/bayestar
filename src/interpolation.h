@@ -149,14 +149,18 @@ T TBilinearInterp<T>::operator()(double x, double y) const {
 	double idx = floor((x-x_min)*inv_dx);
 	
 	// DEBUG:
-	/*if((idx < 0) || (idx >= Nx)) {
+	if((idx < 0) || (idx >= Nx)) {
 		#pragma omp critical
 		{
-			std::cout << x_min << " < " << x << " < " << x_max << std::endl;
-			std::cout << "Nx = " << Nx << std::endl;
-			std::cout << "inv_dx = " << inv_dx << std::endl;
+			std::cerr << "Interpolation error: (" << x << ", " << y << ")" << std::endl;
+			std::cerr << x_min << " < " << x << " < " << x_max << std::endl;
+			std::cerr << "Nx = " << Nx << std::endl;
+			std::cerr << "inv_dx = " << inv_dx << std::endl;
+			std::cerr << y_min << " < " << y << " < " << y_max << std::endl;
+                        std::cerr << "Ny = " << Ny << std::endl;
+                        std::cerr << "inv_dy = " << inv_dy << std::endl;
 		}
-	}*/
+	}
 	
 	//#pragma omp critical
 	//{
@@ -168,14 +172,18 @@ T TBilinearInterp<T>::operator()(double x, double y) const {
 	double idy = floor((y-y_min)*inv_dy);
 	
 	// DEBUG:
-	/*if((idy < 0) || (idy >= Ny)) {
+	if((idy < 0) || (idy >= Ny)) {
 		#pragma omp critical
 		{
-			std::cout << y_min << " < " << y << " < " << y_max << std::endl;
-			std::cout << "Ny = " << Ny << std::endl;
-			std::cout << "inv_dy = " << inv_dy << std::endl;
+			std::cerr << "Interpolation error: (" << x << ", " << y << ")" << std::endl;
+			std::cerr << x_min << " < " << x << " < " << x_max << std::endl;
+                       	std::cerr << "Nx = " << Nx << std::endl;
+                        std::cerr << "inv_dx = " << inv_dx << std::endl;
+			std::cerr << y_min << " < " << y << " < " << y_max << std::endl;
+			std::cerr << "Ny = " << Ny << std::endl;
+			std::cerr << "inv_dy = " << inv_dy << std::endl;
 		}
-	}*/
+	}
 	
 	//#pragma	omp critical
         //{

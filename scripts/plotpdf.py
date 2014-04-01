@@ -240,13 +240,20 @@ def main():
 			tmp = np.sum(lnZ < lnZ_max - Delta_lnZ) / float(lnZ.size)
 			print '%.2f %% fail D = %.1f cut' % (100.*tmp, Delta_lnZ)
 		
-		pdf_stack = None
-		
 		try:
 			dset = '%s/stellar pdfs' % group
 			pdf = hdf5io.TProbSurf(fname, dset)
 			x_min, x_max = pdf.x_min, pdf.x_max
-			pdf_stack = np.sum(pdf.get_p()[lnZ_idx], axis=0)
+			
+			idx = conv & lnZ_idx
+			
+			pdf_indiv = pdf.get_p()[idx]
+			pdf_stack = np.sum(pdf_indiv, axis=0)
+			
+			if args.show_indivual:
+				idx = np.arange(pdf_indiv.shape[0])
+				np.random.shuffle(idx)
+				pdf_indiv = pdf_indiv[idx[:4]]
 			
 		except:
 			print 'Using chains to create image of stacked pdfs...'
@@ -270,14 +277,35 @@ def main():
 			                                       bins=[E_range, DM_range])
 			
 			pdf_stack = gaussian_filter(pdf_stack.astype('f8'),
-			                            sigma=(4, 2), mode='reflect')
+			                            sigma=(6, 3), mode='reflect')
 			pdf_stack = pdf_stack.reshape([res[0], 2, res[1], 2]).mean(3).mean(1)
 			pdf_stack *= 100. / np.max(pdf_stack)
 			pdf_stack = pdf_stack.T
+			
+			if args.show_individual:
+				star_samples.shape = (n_stars_tmp, n_star_samples, n_star_dim)
+				idx = np.arange(n_stars_tmp)
+				np.random.shuffle(idx)
+				
+				pdf_indiv = []
+				
+				for k in idx[:4]:
+					pdf_tmp, tmp1, tmp2 = np.histogram2d(star_samples[k,:,0],
+					                                     star_samples[k,:,1],
+					                                     bins=[E_range, DM_range])
+					pdf_tmp = gaussian_filter(pdf_tmp.astype('f8'),
+					                          sigma=(8,4), mode='reflect')
+					pdf_tmp = pdf_tmp.reshape([res[0], 2, res[1], 2]).mean(3).mean(1)
+					pdf_tmp *= 100. / np.max(pdf_tmp)
+					pdf_tmp = pdf_tmp.T
+					
+					pdf_indiv.append(pdf_tmp)
+				
+				pdf_indiv = np.array(pdf_indiv)
 		
 		# Normalize peak to unity at each distance
 		pdf_stack /= np.max(pdf_stack)
-		norm = 1. / np.power(np.max(pdf_stack, axis=1), 0.8)
+		norm = 1. / np.power(np.max(pdf_stack, axis=1), 0.75)
 		norm[np.isinf(norm)] = 0.
 		pdf_stack = np.einsum('ij,i->ij', pdf_stack, norm)
 		
@@ -288,10 +316,10 @@ def main():
 			EBV_max = y_max * (5. / pdf_stack.shape[1])
 		
 		# Save individual stellar pdfs to show
-		if args.show_individual:
-			idx = np.arange(pdf.get_n_stars())[lnZ_idx]
-			np.random.shuffle(idx)
-			pdf_indiv = pdf.get_p()[idx[:4]]
+		#if args.show_individual:
+		#	idx = np.arange(pdf_stack.shape[0])
+		#	np.random.shuffle(idx)
+		#	pdf_indiv = pdf_stack[idx[:4]]
 	
 	# Set matplotlib style attributes
 	mplib.rc('text', usetex=True)
