@@ -261,6 +261,11 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
 	
 	if(config_fname != "NONE") {
 		std::ifstream f_config(config_fname.c_str());
+		if(!f_config) {
+			cerr << "Could not open " << config_fname << endl;
+			cerr << "Quitting." << endl;
+			return 0;
+		}
 		po::store(po::parse_config_file(f_config, config_all_desc, false), vm);
 		f_config.close();
 		
