@@ -54,12 +54,12 @@ struct TMCMCOptions {
 	unsigned int steps;
 	unsigned int samplers;
 	double p_replacement;
-	unsigned int N_threads;
+	unsigned int N_runs;
 	
 	TMCMCOptions(unsigned int _steps, unsigned int _samplers,
-	             double _p_replacement, unsigned int _N_threads)
+	             double _p_replacement, unsigned int _N_runs)
 		: steps(_steps), samplers(_samplers),
-		  p_replacement(_p_replacement), N_threads(_N_threads)
+		  p_replacement(_p_replacement), N_runs(_N_runs)
 	{}
 };
 
@@ -81,19 +81,45 @@ struct TImgStack {
 
 struct TLOSMCMCParams {
 	TImgStack *img_stack;
+	std::vector<double> p0_over_Z, ln_p0_over_Z, inv_p0_over_Z;
 	double p0, lnp0;
+	
+	double *line_int;
+	float *Delta_EBV;
+	unsigned int N_runs;
+	unsigned int N_threads;
+	unsigned int N_regions;
+	
 	double EBV_max;
 	double EBV_guess_max;
 	std::vector<double> EBV_prof_guess;
+	gsl_matrix *guess_cov, *guess_sqrt_cov;
+	
 	std::vector<double> subpixel;
 	double subpixel_min, subpixel_max;
 	
-	TLOSMCMCParams(TImgStack* _img_stack, double _p0, double _EBV_max=-1.);
+	double *Delta_EBV_prior;
+	double *log_Delta_EBV_prior;
+	double *sigma_log_Delta_EBV;
+	double alpha_skew;
+	
+	TLOSMCMCParams(TImgStack* _img_stack, const std::vector<double>& _lnZ, double _p0,
+		       unsigned int _N_runs, unsigned int _N_threads, unsigned int _N_regions,
+	               double _EBV_max=-1.);
 	~TLOSMCMCParams();
 	
 	void set_p0(double _p0);
 	void set_subpixel_mask(TStellarData& data);
 	void set_subpixel_mask(std::vector<double>& new_mask);
+	
+	void calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model,
+	                          double EBV_tot, int verbosity=1);
+	
+	void gen_guess_covariance(double scale_length);
+	
+	double* get_line_int(unsigned int thread_num);
+	float* get_Delta_EBV(unsigned int thread_num);
+	
 };
 
 // Transform from log(DeltaEBV) to cumulative EBV for piecewise-linear l.o.s. fit
@@ -120,28 +146,51 @@ public:
 	virtual void transform(const double *const x, double *const y);
 };
 
+// Testing functions
+void test_extinction_profiles(TLOSMCMCParams &params);
 
-void sample_los_extinction(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
-                           unsigned int N_regions, uint64_t healpix_index);
+// Sample piecewise-linear model
 
-void los_integral(TImgStack& img_stack, const double *const subpixel, double *const ret,
-                  const double *const Delta_EBV, unsigned int N_regions);
+void sample_los_extinction(const std::string& out_fname, const std::string& group_name,
+                           TMCMCOptions &options, TLOSMCMCParams &params,
+                           int verbosity=1);
 
 double lnp_los_extinction(const double *const Delta_EBV, unsigned int N_regions, TLOSMCMCParams &params);
+
+void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
+
 void gen_rand_los_extinction(double *const Delta_EBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
 
+void los_integral(TImgStack& img_stack, const double *const subpixel, double *const ret,
+                  const float *const Delta_EBV, unsigned int N_regions);
+
 double guess_EBV_max(TImgStack &img_stack);
-void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, unsigned int N_regions);
-void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
+
+void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, int verbosity=1);
 
 void monotonic_guess(TImgStack &img_stack, unsigned int N_regions, std::vector<double>& Delta_EBV, TMCMCOptions& options);
 
-void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
+double switch_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params);
+
+double switch_adjacent_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params);
+
+double mix_log_Delta_EBVs(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params);
+
+double step_one_Delta_EBV(double *const _X, double *const _Y, unsigned int _N, gsl_rng* r, TLOSMCMCParams& _params);
+
+
+// Sample cloud model
+void sample_los_extinction_clouds(const std::string& out_fname, const std::string& group_name,
+                                  TMCMCOptions &options, TLOSMCMCParams &params,
+                                  unsigned int N_clouds, int verbosity=1);
+
 double lnp_los_extinction_clouds(const double* x, unsigned int N, TLOSMCMCParams& params);
+
+void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
+
 void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, double *const ret, const double *const Delta_mu,
                          const double *const logDelta_EBV, unsigned int N_clouds);
-void sample_los_extinction_clouds(std::string out_fname, TMCMCOptions &options, TLOSMCMCParams &params,
-                                  unsigned int N_clouds, uint64_t healpix_index);
+
 
 
 #endif // _LOS_SAMPLER_H__

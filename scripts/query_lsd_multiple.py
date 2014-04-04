@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#       query_lsd.py
+#       query_lsd_multiple.py
 #       
 #       Copyright 2012 Greg <greg@greg-G53JW>
 #       
@@ -27,7 +27,7 @@ from os.path import abspath
 
 import healpy as hp
 import numpy as np
-import pyfits
+#import pyfits
 import h5py
 
 import lsd
@@ -50,12 +50,22 @@ def mapper(qresult, target_tp, target_radius):
 		
 		# Group together stars belonging to the same target
 		for target_idx, block_idx in iterators.index_by_key(min_idx):
-			yield (target_idx, obj[block_idx])
+			yield (target_idx, (d[block_idx,target_idx], obj[block_idx]))
 
 
-def reducer(keyvalue):
-	key, obj = keyvalue
+def reducer(keyvalue, max_per_pixel):
+	key, val = keyvalue
+	
+	# Reorganize distances and object records pairs
+	d = []
+	obj = []
+	
+	for dd,oo in val:
+		d.append(dd)
+		obj.append(oo)
+	
 	obj = lsd.colgroup.fromiter(obj, blocks=True)
+	d = lsd.colgroup.fromiter(d, blocks=True)
 	
 	# Find stars with bad detections
 	mask_zero_mag = (obj['mean'] == 0.)
@@ -69,12 +79,22 @@ def reducer(keyvalue):
 	obj['err'][mask_nan_err] = 1.e10
 	obj['err'][mask_zero_mag] = 1.e10
 	
+	#obj['EBV'][:] = d[:]
+	
 	# Combine and apply the masks
 	mask_detect = np.sum(obj['mean'], axis=1).astype(np.bool)
 	mask_informative = (np.sum(obj['err'] > 1.e10, axis=1) < 3).astype(np.bool)
 	mask_keep = np.logical_and(mask_detect, mask_informative)
+	obj = obj[mask_keep]
 	
-	yield (key, obj[mask_keep])
+	# Limit number of stars
+	if max_per_pixel != None:
+		if len(obj) > max_per_pixel:
+			d = d[mask_keep]
+			idx = np.argsort(d)
+			obj = obj[idx[:max_per_pixel]]
+	
+	yield (key, obj)
 
 
 def start_file(base_fname, index):
@@ -89,14 +109,14 @@ def to_file(f, target_idx, target_name, gal_lb, EBV, data):
 		f = h5py.File(fname, 'a')
 		close_file = True
 	
-	ds_name = '/photometry/pixel %d' % target_idx
+	ds_name = '/photometry/pixel 512-%d' % target_idx
 	ds = f.create_dataset(ds_name, data.shape, data.dtype, chunks=True,
 	                      compression='gzip', compression_opts=9)
 	ds[:] = data[:]
 	
 	N_stars = data.shape[0]
 	gal_lb = np.array(gal_lb, dtype='f8')
-	pix_idx = 0
+	pix_idx = target_idx
 	nside = 512
 	nest = True
 	
@@ -136,8 +156,8 @@ def great_circle_dist(tp0, tp1):
 	M = tp1.shape[0]
 	out = np.empty((N,M), dtype=tp0.dtype)
 	
-	dist = lambda p0, t0, p1, t1: np.arccos(np.sin(t0)*np.sin(t1)
-	                              + np.cos(t0)*np.cos(t1)*np.cos(p0-p1))
+	dist = lambda p0, t0, p1, t1: np.arccos(np.cos(t0)*np.cos(t1)
+	                              + np.sin(t0)*np.sin(t1)*np.cos(p0-p1))
 	
 	if N <= M:
 		for n in xrange(N):
@@ -182,6 +202,8 @@ def main():
 	                    help='Minimum # of stars in pixel (default: 1).')
 	parser.add_argument('-max', '--max-stars', type=int, default=50000,
 	                    help='Maximum # of stars in file')
+	parser.add_argument('-ppix', '--max-per-pix', type=int, default=None,
+	                    help='Take at most N nearest stars to center of pixel.')
 	parser.add_argument('-sdss', '--sdss', action='store_true',
 	                    help='Only select objects identified in the SDSS catalog as stars.')
 	parser.add_argument('-ext', '--maxAr', type=float, default=None,
@@ -218,16 +240,18 @@ def main():
 	if values.sdss:
 		if values.maxAr == None:
 			query = ("select obj_id, equgal(ra, dec) as (l, b), "
-			         "mean, err, mean_ap, nmag_ok "
-			         "from sdss, ucal_magsqw_noref "
-			         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) "
-			         "& (nmag_ok[:,0] > 0) "
-			         "& (numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2) "
-			         "& (type == 6)")
+                                 "mean, err, mean_ap, nmag_ok from sdss, "
+                                 "ucal_magsqx_noref(matchedto=sdss,nmax=1,dmax=5) "
+                                 "where (numpy.sum(nmag_ok > 0, axis=1) >= %d) & "
+                                 "(nmag_ok[:,0] > 0) & "
+			         "(numpy.sum(nmag_ok, axis=1) >= %d) & "
+                                 "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= %d) & "
+                                 "(type == 6)"
+			         % (values.n_bands, values.n_det, nPointlike))
 		else:
 			query = ("select obj_id, equgal(ra, dec) as (l, b), "
 			         "mean, err, mean_ap, nmag_ok from sdss, "
-			         "ucal_magsqw_noref(matchedto=sdss,nmax=1,dmax=5) "
+			         "ucal_magsqx_noref(matchedto=sdss,nmax=1,dmax=5) "
 			         "where (numpy.sum(nmag_ok > 0, axis=1) >= 4) & "
 			         "(nmag_ok[:,0] > 0) & "
 			         "(numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2) & "
@@ -235,7 +259,7 @@ def main():
 	else:
 		query = ("select obj_id, equgal(ra, dec) as (l, b), mean, err, "
 		         "mean_ap, nmag_ok, maglimit, SFD.EBV(l, b) as EBV "
-		         "from ucal_magsqw_noref_maglim "
+		         "from ucal_magsqx_noref "
 		         "where (numpy.sum(nmag_ok > 0, axis=1) >= %d) "
 		         "& (nmag_ok[:,0] > 0) "
 		         "& (numpy.sum(nmag_ok, axis=1) >= %d) "
@@ -267,8 +291,9 @@ def main():
 	nInFile = 0
 	
 	# Write each pixel to the same file
-	for (t_idx, obj) in query.execute([(mapper, target_tp, target_radius), reducer],
-	                                      bounds=query_bounds):
+	for (t_idx, obj) in query.execute([(mapper, target_tp, target_radius),
+	                                   (reducer, values.max_per_pix)],
+	                                  bounds=query_bounds):
 		if len(obj) < values.min_stars:
 			continue
 		

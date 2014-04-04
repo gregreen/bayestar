@@ -172,6 +172,54 @@ H5::Attribute H5Utils::openAttribute(H5::DataSet* dataset, const std::string& na
 	}
 }
 
+/*
+ * 
+ * Check existence of datasets, groups
+ * 
+ */
+
+bool H5Utils::group_exists(const std::string& name, H5::H5File* file) {
+	try {
+		file->openGroup(name);
+	} catch(H5::FileIException err_gp_does_not_exist) {
+		return false;
+	}
+	
+	return true;
+}
+
+bool H5Utils::group_exists(const std::string& name, H5::Group* group) {
+	try {
+		group->openGroup(name);
+	} catch(H5::GroupIException err_gp_does_not_exist) {
+		return false;
+	}
+	
+	return true;
+}
+
+bool H5Utils::dataset_exists(const std::string& name, H5::H5File* file) {
+	try {
+		file->openDataSet(name);
+	} catch(H5::FileIException err_dset_does_not_exist) {
+		return false;
+	}
+	
+	return true;
+}
+
+bool H5Utils::dataset_exists(const std::string& name, H5::Group* group) {
+	try {
+		group->openDataSet(name);
+	} catch(H5::GroupIException err_dset_does_not_exist) {
+		return false;
+	}
+	
+	return true;
+}
+
+
+
 
 
 /*
@@ -240,7 +288,7 @@ bool add_watermark_helper(const std::string &filename, const std::string &group_
 	hsize_t dim = 1;
 	H5::DataSpace dspace(rank, &dim);
 	
-	add_watermark_helper(filename, group_name, attribute_name, value, dtype, NULL, dspace);
+	return add_watermark_helper(filename, group_name, attribute_name, value, dtype, NULL, dspace);
 }
 
 template<>
@@ -259,6 +307,12 @@ template<>
 bool H5Utils::add_watermark<double>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const double &value) {
 	H5::DataType dtype = H5::PredType::NATIVE_DOUBLE;
 	return add_watermark_helper<double>(filename, group_name, attribute_name, value, &dtype);
+}
+
+template<>
+bool H5Utils::add_watermark<uint32_t>(const std::string &filename, const std::string &group_name, const std::string &attribute_name, const uint32_t &value) {
+	H5::DataType dtype = H5::PredType::NATIVE_UINT32;
+	return add_watermark_helper<uint32_t>(filename, group_name, attribute_name, value, &dtype);
 }
 
 template<>

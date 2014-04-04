@@ -26,14 +26,17 @@
 #include "data.h"
 
 
-TStellarData::TStellarData(const std::string& infile, uint32_t _healpix_index, double err_floor)
-	: healpix_index(_healpix_index)
+TStellarData::TStellarData(const std::string& infile, std::string _pix_name, double err_floor)
+	: pix_name(_pix_name)
 {
 	std::string group = "photometry";
-	std::stringstream dset;
-	dset << "pixel " << healpix_index;
-	load(infile, group, dset.str(), err_floor);
-	if(EBV <= 0.) { EBV = 4.; }
+	load(infile, group, pix_name, err_floor);
+	if(EBV <= 0.) {
+		EBV = 4.;
+	} else {
+		// Floor on E(B-V)_SFD
+		EBV = sqrt(EBV*EBV + 0.02*0.02);
+	}
 }
 
 
@@ -45,6 +48,10 @@ TStellarData::TStellarData(uint64_t _healpix_index, uint32_t _nside, bool _neste
 	l = _l;
 	b = _b;
 	EBV = -1.;
+	
+	std::stringstream tmp_name;
+	tmp_name << "pixel " << nside << "-" << healpix_index;
+	pix_name = tmp_name.str();
 }
 
 
@@ -214,35 +221,95 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	// Read in dataset
 	TFileData* data_buf = new TFileData[length];
 	dataset.read(data_buf, dtype);
-	std::cerr << "# Read in dimensions." << std::endl;
+	//std::cerr << "# Read in dimensions." << std::endl;
 	
 	// Fix magnitude limits
 	for(int n=0; n<nbands; n++) {
 		float tmp;
+		float maglim_replacement = 25.;
+		
+		// Find the 95th percentile of valid magnitude limits
 		std::vector<float> maglimit;
 		for(hsize_t i=0; i<length; i++) {
 			tmp = data_buf[i].maglimit[n];
-			if((tmp > 10.) && (tmp < 40.)) {
+			
+			if((tmp > 10.) && (tmp < 40.) && (!isnan(tmp))) {
 				maglimit.push_back(tmp);
 			}
 		}
-		std::sort(maglimit.begin(), maglimit.end());
+		
+		//std::sort(maglimit.begin(), maglimit.end());
 		if(maglimit.size() != 0) {
-			size_t medIdx = maglimit.size() / 2;
-			tmp = maglimit[medIdx];
-		} else {
-			tmp = 23.;
+			maglim_replacement = percentile(maglimit, 95.);
 		}
+		
+		// Replace missing magnitude limits with the 95th percentile magnitude limit
 		for(hsize_t i=0; i<length; i++) {
-			data_buf[i].maglimit[n] = tmp;
+			tmp = data_buf[i].maglimit[n];
+			
+			if(!((tmp > 10.) && (tmp < 40.)) || isnan(tmp)) {
+				//std::cout << i << ", " << n << ":  " << tmp << std::endl;
+				data_buf[i].maglimit[n] = maglim_replacement;
+			}
 		}
 	}
+	
+	//int n_filtered = 0;
+	//int n_M_dwarfs = 0;
 	
 	TMagnitudes mag_tmp;
 	for(size_t i=0; i<length; i++) {
 		mag_tmp.set(data_buf[i], err_floor);
 		star.push_back(mag_tmp);
+		
+		//int n_informative = 0;
+		
+		// Remove g-band
+		//mag_tmp.m[0] = 0.;
+		//mag_tmp.err[0] = 1.e10;
+		
+		//double g_err = mag_tmp.err[0];
+		//mag_tmp.err[0] = sqrt(g_err*g_err + 0.1*0.1);
+		
+		// Filter bright end
+                // TODO: Put this into query_lsd.py
+		/*for(int j=0; j<NBANDS; j++) {
+			if((mag_tmp.err[j] < 1.e9) && (mag_tmp.m[j] < 14.)) {
+				mag_tmp.err[j] = 1.e10;
+				mag_tmp.m[j] = 0.;
+			}
+			
+			if(mag_tmp.err[j] < 1.e9) {
+				n_informative++;
+			}
+		}*/
+		
+		// Filter M dwarfs based on color cut
+		//bool M_dwarf = false;
+		/*bool M_dwarf = true;
+		
+		double A_g = 3.172;
+		double A_r = 2.271;
+		double A_i = 1.682;
+		
+		if(mag_tmp.m[0] - A_g / (A_g - A_r) * (mag_tmp.m[0] - mag_tmp.m[1] - 1.2) > 20.) {
+			M_dwarf = false;
+		} else if(mag_tmp.m[1] - mag_tmp.m[2] - (A_r - A_i) / (A_g - A_r) * (mag_tmp.m[0] - mag_tmp.m[1]) < 0.) {
+			M_dwarf = false;
+		} else {
+			n_M_dwarfs++;
+		}
+		*/
+		
+		/*if(n_informative >= 4) { //&& (!M_dwarf)) {
+			star.push_back(mag_tmp);
+		} else {
+			n_filtered++;
+		}*/
 	}
+	
+	//std::cerr << "# of stars filtered: " << n_filtered << std::endl;
+	//std::cerr << "# of M dwarfs: " << n_M_dwarfs << std::endl;
 	
 	/*
 	 *  Attributes
@@ -272,7 +339,11 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	att.read(att_dtype, reinterpret_cast<void*>(&EBV));
 	
-	if((EBV <= 0.) || isnan(EBV)) { EBV = default_EBV; }
+	// TEST: Force l, b to anticenter
+	//l = 180.;
+	//b = 0.;
+	
+	if((EBV <= 0.) || (EBV > default_EBV) || isnan(EBV)) { EBV = default_EBV; }
 	
 	delete[] data_buf;
 	delete gp;
@@ -571,6 +642,7 @@ void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model,
 			// Generate magnitudes
 			observed = true;
 			unsigned int N_nonobs = 0;
+			double p_det;
 			for(size_t k=0; k<NBANDS; k++) {
 				mag[k] = sed.absmag[k] + DM + EBV * ext_model.get_A(RV, k);
 				err[k] = 0.02 + 0.3*exp(mag[k]-mag_limit[k]);
@@ -578,7 +650,11 @@ void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model,
 				mag[k] += gsl_ran_gaussian_ziggurat(r, err[k]);
 				
 				// Require detection in g band and 3 other bands
-				if(mag[k] > mag_limit[k]) {
+				p_det = 0.5 - 0.5 * erf((mag[k] - mag_limit[k] + 0.5) / 0.25);
+				if(gsl_rng_uniform(r) > p_det) {
+					mag[k] = 0.;
+					err[k] = 1.e10;
+					
 					N_nonobs++;
 					if((k == 0) || N_nonobs > 1) {
 						observed = false;
@@ -621,17 +697,16 @@ void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model,
 
 
 
-herr_t fetch_pixel_index(hid_t loc_id, const char *name, void *opdata) {
-	std::vector<unsigned int> *healpix_index = reinterpret_cast<std::vector<unsigned int>*>(opdata);
+herr_t fetch_pixel_name(hid_t loc_id, const char *name, void *opdata) {
+	std::vector<std::string> *pix_name = reinterpret_cast<std::vector<std::string>*>(opdata);
 	
-	std::stringstream group_name;
-	group_name << name;
+	std::string group_name(name);
+	//group_name << name;
 	
-	std::string tmp_str;
-	unsigned int tmp_int;
+	//std::string tmp_name;
 	try {
-		group_name >> tmp_str >> tmp_int;
-		healpix_index->push_back(tmp_int);
+		//group_name >> tmp_name;
+		pix_name->push_back(group_name);
 	} catch(...) {
 		// pass
 	}
@@ -639,10 +714,10 @@ herr_t fetch_pixel_index(hid_t loc_id, const char *name, void *opdata) {
 	return 0;
 }
 
-void get_input_pixels(std::string fname, std::vector<unsigned int> &healpix_index) {
+void get_input_pixels(std::string fname, std::vector<std::string> &pix_name) {
 	H5::H5File *file = H5Utils::openFile(fname, H5Utils::READ);
 	
-	file->iterateElems("/photometry/", NULL, fetch_pixel_index, reinterpret_cast<void*>(&healpix_index));
+	file->iterateElems("/photometry/", NULL, fetch_pixel_name, reinterpret_cast<void*>(&pix_name));
 	
 	delete file;
 }

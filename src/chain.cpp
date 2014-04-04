@@ -19,8 +19,8 @@ TChain::TChain(unsigned int _N, unsigned int _capacity)
 	x_min.reserve(N);
 	x_max.reserve(N);
 	for(unsigned int i=0; i<N; i++) {
-		x_min.push_back(std::numeric_limits<double>::infinity());
-		x_max.push_back(-std::numeric_limits<double>::infinity());
+		x_min.push_back(inf_replacement);
+		x_max.push_back(neg_inf_replacement);
 	}
 }
 
@@ -75,8 +75,8 @@ void TChain::clear() {
 	
 	// Reset min/max coordinates
 	for(unsigned int i=0; i<N; i++) {
-		x_min[i] = std::numeric_limits<double>::infinity();
-		x_max[i] = -std::numeric_limits<double>::infinity();
+		x_min[i] = inf_replacement;
+		x_max[i] = neg_inf_replacement;
 	}
 }
 
@@ -117,20 +117,26 @@ unsigned int TChain::get_ndim() const {
 
 
 void TChain::get_best(std::vector<double> &x) const {
-	double L_max = L[0];
-	size_t i_max = 0;
-	for(size_t i=1; i<length; i++) {
-		if(L[i] > L_max) {
-			L_max = L[i];
-			i_max = i;
-		}
-	}
+	unsigned int i_max = get_index_of_best();
 	const double *best = get_element(i_max);
 	x.clear();
 	for(size_t i=0; i<N; i++) {
 		x.push_back(best[i]);
 	}
 }
+
+unsigned int TChain::get_index_of_best() const {
+	double L_max = L[0];
+	unsigned int i_max = 0;
+	for(unsigned int i=1; i<length; i++) {
+		if(L[i] > L_max) {
+			L_max = L[i];
+			i_max = i;
+		}
+	}
+	return i_max;
+}
+
 
 double TChain::append(const TChain& chain, bool reweight, bool use_peak, double nsigma_max, double nsigma_peak, double chain_frac, double threshold) {
 	assert(chain.N == N);	// Make sure the two chains have the same dimensionality
@@ -284,7 +290,7 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 	sorted_indices.reserve(length);
 	unsigned int filt_length = 0;
 	for(unsigned int i=0; i<length; i++) {
-		if(!(isnan(L[i]) || isinf(L[i]))) {
+		if(!(isnan(L[i]) || is_inf_replacement(L[i]))) {
 			TChainSort tmp_el;
 			tmp_el.index = i;
 			tmp_el.dist2 = metric_dist2(invSigma, get_element(i), mu, N);
@@ -333,7 +339,7 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 		std::cout << "\tV = " << V << std::endl;
 		std::cout << "\ttotal_weight = " << total_weight << std::endl;
 		std::cout << std::endl;
-	} else if(isinf(lnZ)) {
+	} else if(is_inf_replacement(lnZ)) {
 		std::cout << std::endl;
 		std::cout << "inf Error! lnZ = " << lnZ << std::endl;
 		std::cout << "\tsum_invL = e^(" << -L_0 << ") * " << sum_invL << " = " << exp(-L_0) * sum_invL << std::endl;
@@ -387,7 +393,7 @@ void TChain::density_peak(double* const peak, double nsigma) const {
 	
 	// Find the index of the max bin
 	std::map<uint64_t, double>::iterator it_end = bins.end();
-	double w_max = -std::numeric_limits<double>::infinity();
+	double w_max = neg_inf_replacement;
 	for(it = bins.begin(); it != it_end; ++it) {
 		if(it->second > w_max) {
 			w_max = it->second;
@@ -724,6 +730,8 @@ void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsig
 	
 	mat = cv::Mat::zeros(grid.N_bins[0], grid.N_bins[1], CV_64F);
 	
+	//std::cout << grid.N_bins[0] << " " << grid.N_bins[1] << std::endl;
+	
 	unsigned int i1, i2;
 	for(size_t i=0; i<length; i++) {
 		if(grid.get_index(x[N*i+dim1], x[N*i+dim2], i1, i2)) {
@@ -737,14 +745,21 @@ void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsig
 	if((sigma1 >= 0.) && (sigma2 >= 0.)) {
 		double s1 = sigma1 / grid.dx[0];
 		double s2 = sigma2 / grid.dx[1];
-		//std::cout << "dx = (" << grid.dx[0] << ", " << grid.dx[1] << ")" << std::endl;
-		//std::cout << "s = (" << s1 << ", " << s2 << ")" << std::endl;
 		
-		int w1 = 2*ceil(nsigma*s1)+1;
-		int w2 = 2*ceil(nsigma*s2)+1;
+		//std::cout << std::endl;
+		//std::cout << dim1 << " " << dim2 << std::endl;
+		//std::cout << "dx = " << sigma1 << " / " << grid.dx[0] << " = " << s1 << std::endl;
+		//std::cout << "dy = " << sigma2 << " / " << grid.dx[1] << " = " << s2 << std::endl;
+		//std::cout << std::endl;
+		
+		int w1 = 2 * ceil(nsigma*s1) + 1;
+		int w2 = 2 * ceil(nsigma*s2) + 1;
 		
 		cv::GaussianBlur(mat, mat, cv::Size(w2,w1), s2, s1, cv::BORDER_REPLICATE);
 	}
+	
+	// Convert to float
+	mat.convertTo(mat, CV_32F);
 }
 
 
@@ -796,7 +811,7 @@ void TImgWriteBuffer::add(const cv::Mat& img) {
 	float *const imgBuf = &(buf[rect_.N_bins[0] * rect_.N_bins[1] * length_]);
 	for(size_t j=0; j<rect_.N_bins[0]; j++) {
 		for(size_t k=0; k<rect_.N_bins[1]; k++) {
-			imgBuf[rect_.N_bins[1]*j + k] = img.at<double>(j,k);
+			imgBuf[rect_.N_bins[1]*j + k] = img.at<float>(j,k);
 		}
 	}
 	
@@ -810,10 +825,16 @@ void TImgWriteBuffer::write(const std::string& fname, const std::string& group, 
 	// Dataset properties: optimized for reading/writing entire buffer at once
 	int rank = 3;
 	hsize_t dim[3] = {length_, rect_.N_bins[0], rect_.N_bins[1]};
+	hsize_t chunk_dim[3] = {length_, rect_.N_bins[0], rect_.N_bins[1]};
+	if(length_ > 1000) {
+		float div = ceil((float)length_ / 1000.);
+		chunk_dim[0] = (int)ceil(length_ / div);
+		std::cerr << "! Changing chunk length to " << chunk_dim[0] << " stars." << std::endl;
+	}
 	H5::DataSpace dspace(rank, &(dim[0]));
 	H5::DSetCreatPropList plist;
 	plist.setDeflate(9);	// gzip compression level
-	plist.setChunk(rank, &(dim[0]));
+	plist.setChunk(rank, &(chunk_dim[0]));
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
 	
@@ -864,9 +885,9 @@ TChainWriteBuffer::~TChainWriteBuffer() {
 
 void TChainWriteBuffer::reserve(unsigned int nReserved) {
 	assert(nReserved > nReserved_);
-	float *buf_new = new float[nDim_ * nSamples_ * nReserved];
+	float *buf_new = new float[nDim_ * (nSamples_+2) * nReserved];
 	if(buf != NULL) {
-		memcpy(buf_new, buf, sizeof(float) * nDim_ * nSamples_ * length_);
+		memcpy(buf_new, buf, sizeof(float) * nDim_ * (nSamples_+2) * length_);
 		delete[] buf;
 	}
 	buf = buf_new;
@@ -874,7 +895,7 @@ void TChainWriteBuffer::reserve(unsigned int nReserved) {
 	nReserved_ = nReserved;
 }
 
-void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
+void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ, double * GR) {
 	// Make sure buffer is long enough
 	if(length_ >= nReserved_) {
 		reserve(1.5 * (length_ + 1));
@@ -893,11 +914,11 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 	std::sort(samplePos.begin(), samplePos.end());
 	
 	// Copy chosen points into buffer
-	unsigned int i = 1;
-	unsigned int k = 0;
+	unsigned int i = 1;	// Position in chain
+	unsigned int k = 0;	// Position in buffer
 	double w = chain.get_w(0);
 	unsigned int chainLength = chain.get_length();
-	size_t startIdx = length_ * nDim_ * nSamples_;
+	size_t startIdx = length_ * nDim_ * (nSamples_+2);
 	const double *chainElement;
 	while(k < nSamples_) {
 		if(w < samplePos[k]) {
@@ -906,77 +927,55 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ) {
 			i++;
 		} else {
 			chainElement = chain.get_element(i-1);
-			buf[startIdx + nDim_*k] = chain.get_L(i-1);
+			buf[startIdx + nDim_*(k+2)] = chain.get_L(i-1);
 			for(size_t n = 1; n < nDim_; n++) {
-				buf[startIdx + nDim_*k + n] = chainElement[n-1];
+				buf[startIdx + nDim_*(k+2) + n] = chainElement[n-1];
 			}
 			k++;
 		}
 	}
-	/*if(k != nSamples_) {
-		std::cout << std::setprecision(8) << "w = " << w << std::endl;
-		std::cout << std::setprecision(8) << "totalWeight = " << totalWeight << std::endl;
-		std::cout << "i = " << i << std::endl;
-		std::cout << "chainLength = " << i << std::endl;
-		std::cout << "k = " << k << std::endl;
-		std::cout << "nSamples_ = " << nSamples_ << std::endl;
-		std::cout << std::setprecision(8) <<"samplePos[k] = " << samplePos[k] << std::endl;
-		
-		i = 1;
-		k = 0;
-		w = chain.get_w(0);
-		chainLength = chain.get_length();
-		startIdx = length_ * nDim_ * nSamples_;
-		while((k < nSamples_) && (i < chainLength + 1)) {
-			std::cout << "(w, samplePos[k]) = " << w << ", " << samplePos[k] << std::endl;
-			if(w < samplePos[k]) {
-				assert(i < chainLength);
-				std::cout << "w: " << w << " --> ";
-				w += (uint64_t)ceil(chain.get_w(i));
-				std::cout << w << std::endl;
-				std::cout << "i: " << i << " --> ";
-				i++;
-				std::cout << i << std::endl;
-			} else {
-				chainElement = chain.get_element(i-1);
-				buf[startIdx + nDim_*k] = chain.get_L(i-1);
-				for(size_t n = 1; n < nDim_; n++) {
-					buf[startIdx + nDim_*k + n] = chainElement[n-1];
-				}
-				std::cout << "k: " << k << " --> ";
-				k++;
-				std::cout << k << std::endl;
-			}
-			std::cout << "(k, nSamples_) = " << k << ", " << nSamples_ << std::endl;
-			std::cout << "(i, chainLength) = " << i << ", " << chainLength << std::endl;
-			std::cout << std::endl;
-		}
-		
-		abort();
-	}*/
 	assert(k == nSamples_);
+	
+	// Copy best point into buffer
+	i = chain.get_index_of_best();
+	chainElement = chain.get_element(i);
+	buf[startIdx + nDim_] = chain.get_L(i);
+	for(size_t n = 1; n < nDim_; n++) {
+		buf[startIdx + nDim_ + n] = chainElement[n-1];
+	}
+	
+	// Copy the Gelman-Rubin diagnostic into the buffer
+	buf[startIdx] = std::numeric_limits<float>::quiet_NaN();
+	if(GR == NULL) {
+		for(size_t n = 1; n < nDim_; n++) {
+			buf[startIdx + n] = std::numeric_limits<float>::quiet_NaN();
+		}
+	} else {
+		//std::cout << "Writing G-R ..." << std::endl;
+		for(size_t n = 1; n < nDim_; n++) {
+			//std::cout << n << std::endl;
+			buf[startIdx + n] = GR[n-1];
+		}
+	}
+	
+	//std::cout << "Done." << std::endl;
 	
 	length_++;
 }
 
 void TChainWriteBuffer::write(const std::string& fname, const std::string& group, const std::string& chain, const std::string& meta) {
-	// DEBUG:
-	//std::cerr << "group = " << group << std::endl;
-	
 	H5::H5File* h5file = H5Utils::openFile(fname);
 	H5::Group* h5group = H5Utils::openGroup(h5file, group);
 	
 	// Dataset properties: optimized for reading/writing entire buffer at once
 	int rank = 3;
-	hsize_t dim[3] = {length_, nSamples_, nDim_};
+	hsize_t dim[3] = {length_, nSamples_+2, nDim_};
 	H5::DataSpace dspace(rank, &(dim[0]));
 	H5::DSetCreatPropList plist;
 	plist.setDeflate(9);	// gzip compression level
 	plist.setChunk(rank, &(dim[0]));
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
-	
-	//std::cerr << "dataset = " << chain << std::endl;
 	
 	H5::DataSet* dataset = NULL;
 	try {
@@ -986,8 +985,6 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 		std::cerr << "Dataset '" << group << "/" << chain << "' most likely already exists." << std::endl;
 		throw;
 	}
-	
-	//std::cerr << "Writing chain ..." << std::endl;
 	
 	dataset->write(buf, H5::PredType::NATIVE_FLOAT);
 	
@@ -1009,19 +1006,13 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 		//	}
 		//}
 		
-		//std::cerr << "Writing convergence ..." << std::endl;
-		
 		H5::DataSpace convSpace(1, &(dim[0]));
 		H5::Attribute convAtt = dataset->createAttribute("converged", H5::PredType::NATIVE_CHAR, convSpace);
 		convAtt.write(H5::PredType::NATIVE_CHAR, reinterpret_cast<char*>(converged));
 		
-		//std::cerr << "Writing evidence ..." << std::endl;
-		
 		H5::DataSpace lnZSpace(1, &(dim[0]));
 		H5::Attribute lnZAtt = dataset->createAttribute("ln(Z)", H5::PredType::NATIVE_FLOAT, lnZSpace);
 		lnZAtt.write(H5::PredType::NATIVE_FLOAT, lnZ);
-		
-		//std::cerr << "Done." << std::endl;
 		
 		delete[] converged;
 		delete[] lnZ;
@@ -1232,7 +1223,7 @@ void TGaussianMixture::expectation_maximization(const double *x, const double *w
 	unsigned int nearest_cluster;
 	for(unsigned int n=0; n<N; n++) {
 		// Find nearest cluster center
-		min_dist = std::numeric_limits<double>::infinity();
+		min_dist = inf_replacement;
 		for(unsigned int k=0; k<nclusters; k++) {
 			sum = 0.;
 			for(unsigned int i=0; i<ndim; i++) {
@@ -1550,13 +1541,16 @@ double invert_matrix(gsl_matrix* A, gsl_matrix* inv_A, gsl_permutation* p, gsl_m
 	
 	int s;
 	int status = 1;
-	unsigned int count = 0;
+	int count = 0;
 	while(status) {
-		if(count > 5) { std::cerr << "Error inverting matrix." << std::endl; abort(); }
+		if(count > 5) { std::cerr << "! Error inverting matrix." << std::endl; abort(); }
 		
 		// Invert A using LU decomposition
 		gsl_matrix_memcpy(LU, A);
-		if(count != 0) { gsl_matrix_add_diagonal(LU, 0.001); std::cerr << "Added small constant" << std::endl; }	// If inversion fails the first time, add small constant to diagonal
+		if(count != 0) {	// If inversion fails the first time, add small constant to diagonal
+			gsl_matrix_add_diagonal(LU, pow10((double)count - 6.));
+			std::cerr << "Invert matrix: Added 10^" << count - 6 << " to diagonal." << std::endl;
+		}
 		gsl_linalg_LU_decomp(LU, p, &s);
 		if(inv_A == NULL) {
 			status = gsl_linalg_LU_invert(LU, p, A);
@@ -1580,26 +1574,15 @@ double invert_matrix(gsl_matrix* A, gsl_matrix* inv_A, gsl_permutation* p, gsl_m
 }
 
 // Find B s.t. B B^T = A. This is useful for generating vectors from a multivariate normal distribution.
+// Operates on A in-place if sqrt_A == NULL.
 void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A, gsl_eigen_symmv_workspace* esv, gsl_vector *eival, gsl_matrix *eivec, gsl_matrix* sqrt_eival) {
 	size_t N = A->size1;
 	assert(A->size2 == N);
 	
-	// Allocate workspaces if none are provided
-	bool del_esv = false;
-	if(esv == NULL) { esv = gsl_eigen_symmv_alloc(N); del_esv = true; }
-	bool del_eival = false;
-	if(eival == NULL) { eival = gsl_vector_alloc(N); del_eival = true; }
-	bool del_eivec = false;
-	if(eivec == NULL) { eivec = gsl_matrix_alloc(N, N); del_eival = true; }
-	bool del_sqrt_eival = false;
-	if(sqrt_eival == NULL) {
-		sqrt_eival = gsl_matrix_calloc(N, N);
-		del_sqrt_eival = true;
-	} else {
-		assert(sqrt_eival->size1 == N);
-		assert(sqrt_eival->size2 == N);
-		gsl_matrix_set_zero(sqrt_eival);
-	}
+	assert(sqrt_eival->size1 == N);
+	assert(sqrt_eival->size2 == N);
+	
+	gsl_matrix_set_zero(sqrt_eival);
 	
 	if(sqrt_A == NULL) {
 		sqrt_A = A;
@@ -1620,12 +1603,25 @@ void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A, gsl_eigen_symmv_workspace* e
 		}
 	}
 	gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1., eivec, sqrt_eival, 0., sqrt_A);
+}
+
+// Same as above, but allocates and de-allocates worskspaces internally
+void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A) {
+	size_t N = A->size1;
 	
-	// Free workspaces if none were provided
-	if(del_sqrt_eival) { gsl_matrix_free(sqrt_eival); }
-	if(del_esv) { gsl_eigen_symmv_free(esv); }
-	if(del_eivec) { gsl_matrix_free(eivec); }
-	if(del_eival) { gsl_vector_free(eival); }
+	// Allocate workspaces
+	gsl_eigen_symmv_workspace* esv = gsl_eigen_symmv_alloc(N);
+	gsl_vector *eival = gsl_vector_alloc(N);
+	gsl_matrix *eivec = gsl_matrix_alloc(N, N);
+	gsl_matrix* sqrt_eival = gsl_matrix_alloc(N, N);
+	
+	sqrt_matrix(A, sqrt_A, esv, eival, eivec, sqrt_eival);
+	
+	// Free workspaces
+	gsl_matrix_free(sqrt_eival);
+	gsl_eigen_symmv_free(esv);
+	gsl_matrix_free(eivec);
+	gsl_vector_free(eival);
 }
 
 // Draw a normal varariate from a covariance matrix. The square-root of the covariance (as defined in sqrt_matrix) must be provided.

@@ -50,6 +50,8 @@ TMCMCParams::TMCMCParams(TGalacticLOSModel *_gal_model, TSyntheticStellarModel *
 	vary_RV = false;
 	RV_mean = 3.1;
 	RV_variance = 0.2*0.2;
+	
+	use_priors = true;
 }
 
 TMCMCParams::~TMCMCParams() {
@@ -87,7 +89,6 @@ double TMCMCParams::get_EBV(double DM) {
 double logP_single_star_synth(const double *x, double EBV, double RV,
                               const TGalacticLOSModel &gal_model, const TSyntheticStellarModel &stellar_model,
                               TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed) {
-	#define neginf -std::numeric_limits<double>::infinity()
 	double logP = 0.;
 	
 	/*
@@ -100,7 +101,7 @@ double logP_single_star_synth(const double *x, double EBV, double RV,
 	}
 	if(!stellar_model.get_sed(x+1, *tmp_sed)) {
 		if(del_sed) { delete tmp_sed; }
-		return neginf;
+		return neg_inf_replacement;
 	}
 	
 	double logL = 0.;
@@ -108,7 +109,8 @@ double logP_single_star_synth(const double *x, double EBV, double RV,
 	for(unsigned int i=0; i<NBANDS; i++) {
 		if(d.err[i] < 1.e9) {
 			tmp = tmp_sed->absmag[i] + x[_DM] + EBV * ext_model.get_A(RV, i);	// Model apparent magnitude
-			logL += log( 0.5 - 0.5 * erf((tmp - d.maglimit[i] + 0.5) / 0.25) );	// Completeness fraction
+			logL -= log( 1. + exp((tmp - d.maglimit[i] - 0.16) / 0.20) );
+			//logL += log( 0.5 - 0.5 * erf((tmp - d.maglimit[i] + 0.1) / 0.25) );	// Completeness fraction
 			tmp = (d.m[i] - tmp) / d.err[i];
 			logL -= 0.5*tmp*tmp;
 		}
@@ -122,11 +124,6 @@ double logP_single_star_synth(const double *x, double EBV, double RV,
 	 */
 	logP += gal_model.log_prior_synth(x);
 	
-	//double lnp0 = -100.;
-	//tmp = exp(logP - lnp0);
-	//logP = lnp0 + log(tmp + exp(-tmp));	// p --> p + p0 exp(-p/p0)  (Smooth floor on outliers)
-	
-	#undef neginf
 	return logP;
 }
 
@@ -136,8 +133,21 @@ double logP_single_star_synth(const double *x, double EBV, double RV,
 double logP_single_star_emp(const double *x, double EBV, double RV,
                             const TGalacticLOSModel &gal_model, const TStellarModel &stellar_model,
                             TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed) {
-	#define neginf -std::numeric_limits<double>::infinity()
 	double logP = 0.;
+	
+	/*
+	 * Don't allow NaN parameters
+	 */
+	if(isnan(x[0]) || isnan(x[1]) || isnan(x[2])) {
+		#pragma omp critical (cout)
+		{
+		std::cerr << "Encountered NaN parameter value!" << std::endl;
+		std::cerr << "  " << x[0] << std::endl;
+		std::cerr << "  " << x[1] << std::endl;
+		std::cerr << "  " << x[2] << std::endl;
+		}
+		return neg_inf_replacement;
+	}
 	
 	/*
 	 *  Likelihood
@@ -149,7 +159,7 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 	}
 	if(!stellar_model.get_sed(x+1, *tmp_sed)) {
 		if(del_sed) { delete tmp_sed; }
-		return neginf;
+		return neg_inf_replacement;
 	}
 	
 	double logL = 0.;
@@ -157,7 +167,8 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 	for(unsigned int i=0; i<NBANDS; i++) {
 		if(d.err[i] < 1.e9) {
 			tmp = tmp_sed->absmag[i] + x[_DM] + EBV * ext_model.get_A(RV, i);	// Model apparent magnitude
-			logL += log( 0.5 - 0.5 * erf((tmp - d.maglimit[i] + 0.5) / 0.25) );	// Completeness fraction
+			logL -= log( 1. + exp((tmp - d.maglimit[i] - 0.16) / 0.20) );
+			//logL += log( 0.5 - 0.5 * erf((tmp - d.maglimit[i] + 0.1) / 0.25) );	// Completeness fraction
 			//std::cout << tmp << ", " << d.maglimit[i] << std::endl;
 			tmp = (d.m[i] - tmp) / d.err[i];
 			logL -= 0.5*tmp*tmp;
@@ -172,11 +183,44 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 	 */
 	logP += gal_model.log_prior_emp(x) + stellar_model.get_log_lf(x[1]);
 	
-	//double lnp0 = -100.;
-	//tmp = exp(logP - lnp0);
-	//logP = lnp0 + log(tmp + exp(-tmp));	// p --> p + p0 exp(-p/p0)  (Smooth floor on outliers)
+	return logP;
+}
+
+
+// Natural logarithm of posterior probability density for one star, given parameters x, where
+//
+//     x = {DM, M_r, [Fe/H]}
+double logP_single_star_emp_noprior(const double *x, double EBV, double RV,
+                                    const TGalacticLOSModel &gal_model, const TStellarModel &stellar_model,
+                                    TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed) {
+	double logP = 0.;
 	
-	#undef neginf
+	/*
+	 *  Likelihood
+	 */
+	bool del_sed = false;
+	if(tmp_sed == NULL) {
+		del_sed = true;
+		tmp_sed = new TSED(true);
+	}
+	if(!stellar_model.get_sed(x+1, *tmp_sed)) {
+		if(del_sed) { delete tmp_sed; }
+		return neg_inf_replacement;
+	}
+	
+	double logL = 0.;
+	double tmp;
+	for(unsigned int i=0; i<NBANDS; i++) {
+		if(d.err[i] < 1.e9) {
+			tmp = tmp_sed->absmag[i] + x[_DM] + EBV * ext_model.get_A(RV, i);	// Model apparent magnitude
+			tmp = (d.m[i] - tmp) / d.err[i];
+			logL -= 0.5*tmp*tmp;
+		}
+	}
+	logP += logL - d.lnL_norm;
+	
+	if(del_sed) { delete tmp_sed; }
+	
 	return logP;
 }
 
@@ -205,7 +249,7 @@ double logP_los_synth(const double *x, unsigned int N, TMCMCParams &p, double *l
 	if(p.ext_model->in_model(RV)) {
 		logP -= (RV - 3.1)*(RV - 3.1) / (2. * 0.1 * 0.1);
 	} else {
-		return -std::numeric_limits<double>::infinity();
+		return neg_inf_replacement;
 	}
 	
 	// Prior on extinction
@@ -339,15 +383,10 @@ void sample_model_synth(TGalacticLOSModel &galactic_model, TSyntheticStellarMode
 		// Step reddening profile
 		if(!burn_in) { N_los++; }
 		for(size_t k=0; k<length; k++) { x_tmp[k] = x[k]; }
-		//if(!burn_in) { x_tmp[0] += gsl_ran_gaussian_ziggurat(r, sigma_RV); }
 		for(unsigned int m=0; m<params.N_DM; m++) { x_tmp[1+m] += gsl_ran_gaussian_ziggurat(r, sigma_lnEBV); }
 		
 		params_tmp.update_EBV_interp(x_tmp);
 		lnp_tmp = logP_los_synth(x_tmp, length, params_tmp, lnp_star_tmp);
-		//if(isinf(lnp_tmp)) {
-		//	lnp_tmp = logP_los(x, length, params_tmp, lnp_star_tmp);
-		//}
-		//std::cerr << "#     ln p(y) = " << lnp_tmp << std::endl;
 		
 		accept = false;
 		if(lnp_tmp > lnp_los) {
@@ -457,10 +496,10 @@ void sample_model_affine_synth(TGalacticLOSModel &galactic_model, TSyntheticStel
 	std::cerr << "# Burn-in" << std::endl;
 	sampler.set_scale(1.1);
 	sampler.set_replacement_bandwidth(0.5);
-	sampler.step(N_steps, false, 0, 0.01, 0.);
+	sampler.step(N_steps, false, 0, 0.01);
 	sampler.clear();
 	std::cerr << "# Main run" << std::endl;
-	sampler.step(N_steps, true, 0, 0.01, 0.);
+	sampler.step(N_steps, true, 0, 0.01);
 	
 	std::cout << "Sampler stats:" << std::endl;
 	sampler.print_stats();
@@ -534,12 +573,6 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	// Stars
 	TSED sed_tmp(true);
 	
-	// E(B-V)
-	x[0] = params.EBV_floor + (1.5 * params.data->EBV - params.EBV_floor) * (0.05 + 0.9 * gsl_rng_uniform(r));
-	
-	// DM
-	x[1] = params.DM_min + (params.DM_max - params.DM_min) * (0.05 + 0.9 * gsl_rng_uniform(r));
-	
 	// Stellar type
 	double Mr, FeH;
 	Mr = -0.5 + 15.5 * gsl_rng_uniform(r);
@@ -548,23 +581,178 @@ void gen_rand_state_indiv_emp(double *const x, unsigned int N, gsl_rng *r, TMCMC
 	x[2] = Mr;
 	x[3] = FeH;
 	
+	double RV = params.RV_mean;;
 	if(params.vary_RV) {
-		double RV = -1.;
+		RV = -1.;
 		while((RV <= 2.1) || (RV >= 5.)) {
 			RV = params.RV_mean + gsl_ran_gaussian_ziggurat(r, 1.5*params.RV_variance*params.RV_variance);
 		}
 		x[4] = RV;
 	}
+	
+	// Guess E(B-V) on the basis of other parameters
+	
+	// Choose first two bands that have been observed
+	/*int b1, b2;
+	for(b1=0; b1<NBANDS-1; b1++) {
+		if(params.data->star[params.idx_star].err[b1] < 1.e9) {
+			break;
+		}
+	}
+	for(b2=b1+1; b2<NBANDS; b2++) {
+		if(params.data->star[params.idx_star].err[b2] < 1.e9) {
+			break;
+		}
+	}
+	
+	// Color excess
+	TSED * tmp_sed = new TSED(true);
+	params.emp_stellar_model->get_sed(Mr, FeH, *tmp_sed);
+	
+	double mod_color = tmp_sed->absmag[b2] - tmp_sed->absmag[b1];
+	double obs_color = params.data->star[params.idx_star].m[b2] - params.data->star[params.idx_star].m[b1];
+	
+	// Reddening vector
+	double R_XY = params.ext_model->get_A(RV, b2) - params.ext_model->get_A(RV, b1);
+	
+	// E(B-V)
+	for(int i=0; i<5; i++) {
+		x[0] = (obs_color - mod_color) / R_XY + gsl_ran_gaussian_ziggurat(r, 0.1);
+		if((x[0] > params.EBV_floor) && (x[0] < 8.)) {	// Accept first guess above E(B-V) floor
+			break;
+		} else if(i == 4) {	// Revert to dumb, uniform guess
+			//#pragma omp critical
+			//{
+			//std::cout << "  <E(B-V)> = " << x[0] << " >~ " << 8. << std::endl;
+			//}
+			x[0] = fabs(gsl_ran_gaussian_ziggurat(r, 0.1));
+			//x[0] = params.EBV_floor + (1.5 * params.data->EBV - params.EBV_floor) * (0.05 + 0.9 * gsl_rng_uniform(r));
+		}
+	}*/
+	
+	TSED * tmp_sed = new TSED(true);
+	params.emp_stellar_model->get_sed(Mr, FeH, *tmp_sed);
+	
+	double mod_color, obs_color, R_XY;
+	
+	double inv_sigma2_sum = 0.;
+	double weighted_sum = 0.;
+	double sigma1, sigma2;
+	
+	for(int b1=0; b1<NBANDS-1; b1++) {
+		for(int b2=b1+1; b2<NBANDS; b2++) {
+			mod_color = tmp_sed->absmag[b2] - tmp_sed->absmag[b1];
+			obs_color = params.data->star[params.idx_star].m[b2] - params.data->star[params.idx_star].m[b1];
+			R_XY = params.ext_model->get_A(RV, b2) - params.ext_model->get_A(RV, b1);
+			
+			sigma1 = params.data->star[params.idx_star].err[b1];
+			sigma2 = params.data->star[params.idx_star].err[b2];
+			
+			weighted_sum += (obs_color - mod_color) / R_XY / (sigma1*sigma1 + sigma2*sigma2);
+			inv_sigma2_sum += 1. / (sigma1*sigma1 + sigma2*sigma2);
+		}
+	}
+	
+	double EBV_est = weighted_sum / inv_sigma2_sum;
+	
+	for(int i=0; i<5; i++) {
+		x[0] = EBV_est + gsl_ran_gaussian_ziggurat(r, 0.1);
+		if((x[0] > params.EBV_floor) && (x[0] < 8.)) {	// Accept first guess above E(B-V) floor
+			break;
+		} else if(i == 4) {	// Revert to dumber guess
+			//#pragma omp critical
+			//{
+			//std::cout << "  <E(B-V)> = " << x[0] << " >~ " << 8. << std::endl;
+			//}
+			if(EBV_est > 8.) {
+				x[0] = 8. - fabs(gsl_ran_gaussian_ziggurat(r, 0.1));
+			} else {
+				x[0] = fabs(gsl_ran_gaussian_ziggurat(r, 0.1));
+			}
+			//x[0] = params.EBV_floor + (1.5 * params.data->EBV - params.EBV_floor) * (0.05 + 0.9 * gsl_rng_uniform(r));
+		}
+	}
+	
+	// Guess distance on the basis of model magnitudes vs. observed apparent magnitudes
+	inv_sigma2_sum = 0.;
+	weighted_sum = 0.;
+	
+	double sigma;
+	double reddened_mag, obs_mag, maglim;
+	double max_DM = inf_replacement;
+	
+	for(int i=0; i<NBANDS; i++) {
+		sigma = params.data->star[params.idx_star].err[i];
+		reddened_mag = tmp_sed->absmag[i] + x[0] * params.ext_model->get_A(RV, i);
+		obs_mag = params.data->star[params.idx_star].m[i];
+		maglim = params.data->star[params.idx_star].maglimit[i];
+		if(obs_mag > maglim) {
+			obs_mag = maglim;
+		}
+		weighted_sum += (obs_mag - reddened_mag) / (sigma * sigma);
+		inv_sigma2_sum += 1. / (sigma * sigma);
+		
+		// Update maximum allowable distance modulus
+		if(maglim - reddened_mag < max_DM) {
+			max_DM = maglim - reddened_mag;
+		}
+	}
+	
+	double DM_est = weighted_sum / inv_sigma2_sum;
+	
+	x[1] = DM_est + gsl_ran_gaussian_ziggurat(r, 0.1);
+	
+	// Adjust distance to ensure that star is observable
+	if(x[1] > max_DM + 0.25) {
+		//#pragma omp critical (cout)
+		//{
+		//std::cerr << "DM: " << x[1] << " --> ";
+		x[1] = max_DM + gsl_ran_gaussian_ziggurat(r, 0.1);
+		//std::cerr << x[1] << std::endl;
+		//}
+	}
+	
+	/*#pragma omp critical (cout)
+	{
+	//std::cerr << " " << x[0] << " " << max_DM;
+	for(int i=0; i<NBANDS; i++) {
+		std::cerr << " " << tmp_sed->absmag[i] + x[0] * params.ext_model->get_A(RV, i) + x[1];
+	}
+	std::cerr << std::endl;
+	}*/
+	
+	// Don't allow the distance guess to be crazy
+	/*if((x[1] < params.DM_min - 2.) || (x[1] > params.DM_max)) {
+		#pragma omp critical
+		{
+			std::cerr << "!!! DM = " << x[1];
+			x[1] = params.DM_min + (params.DM_max - params.DM_min) * (0.05 + 0.9 * gsl_rng_uniform(r));
+			std::cerr << " --> " << x[1] << " !!!" << std::endl;
+		}
+	}*/
+	
+	//#pragma omp critical (cout)
+	//{
+	//std::cout << "E(B-V) guess: " << x[0] << " = " << "E(" << b2 << " - " << b1 << ") / (R_" << b2 << " - R_" << b1 << ")" << std::endl;
+	//std::cout << "DM guess: " << x[1] << std::endl;
+	//}
+	
+	/*#pragma omp critical (cout)
+	{
+	std::cerr << "Guess: " << x[0] << " " << x[1] << " " << x[2] << " " << x[3] << std::endl;
+	}*/
+	
+	delete tmp_sed;
 }
 
 double logP_indiv_simple_synth(const double *x, unsigned int N, TMCMCParams &params) {
-	if(x[0] < params.EBV_floor) { return -std::numeric_limits<double>::infinity(); }
+	if(x[0] < params.EBV_floor) { return neg_inf_replacement; }
 	double RV;
 	double logp = 0;
 	if(params.vary_RV) {
 		RV = x[5];
 		if((RV <= 2.1) || (RV >= 5.)) {
-			return -std::numeric_limits<double>::infinity();
+			return neg_inf_replacement;
 		}
 		logp = -0.5*(RV-params.RV_mean)*(RV-params.RV_mean)/params.RV_variance;
 	} else {
@@ -575,26 +763,30 @@ double logP_indiv_simple_synth(const double *x, unsigned int N, TMCMCParams &par
 }
 
 double logP_indiv_simple_emp(const double *x, unsigned int N, TMCMCParams &params) {
-	if(x[0] < params.EBV_floor) { return -std::numeric_limits<double>::infinity(); }
+	if(x[0] < params.EBV_floor) { return neg_inf_replacement; }
 	double RV;
 	double logp = 0;
 	if(params.vary_RV) {
 		RV = x[4];
 		if((RV <= 2.1) || (RV >= 5.)) {
-			return -std::numeric_limits<double>::infinity();
+			return neg_inf_replacement;
 		}
 		logp = -0.5*(RV-params.RV_mean)*(RV-params.RV_mean)/params.RV_variance;
 	} else {
 		RV = params.RV_mean;
 	}
-	logp += logP_single_star_emp(x+1, x[0], RV, *params.gal_model, *params.emp_stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+	if(params.use_priors) {
+		logp += logP_single_star_emp(x+1, x[0], RV, *params.gal_model, *params.emp_stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+	} else {
+		logp += logP_single_star_emp_noprior(x+1, x[0], RV, *params.gal_model, *params.emp_stellar_model, *params.ext_model, params.data->star[params.idx_star], NULL);
+	}
 	return logp;
 }
 
 void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                         TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                         TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                        double RV_sigma, double minEBV, const bool saveSurfs, const bool gatherSurfs) {
+                        double RV_sigma, double minEBV, const bool saveSurfs, const bool gatherSurfs, int verbosity) {
 	// Parameters must be consistent - cannot save surfaces without gathering them
 	assert(!(saveSurfs & (!gatherSurfs)));
 	
@@ -609,9 +801,9 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		params.RV_variance = RV_sigma*RV_sigma;
 	}
 	
-	double min[2] = {DM_min, 0.};
-	double max[2] = {DM_max, 5.};
-	unsigned int N_bins[2] = {120, 500};
+	double min[2] = {0., DM_min};
+	double max[2] = {5., DM_max};
+	unsigned int N_bins[2] = {500, 120};
 	TRect rect(min, max, N_bins);
 	
 	if(gatherSurfs) {
@@ -627,7 +819,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 	unsigned int max_attempts = 3;
 	unsigned int N_steps = options.steps;
 	unsigned int N_samplers = options.samplers;
-	unsigned int N_threads = options.N_threads;
+	unsigned int N_runs = options.N_runs;
 	unsigned int ndim;
 	
 	if(params.vary_RV) { ndim = 6; } else { ndim = 5; }
@@ -638,12 +830,15 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 	TAffineSampler<TMCMCParams, TNullLogger>::pdf_t f_pdf = &logP_indiv_simple_synth;
 	TAffineSampler<TMCMCParams, TNullLogger>::rand_state_t f_rand_state = &gen_rand_state_indiv_synth;
 	
-	std::cerr << std::endl;
+	if(verbosity >= 1) {
+		std::cout << std::endl;
+	}
+	
 	unsigned int N_nonconv = 0;
 	
 	TChainWriteBuffer chainBuffer(ndim, 100, params.N_stars);
 	std::stringstream group_name;
-	group_name << "/pixel " << stellar_data.healpix_index;
+	group_name << "/" << stellar_data.pix_name;
 	
 	timespec t_start, t_write, t_end;
 	
@@ -652,23 +847,26 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_start);
 		
-		std::cout << "Star #" << n+1 << " of " << params.N_stars << std::endl;
-		std::cout << "====================================" << std::endl;
+		if(verbosity >= 2) {
+			std::cout << "Star #" << n+1 << " of " << params.N_stars << std::endl;
+			std::cout << "====================================" << std::endl;
+		}
 		
 		//std::cerr << "# Setting up sampler" << std::endl;
-		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 		sampler.set_scale(1.2);
 		sampler.set_replacement_bandwidth(0.2);
+		sampler.set_sigma_min(0.02);
 		
 		//std::cerr << "# Burn-in" << std::endl;
-		sampler.step(N_steps, false, 0., 0.2, 0.);
+		sampler.step(N_steps, false, 0., 0.2);
 		sampler.clear();
 		
 		//std::cerr << "# Main run" << std::endl;
 		bool converged = false;
 		size_t attempt;
 		for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-			sampler.step((1<<attempt)*N_steps, true, 0., 0.2, 0.);
+			sampler.step((1<<attempt)*N_steps, true, 0., 0.2);
 			
 			converged = true;
 			sampler.get_GR_diagnostic(GR);
@@ -689,14 +887,14 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		// Compute evidence
 		TChain chain = sampler.get_chain();
 		double lnZ_tmp = chain.get_ln_Z_harmonic(true, 10., 0.25, 0.05);
-		if(isinf(lnZ_tmp)) { lnZ_tmp = -std::numeric_limits<double>::infinity(); }
+		//if(isinf(lnZ_tmp)) { lnZ_tmp = neg_inf_replacement; }
 		
 		// Save thinned chain
-		chainBuffer.add(chain, converged, lnZ_tmp);
+		chainBuffer.add(chain, converged, lnZ_tmp, GR);
 		
 		// Save binned p(DM, EBV) surface
 		if(gatherSurfs) {
-			chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.1, 0.025, 500.);
+			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 0.02, 0.1, 30.);
 		}
 		if(saveSurfs) { imgBuffer->add(*(img_stack.img[n])); }
 		
@@ -706,27 +904,36 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		
 		//std::cout << "Sampler stats:" << std::endl;
-		sampler.print_stats();
-		std::cout << std::endl;
+		if(verbosity >= 2) {
+			sampler.print_stats();
+			std::cout << std::endl;
+		}
 		
 		if(!converged) {
 			N_nonconv++;
-			std::cerr << "# Failed to converge." << std::endl;
+			if(verbosity >= 2) {
+				std::cout << "# Failed to converge." << std::endl;
+			}
 		}
-		std::cerr << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
-		std::cerr << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
-		std::cerr << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
-		std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
+		
+		if(verbosity >= 2) {
+			std::cout << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
+			std::cout << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+			std::cout << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+			std::cout << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
+		}
 	}
 	
 	chainBuffer.write(out_fname, group_name.str(), "stellar chains");
 	if(saveSurfs) { imgBuffer->write(out_fname, group_name.str(), "stellar pdfs"); }
 	
-	std::cerr << "====================================" << std::endl;
-	std::cerr << std::endl;
-	std::cerr << "# Failed to converge " << N_nonconv << " of " << params.N_stars << " times (" << std::setprecision(2) << 100.*(double)N_nonconv/(double)(params.N_stars) << " %)." << std::endl;
-	std::cerr << std::endl;
-	std::cerr << "====================================" << std::endl;
+	if(verbosity >= 1) {
+		std::cout << "====================================" << std::endl;
+		std::cout << std::endl;
+		std::cout << "# Failed to converge " << N_nonconv << " of " << params.N_stars << " times (" << std::setprecision(2) << 100.*(double)N_nonconv/(double)(params.N_stars) << " %)." << std::endl;
+		std::cout << std::endl;
+		std::cout << "====================================" << std::endl;
+	}
 	
 	if(imgBuffer != NULL) { delete imgBuffer; }
 	delete[] GR;
@@ -735,7 +942,8 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                       TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                      double RV_sigma, double minEBV, const bool saveSurfs, const bool gatherSurfs) {
+                      double RV_mean, double RV_sigma, double minEBV,
+                      const bool saveSurfs, const bool gatherSurfs, const bool use_priors, int verbosity) {
 	// Parameters must be consistent - cannot save surfaces without gathering them
 	assert(!(saveSurfs & (!gatherSurfs)));
 	
@@ -744,17 +952,19 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	double DM_max = 19.;
 	TMCMCParams params(&galactic_model, NULL, &stellar_model, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
 	params.EBV_floor = minEBV;
+	params.use_priors = use_priors;
 	
+	params.RV_mean = RV_mean;
 	if(RV_sigma > 0.) {
 		params.vary_RV = true;
 		params.RV_variance = RV_sigma*RV_sigma;
 	}
 	
-	std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
+	//std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
 	
-	double min[2] = {DM_min, minEBV};
-	double max[2] = {DM_max, 5.};
-	unsigned int N_bins[2] = {120, 500};
+	double min[2] = {minEBV, DM_min};
+	double max[2] = {5., DM_max};
+	unsigned int N_bins[2] = {500, 120};
 	TRect rect(min, max, N_bins);
 	
 	if(gatherSurfs) {
@@ -767,7 +977,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	unsigned int max_attempts = 3;
 	unsigned int N_steps = options.steps;
 	unsigned int N_samplers = options.samplers;
-	unsigned int N_threads = options.N_threads;
+	unsigned int N_runs = options.N_runs;
 	unsigned int ndim;
 	
 	if(params.vary_RV) { ndim = 5; } else { ndim = 4; }
@@ -781,52 +991,118 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	
 	timespec t_start, t_write, t_end;
 	
-	std::cerr << std::endl;
+	if(verbosity >= 1) {
+		std::cout << std::endl;
+	}
+	
 	unsigned int N_nonconv = 0;
 	
 	TChainWriteBuffer chainBuffer(ndim, 100, params.N_stars);
 	std::stringstream group_name;
-	group_name << "/pixel " << stellar_data.healpix_index;
+	group_name << "/" << stellar_data.pix_name;
 	
 	for(size_t n=0; n<params.N_stars; n++) {
 		params.idx_star = n;
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_start);
 		
-		std::cout << "Star #" << n+1 << " of " << params.N_stars << std::endl;
-		std::cout << "====================================" << std::endl;
-		
-		std::cout << "mags = ";
-		for(unsigned int i=0; i<NBANDS; i++) {
-			std::cout << std::setprecision(4) << params.data->star[n].m[i] << " ";
+		if(verbosity >= 2) {
+			std::cout << "Star #" << n+1 << " of " << params.N_stars << std::endl;
+			std::cout << "====================================" << std::endl;
+			
+			std::cout << "mags = ";
+			for(unsigned int i=0; i<NBANDS; i++) {
+				std::cout << std::setprecision(4) << params.data->star[n].m[i] << " ";
+			}
+			std::cout << std::endl;
+			std::cout << "errs = ";
+			for(unsigned int i=0; i<NBANDS; i++) {
+				std::cout << std::setprecision(3) << params.data->star[n].err[i] << " ";
+			}
+			std::cout << std::endl;
+			std::cout << "maglimit = ";
+			for(unsigned int i=0; i<NBANDS; i++) {
+				std::cout << std::setprecision(3) << params.data->star[n].maglimit[i] << " ";
+			}
+			std::cout << std::endl << std::endl;
 		}
-		std::cout << std::endl;
-		std::cout << "errs = ";
-		for(unsigned int i=0; i<NBANDS; i++) {
-			std::cout << std::setprecision(3) << params.data->star[n].err[i] << " ";
-		}
-		std::cout << std::endl;
-		std::cout << "maglimit = ";
-		for(unsigned int i=0; i<NBANDS; i++) {
-			std::cout << std::setprecision(3) << params.data->star[n].maglimit[i] << " ";
-		}
-		std::cout << std::endl << std::endl;
-		
 		
 		//std::cerr << "# Setting up sampler" << std::endl;
-		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_threads);
+		TParallelAffineSampler<TMCMCParams, TNullLogger> sampler(f_pdf, f_rand_state, ndim, N_samplers*ndim, params, logger, N_runs);
 		sampler.set_scale(1.5);
-		sampler.set_replacement_bandwidth(0.2);
+		sampler.set_replacement_bandwidth(0.30);
+		sampler.set_replacement_accept_bias(1.e-5);
+		sampler.set_sigma_min(0.02);
 		
 		//std::cerr << "# Burn-in" << std::endl;
-		sampler.step(N_steps, false, 0., options.p_replacement, 0.);
+		
+		// Burn-in
+		
+		// Round 1 (3/6)
+		sampler.step_MH(N_steps*(1./6.), false);
+		sampler.step(N_steps*(2./6.), false, 0., options.p_replacement);
+		
+		if(verbosity >= 2) {
+			std::cout << std::endl;
+			std::cout << "scale: (";
+			std::cout << std::setprecision(2);
+			for(int k=0; k<sampler.get_N_samplers(); k++) {
+				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+			}
+		}
+		
+		// Remove spurious modes
+		sampler.set_replacement_accept_bias(1.e-2);
+		int N_steps_biased = N_steps*(1./6.);
+		if(N_steps_biased > 20) { N_steps_biased = 20; }
+		sampler.step(N_steps_biased, false, 0., 1.);
+		
+		sampler.tune_stretch(6, 0.30);
+		sampler.tune_MH(6, 0.30);
+		
+		if(verbosity >= 2) {
+			std::cout << ") -> (";
+			for(int k=0; k<sampler.get_N_samplers(); k++) {
+				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+			}
+			std::cout << ")" << std::endl;
+		}
+		
+		// Round 2 (3/6)
+		sampler.set_replacement_accept_bias(0.);
+		sampler.step_MH(N_steps*(1./6.), false);
+		sampler.step(N_steps*(2./6.), false, 0., options.p_replacement);
+		
+		if(verbosity >= 2) {
+			std::cout << "scale: (";
+			std::cout << std::setprecision(2);
+			for(int k=0; k<sampler.get_N_samplers(); k++) {
+				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+			}
+		}
+		
+		sampler.tune_stretch(6, 0.30);
+		sampler.tune_MH(6, 0.30);
+		
+		if(verbosity >= 2) {
+			std::cout << ") -> (";
+			for(int k=0; k<sampler.get_N_samplers(); k++) {
+				std::cout << sampler.get_sampler(k)->get_scale() << ((k == sampler.get_N_samplers() - 1) ? "" : ", ");
+			}
+			std::cout << ")" << std::endl;
+			std::cout << std::endl;
+		}
+		
 		sampler.clear();
 		
 		//std::cerr << "# Main run" << std::endl;
+		
+		// Main run
 		bool converged = false;
 		size_t attempt;
 		for(attempt = 0; (attempt < max_attempts) && (!converged); attempt++) {
-			sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement, 0.);
+			sampler.step((1<<attempt)*N_steps, true, 0., options.p_replacement);
+			//sampler.step_MH((1<<attempt)*N_steps*(1./3.), true);
 			
 			converged = true;
 			sampler.get_GR_diagnostic(GR);
@@ -847,14 +1123,14 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		// Compute evidence
 		TChain chain = sampler.get_chain();
 		double lnZ_tmp = chain.get_ln_Z_harmonic(true, 10., 0.25, 0.05);
-		if(isinf(lnZ_tmp)) { lnZ_tmp = -std::numeric_limits<double>::infinity(); }
+		//if(isinf(lnZ_tmp)) { lnZ_tmp = neg_inf_replacement; }
 		
 		// Save thinned chain
-		chainBuffer.add(chain, converged, lnZ_tmp);
+		chainBuffer.add(chain, converged, lnZ_tmp, GR);
 		
 		// Save binned p(DM, EBV) surface
 		if(gatherSurfs) {
-			chain.get_image(*(img_stack.img[n]), rect, 1, 0, true, 0.1, 0.025, 500.);
+			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 0.0125, 0.1, 30.);
 		}
 		if(saveSurfs) { imgBuffer->add(*(img_stack.img[n])); }
 		
@@ -863,28 +1139,41 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		
 		clock_gettime(CLOCK_MONOTONIC, &t_end);
 		
-		sampler.print_stats();
-		std::cout << std::endl;
+		if(verbosity >= 2) {
+			sampler.print_stats();
+			std::cout << std::endl;
+		}
 		
 		if(!converged) {
 			N_nonconv++;
-			std::cerr << "# Failed to converge." << std::endl;
+			if(verbosity >= 2) {
+				std::cout << "# Failed to converge." << std::endl;
+			}
 		}
-		std::cerr << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
-		std::cerr << "# ln Z: " << lnZ.back() << std::endl;
-		std::cerr << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
-		std::cerr << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
-		std::cerr << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
+		
+		if(verbosity >= 2) {
+			std::cout << "# Number of steps: " << (1<<(attempt-1))*N_steps << std::endl;
+			std::cout << "# ln Z: " << lnZ.back() << std::endl;
+			std::cout << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+			std::cout << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+			std::cout << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
+		}
 	}
 	
 	chainBuffer.write(out_fname, group_name.str(), "stellar chains");
 	if(saveSurfs) { imgBuffer->write(out_fname, group_name.str(), "stellar pdfs"); }
 	
-	std::cerr << "====================================" << std::endl;
-	std::cerr << std::endl;
-	std::cerr << "# Failed to converge " << N_nonconv << " of " << params.N_stars << " times (" << std::setprecision(2) << 100.*(double)N_nonconv/(double)(params.N_stars) << " %)." << std::endl;
-	std::cerr << std::endl;
-	std::cerr << "====================================" << std::endl;
+	if(verbosity >= 1) {
+		if(verbosity >= 2) {
+			std::cout << "====================================" << std::endl;
+			std::cout << std::endl;
+		}
+		std::cout << "# Failed to converge " << N_nonconv << " of " << params.N_stars << " times (" << std::setprecision(2) << 100.*(double)N_nonconv/(double)(params.N_stars) << " %)." << std::endl;
+		if(verbosity >= 2) {
+			std::cout << std::endl;
+			std::cout << "====================================" << std::endl << std::endl;
+		}
+	}
 	
 	if(imgBuffer != NULL) { delete imgBuffer; }
 	delete[] GR;
@@ -918,7 +1207,7 @@ void rand_vector(double*const x, double* min, double* max, size_t N, gsl_rng* r)
 }
 
 void rand_vector(double*const x, size_t N, gsl_rng* r, double A) {
-	for(size_t i=0; i<N; i++) { x[i] = A*gsl_rng_uniform(r); }
+	for(size_t i=0; i<N; i++) { x[i] = A * gsl_rng_uniform(r); }
 }
 
 void rand_gaussian_vector(double*const x, double mu, double sigma, size_t N, gsl_rng* r) {
@@ -929,70 +1218,3 @@ void rand_gaussian_vector(double*const x, double* mu, double* sigma, size_t N, g
 	for(size_t i=0; i<N; i++) { x[i] = mu[i] + gsl_ran_gaussian_ziggurat(r, sigma[i]); }
 }
 
-
-
-
-
-
-
-
-
-/*
-double calc_logP(const double *const x, unsigned int N, MCMCParams &p) {
-	#define neginf -std::numeric_limits<double>::infinity()
-	double logP = 0.;
-	
-	//double x_tmp[4] = {x[0],x[1],x[2],x[3]};
-	
-	// P(Ar|G): Flat prior for Ar > 0. Don't allow DM < 0
-	if((x[_Ar] < 0.) || (x[_DM] < 0.)) { return neginf; }
-	
-	// Make sure star is in range of template spectra
-	if((x[_Mr] < p.model.Mr_min) || (x[_Mr] > p.model.Mr_max) || (x[_FeH] < p.model.FeH_min) || (x[_FeH] > p.model.FeH_max)) { return neginf; }
-	
-	// If the giant or dwarf flag is set, make sure star is appropriate type
-	if(p.giant_flag == 1) {		// Dwarfs only
-		if(x[_Mr] < 4.) { return neginf; }
-	} else if(p.giant_flag == 2) {	// Giants only
-		if(x[_Mr] > 4.) { return neginf; }
-	}
-	
-	// P(Mr|G) from luminosity function
-	double loglf_tmp = p.model.lf(x[_Mr]);
-	logP += loglf_tmp;
-	
-	// P(DM|G) from model of galaxy
-	double logdn_tmp = p.log_dn_interp(x[_DM]);
-	logP += logdn_tmp;
-	
-	// P(FeH|DM,G) from Ivezich et al (2008)
-	double logpFeH_tmp = p.log_p_FeH_fast(x[_DM], x[_FeH]);
-	logP += logpFeH_tmp;
-	
-	// P(g,r,i,z,y|Ar,Mr,DM) from model spectra
-	double M[NBANDS];
-	FOR(0, NBANDS) { M[i] = p.m[i] - x[_DM] - x[_Ar]*p.model.Acoef[i]; }	// Calculate absolute magnitudes from observed magnitudes, distance and extinction
-	
-	TSED sed_bilin_interp = (*p.model.sed_interp)(x[_Mr], x[_FeH]);
-	double logL = logL_SED(M, p.err, sed_bilin_interp);
-	logP += logL;
-	
-	#undef neginf
-	return logP;
-}
-
-// Generates a random state, with a flat distribution in each parameter
-void ran_state(double *const x_0, unsigned int N, gsl_rng *r, MCMCParams &p) {
-	x_0[_DM] = gsl_ran_flat(r, 5.1, 19.9);
-	x_0[_Ar] = gsl_ran_flat(r, 0.1, 3.0);
-	if(p.giant_flag == 0) {
-		x_0[_Mr] = gsl_ran_flat(r, -0.5, 27.5);	// Both giants and dwarfs
-	} else if(p.giant_flag == 1) {
-		x_0[_Mr] = gsl_ran_flat(r, 4.5, 27.5);	// Dwarfs only
-	} else {
-		x_0[_Mr] = gsl_ran_flat(r, -0.5, 3.5);	// Giants only
-	}
-	x_0[_FeH] = gsl_ran_flat(r, -2.4, -0.1);
-}
-
-*/

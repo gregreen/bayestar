@@ -1,0 +1,6 @@
+# Use prior that dust follows modified double exponential disk,
+# as described in Drimmel & Spergel (2001)
+disk-prior = true
+
+# Lower halo fraction
+f_halo = 0.0006

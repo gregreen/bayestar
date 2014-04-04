@@ -33,6 +33,7 @@ import argparse, sys, os
 
 import matplotlib.pyplot as plt
 import matplotlib as mplib
+from matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.axes_grid1 import Grid
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator, FormatStrFormatter
 
@@ -122,6 +123,7 @@ def read_photometry(fname, target_name):
 		if 'pixel' in name:
 			t_name = item.attrs['target_name']
 			t_ID = item.attrs['target_ID']
+			EBV_cluster = item.attrs['EBV']
 			if (t_name == target_name) or (t_ID == target_name):
 				mags = item['mag'][:]
 				errs = item['err'][:]
@@ -129,7 +131,7 @@ def read_photometry(fname, target_name):
 				FeH = item.attrs['target_FeH']
 				mu = item.attrs['target_DM']
 				pix_idx = int(name.split()[1])
-				return mags, errs, EBV_SFD, FeH, mu, t_name, t_ID, pix_idx
+				return mags, errs, EBV_SFD, EBV_cluster, FeH, mu, t_name, t_ID, pix_idx
 	return None
 
 def read_evidences(fname, pix_idx):
@@ -188,6 +190,7 @@ def main():
 	
 	templates = TStellarModel(args.templates)
 	colors = ['gr', 'ri', 'iz', 'zy']
+	n_colors = len(colors)
 	
 	# Set matplotlib style attributes
 	mplib.rc('text', usetex=True)
@@ -199,9 +202,21 @@ def main():
 	mplib.rc('ytick', direction='in')
 	mplib.rc('axes', grid=False)
 	
-	fig = plt.figure(figsize=(8., 2.*n_clusters), dpi=150)
+	# Create color scale
+	cdict = {'red':   ((0., 1., 1.),
+	                   (1., 0., 0.)),
+	         
+	         'green': ((0., 0., 0.),
+	                   (1., 0., 0.)),
+	         
+	         'blue':  ((0., 0., 0.),
+	                   (1., 1., 1.))}
+	br_cmap = LinearSegmentedColormap('br1', cdict)
+	
+	# Set up figure
+	fig = plt.figure(figsize=(1. + 2.5*n_colors, 2.*n_clusters), dpi=150)
 	axgrid = Grid(fig, 111,
-	              nrows_ncols=(n_clusters, 4),
+	              nrows_ncols=(n_clusters, n_colors),
 	              axes_pad=0.05,
 	              add_all=True,
 	              label_mode='L')
@@ -210,6 +225,9 @@ def main():
 	color_max = np.empty(len(colors), dtype='f8')
 	color_min[:] = np.inf
 	color_max[:] = -np.inf
+	
+	lnZ_max = 0.
+	Delta_lnZ = 10.
 	
 	for cluster_num, cluster_name in enumerate(args.clusters):
 		# Load photometry
@@ -221,8 +239,12 @@ def main():
 		if ret == None:
 			print 'Cluster "%s" not found.' % cluster_name
 			return 0
-		mags, errs, EBV, FeH, mu, name, ID, pix_idx = ret
-		mags = dereddened_mags(mags, EBV)
+		mags, errs, EBV, EBV_cluster, FeH, mu, name, ID, pix_idx = ret
+		if np.isfinite(EBV_cluster):
+			print 'Using E(B-V) = %.3f' % EBV_cluster
+			mags = dereddened_mags(mags, float(EBV_cluster))
+		else:
+			mags = dereddened_mags(mags, EBV)
 		
 		# Load evidences
 		lnZ = np.zeros(len(mags), dtype='f8')
@@ -233,7 +255,7 @@ def main():
 					lnZ = ret[:]
 					break
 		
-		print '== Cluster #%d ==' % cluster_num
+		print '== Cluster #%d ==' % (cluster_num + 1)
 		print '  ID: %s' % (ID)
 		print '  name: %s' % (name)
 		print '  FeH: %.2f' % (FeH)
@@ -248,7 +270,7 @@ def main():
 		
 		# Plot color-Magnitude diagrams
 		for i,c in enumerate(colors):
-			ax = axgrid[4*cluster_num + i]
+			ax = axgrid[n_colors*cluster_num + i]
 			
 			# Empirical
 			b1, b2 = i, i+1
@@ -266,13 +288,12 @@ def main():
 			color = mags_tmp[:,b1] - mags_tmp[:,b2]
 			idx = (Mr > -5.)
 			
-			lnZ_max = 0. #np.percentile(lnZ_tmp[idx], 97.)
-			Delta_lnZ = 25.
+			#lnZ_max = np.percentile(lnZ_tmp[idx], 97.)
 			
 			ax.scatter(color[idx], Mr[idx],
-			           c=lnZ_tmp[idx], cmap='Spectral',
+			           c=lnZ_tmp[idx], cmap=br_cmap,
 			           vmin=lnZ_max-Delta_lnZ, vmax=lnZ_max,
-			           s=3., alpha=0.25, edgecolor='none')
+			           s=3., alpha=0.75/np.log(np.sum(idx)), edgecolor='none')
 			
 			xlim = ax.get_xlim()
 			ylim = ax.get_ylim()
@@ -280,20 +301,25 @@ def main():
 			# Model
 			ax.plot(isochrone[c], isochrone['Mr'], 'g-', lw=2, alpha=0.5)
 			
+			#print Mr[idx]
 			Mr_min_tmp, Mr_max_tmp = np.percentile(Mr[idx], [1., 99.])
 			if Mr_min_tmp < Mr_min:
 				Mr_min = Mr_min_tmp
 			if Mr_max_tmp > Mr_max:
 				Mr_max = Mr_max_tmp
 			
-			color_min_tmp, color_max_tmp = np.percentile(color[idx], [4., 96.])
+			lower, upper = 0.5, 98.
+			if c == 'ri':
+				lower = 1.5
+			if c in ['iz', 'zy']:
+				lower, upper = 10., 90.
+			color_min_tmp, color_max_tmp = np.percentile(color[idx], [lower, upper])
 			if color_min_tmp < color_min[i]:
 				color_min[i] = color_min_tmp
 			if color_max_tmp > color_max[i]:
 				color_max[i] = color_max_tmp
 			
 			txt += '  %s: %d stars\n' % (c, np.sum(idx))
-			txt += '      ln(Z_max) = %.2f\n' % lnZ_max
 		
 		print txt
 		print ''
@@ -304,17 +330,17 @@ def main():
 		for i in range(len(colors)):
 			A_r = EBV_0 * R[1]
 			A_xy = EBV_0 * (R[i] - R[i+1])
-			r_0 = Mr_min
+			r_0 = Mr_min - 0.5
 			w = color_max[i] - color_min[i]
 			h = Mr_max - Mr_min
-			xy_0 = color_min[i] + 0.1 * w
-			axgrid[4*cluster_num + i].arrow(xy_0, r_0, A_xy, A_r,
-			                                head_width=0.03*w, head_length=0.01*h,
-			                                color='r', alpha=0.5)
+			xy_0 = color_min[i] + 0.05 * w
+			axgrid[n_colors*cluster_num + i].arrow(xy_0, r_0, A_xy, A_r,
+			                                       head_width=0.03*w, head_length=0.01*h,
+			                                       color='r', alpha=0.5)
 			
 		
 		# Format y-axes
-		axgrid[4*cluster_num].set_ylim(Mr_max+0.5, Mr_min-1.0)
+		axgrid[n_colors*cluster_num].set_ylim(Mr_max+0.5, Mr_min-1.0)
 		
 		cluster_label = ''
 		if len(name) == 0:
@@ -322,33 +348,31 @@ def main():
 		else:
 			cluster_label = name
 		cluster_label = cluster_label.replace(' ', '\ ')
-		axgrid[4*cluster_num].set_ylabel('$\mathrm{%s}$\n$M_{r}$' % cluster_label,
-		                                 fontsize=16,
-		                                 multialignment='center')
-		axgrid[4*cluster_num].yaxis.set_major_locator(MaxNLocator(nbins=5))
-		axgrid[4*cluster_num].yaxis.set_minor_locator(AutoMinorLocator())
+		axgrid[n_colors*cluster_num].set_ylabel('$\mathrm{%s}$\n$M_{r}$' % cluster_label,
+		                                        fontsize=16,
+		                                        multialignment='center')
+		axgrid[n_colors*cluster_num].yaxis.set_major_locator(MaxNLocator(nbins=5))
+		axgrid[n_colors*cluster_num].yaxis.set_minor_locator(AutoMinorLocator())
 	
 	# Format x-axes
 	for i,c in enumerate(colors):
 		axgrid[i].set_xlim(color_min[i], color_max[i])
 		
 		color_label = r'$%s - %s$' % (c[0], c[1])
-		axgrid[4*(n_clusters-1) + i].set_xlabel(color_label, fontsize=16)
-		axgrid[4*(n_clusters-1) + i].xaxis.set_major_locator(MaxNLocator(nbins=4))
-		axgrid[4*(n_clusters-1) + i].xaxis.set_minor_locator(AutoMinorLocator())
+		axgrid[n_colors*(n_clusters-1) + i].set_xlabel(color_label, fontsize=16)
+		axgrid[n_colors*(n_clusters-1) + i].xaxis.set_major_locator(MaxNLocator(nbins=4))
+		axgrid[n_colors*(n_clusters-1) + i].xaxis.set_minor_locator(AutoMinorLocator())
 	
 	fig.subplots_adjust(left=0.12, right=0.85, top=0.98, bottom=0.10)
 	
 	cax = fig.add_axes([0.87, 0.10, 0.03, 0.88])
-	norm = mplib.colors.Normalize(vmin=-25., vmax=0.)
-	mappable = mplib.cm.ScalarMappable(cmap='Spectral', norm=norm)
-	mappable.set_array(np.array([-25., 0.]))
-	fig.colorbar(mappable, cax=cax, ticks=[0., -5., -10., -15., -20., -25.])
+	norm = mplib.colors.Normalize(vmin=lnZ_max-Delta_lnZ, vmax=lnZ_max)
+	mappable = mplib.cm.ScalarMappable(cmap=br_cmap, norm=norm)
+	mappable.set_array(np.array([lnZ_max-Delta_lnZ, lnZ_max]))
+	fig.colorbar(mappable, cax=cax, ticks=[0., -2., -4., -6., -8., -10.])
 	
 	cax.yaxis.set_label_position('right')
 	cax.yaxis.tick_right()
-	#cax.yaxis.set_major_formatter(FormatStrFormatter('%d'))
-	#cax.set_yticks([0., -5., -10., -15., -20., -25.])
 	cax.set_ylabel(r'$\mathrm{ln} \left( Z \right)$', rotation='vertical', fontsize=16)
 	
 	if args.output != None:

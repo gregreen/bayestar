@@ -33,13 +33,14 @@
 #include <fstream>
 
 
+
 /****************************************************************************************************************************
  * 
- * TGalacticModel
+ * TGalStructParams
  * 
  ****************************************************************************************************************************/
 
-TGalacticModel::TGalacticModel() {
+TGalStructParams::TGalStructParams() {
 	// Solar position
 	R0 = 8000;
 	Z0 = 25;
@@ -53,34 +54,46 @@ TGalacticModel::TGalacticModel() {
 	L2 = 3261;
 	H2 = 743;
 	
+	// Smoothing radial scale of disk
+	L_epsilon = 500;
+	
 	// Halo
-	fh = 0.0051;
+	fh = 0.0030; //0.0051;
 	qh = 0.70;
 	nh = -2.62;
 	R_br = 27800;
 	nh_outer = -3.8;
-	fh_outer = fh * pow(R_br/R0, nh - nh_outer);
+	
+	// Drimmel & Spergel (2001)
+	H_ISM = 134.4;
+	L_ISM = 2260.;
+	dH_dR_ISM = 0.0148;
+	R_flair_ISM = 4400.;
 	
 	// Metallicity
 	mu_FeH_inf = -0.82;
 	delta_mu_FeH = 0.55;
 	H_mu_FeH = 500;
+}
+
+
+/****************************************************************************************************************************
+ * 
+ * TGalacticModel
+ * 
+ ****************************************************************************************************************************/
+
+TGalacticModel::TGalacticModel() {
+	TGalStructParams gal_struct_params;
+	set_struct_params(gal_struct_params);
 	
 	// IMF and SFR
 	disk_abundance = new TStellarAbundance(0);
 	halo_abundance = new TStellarAbundance(1);
 }
 
-TGalacticModel::TGalacticModel(double _R0, double _Z0, double _H1, double _L1,
-                               double _f_thick, double _H2, double _L2,
-                               double _fh, double _qh, double _nh, double _R_br, double _nh_outer,
-                               double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
-	: R0(_R0), Z0(_Z0), H1(_H1), L1(_L1), f_thick(_f_thick), H2(_H2), L2(_L2),
-	  fh(_fh), qh(_qh), nh(_nh), R_br(_R_br), nh_outer(_nh_outer),
-	  mu_FeH_inf(_mu_FeH_inf), delta_mu_FeH(_delta_mu_FeH), H_mu_FeH(_H_mu_FeH)//,
-	  //lf(NULL)
-{
-	fh_outer = fh * pow(R_br/R0, nh-nh_outer);
+TGalacticModel::TGalacticModel(const TGalStructParams& gal_struct_params) {
+	set_struct_params(gal_struct_params);
 	
 	disk_abundance = new TStellarAbundance(0);
 	halo_abundance = new TStellarAbundance(1);
@@ -92,8 +105,47 @@ TGalacticModel::~TGalacticModel() {
 	//if(lf != NULL) { delete lf; }
 }
 
+void TGalacticModel::set_struct_params(const TGalStructParams& gal_struct_params) {
+	// Solar position
+	R0 = gal_struct_params.R0;
+	Z0 = gal_struct_params.Z0;
+	
+	// Thin disk
+	L1 = gal_struct_params.L1;
+	H1 = gal_struct_params.H1;
+	
+	// Thick disk
+	f_thick = gal_struct_params.f_thick;
+	L2 = gal_struct_params.L2;
+	H2 = gal_struct_params.H2;
+	
+	// Smoothing radial scale of disk
+	L_epsilon = gal_struct_params.L_epsilon;
+	
+	// Halo
+	fh = gal_struct_params.fh;
+	qh = gal_struct_params.qh;
+	nh = gal_struct_params.nh;
+	R_br = gal_struct_params.R_br;
+	nh_outer = gal_struct_params.nh_outer;
+	fh_outer = fh * pow(R_br/R0, nh - nh_outer);
+	R_epsilon2 = gal_struct_params.R_epsilon * gal_struct_params.R_epsilon;
+	
+	// Smooth ISM disk
+	H_ISM = gal_struct_params.H_ISM;
+	L_ISM = gal_struct_params.L_ISM;
+	dH_dR_ISM = gal_struct_params.dH_dR_ISM;
+	R_flair_ISM = gal_struct_params.R_flair_ISM;
+	
+	// Metallicity
+	mu_FeH_inf = gal_struct_params.mu_FeH_inf;
+	delta_mu_FeH = gal_struct_params.delta_mu_FeH;
+	H_mu_FeH = gal_struct_params.H_mu_FeH;
+}
+
 double TGalacticModel::rho_halo(double R, double Z) const {
-	double r_eff2 = R*R + (Z/qh)*(Z/qh);
+	double r_eff2 = R*R + (Z/qh)*(Z/qh) + R_epsilon2;
+	
 	if(r_eff2 <= R_br*R_br) {
 		return fh*pow(r_eff2/(R0*R0), nh/2.);
 	} else {
@@ -102,9 +154,27 @@ double TGalacticModel::rho_halo(double R, double Z) const {
 }
 
 double TGalacticModel::rho_disk(double R, double Z) const {
-	double rho_thin = exp(-(fabs(Z+Z0) - fabs(Z0))/H1 - (R-R0)/L1);
-	double rho_thick = f_thick * exp(-(fabs(Z+Z0) - fabs(Z0))/H2 - (R-R0)/L2);
+	double R_eff = sqrt(R*R + L_epsilon*L_epsilon);
+	
+	double rho_thin = exp(-(fabs(Z+Z0) - fabs(Z0))/H1 - (R_eff-R0)/L1);
+	double rho_thick = f_thick * exp(-(fabs(Z+Z0) - fabs(Z0))/H2 - (R_eff-R0)/L2);
 	return rho_thin + rho_thick;
+}
+
+double TGalacticModel::rho_ISM(double R, double Z) const {
+	double H = H_ISM;
+	if(R > R_flair_ISM) { H += (R - R_flair_ISM) * dH_dR_ISM; }
+	
+	double L_term;
+	if(R > 0.5 * R0) {
+		L_term = exp(-R / L_ISM);
+	} else {
+		L_term = exp(-0.5*R0 / L_ISM - (R - 0.5*R0)*(R - 0.5*R0)/(0.25 * R0*R0));
+	}
+	
+	double sqrt_H_term = cosh((Z+Z0) / H);
+	
+	return L_term / (sqrt_H_term * sqrt_H_term);
 }
 
 // Mean disk metallicity at given position in space
@@ -192,14 +262,9 @@ TGalacticLOSModel::TGalacticLOSModel(double _l, double _b)
 	init(_l, _b);
 }
 
-TGalacticLOSModel::TGalacticLOSModel(double _l, double _b, double _R0, double _Z0, double _H1, double _L1,
-                                     double _f_thick, double _H2, double _L2,
-                                     double _fh, double _qh, double _nh, double _R_br,
-                                     double _nh_outer, double _mu_FeH_inf, double _delta_mu_FeH, double _H_mu_FeH)
-	: TGalacticModel(_R0, _Z0, _H1, _L1, _f_thick, _H2, _L2, _fh, _qh, _nh, _R_br, _nh_outer,
-	                 _mu_FeH_inf, _delta_mu_FeH, _H_mu_FeH)
+TGalacticLOSModel::TGalacticLOSModel(double _l, double _b, const TGalStructParams& gal_struct_params)
+	: TGalacticModel(gal_struct_params)
 {
-	fh_outer = fh * pow(R_br/R0, nh-nh_outer);
 	init(_l, _b);
 }
 
@@ -251,6 +316,27 @@ void TGalacticLOSModel::DM_to_RZ(double DM, double& R, double& Z) const {
 	R = sqrt(X*X + Y*Y);
 }
 
+double TGalacticLOSModel::rho_disk_los(double DM) const {
+	double R, Z;
+	DM_to_RZ(DM, R, Z);
+	
+	return rho_disk(R, Z);
+}
+
+double TGalacticLOSModel::rho_halo_los(double DM) const {
+	double R, Z;
+	DM_to_RZ(DM, R, Z);
+	
+	return rho_halo(R, Z);
+}
+
+double TGalacticLOSModel::rho_ISM_los(double DM) const {
+	double R, Z;
+	DM_to_RZ(DM, R, Z);
+	
+	return rho_ISM(R, Z);
+}
+
 double TGalacticLOSModel::log_dNdmu_full(double DM) const {
 	double R, Z;
 	DM_to_RZ(DM, R, Z);
@@ -273,7 +359,7 @@ double TGalacticLOSModel::f_halo_full(double DM) const {
 }
 
 double TGalacticLOSModel::log_p_FeH_fast(double DM, double FeH, double f_H) const {
-	if(f_H < 0.) { double f_H = f_halo(DM); }
+	if(f_H < 0.) { f_H = f_halo(DM); }
 	
 	// Halo
 	double mu_H = -1.46;
@@ -360,6 +446,11 @@ double TGalacticLOSModel::log_prior_emp(const double *x) const {
 }
 
 double TGalacticLOSModel::get_log_dNdmu_norm() const { return log_dNdmu_norm; }
+
+double TGalacticLOSModel::dA_dmu(double DM) const {
+	return rho_ISM_los(DM) * pow10(DM / 5.);
+}
+
 
 void TGalacticLOSModel::get_lb(double &_l, double &_b) const {
 	_l = l;
@@ -505,21 +596,21 @@ bool TStellarModel::load_lf(std::string lf_fname) {
 	log_lf_norm *= Mr1 / (double)(lf.size());
 	log_lf_norm = log(log_lf_norm);
 	
-	std::cerr << "# Loaded Phi(" << Mr0 << " <= Mr <= " <<  Mr1 << ") LF from " << lf_fname << "\n";
+	std::cout << "# Loaded Phi(" << Mr0 << " <= Mr <= " <<  Mr1 << ") LF from " << lf_fname << "\n";
 	
 	return true;
 }
 
 bool TStellarModel::load_seds(std::string seds_fname) {
 	double Mr, FeH, dMr_tmp, dFeH_tmp;
-	double Mr_last = std::numeric_limits<double>::infinity();
-	double FeH_last = std::numeric_limits<double>::infinity();
-	double Mr_min = std::numeric_limits<double>::infinity();
-	double Mr_max = -std::numeric_limits<double>::infinity();
-	double FeH_min = std::numeric_limits<double>::infinity();
-	double FeH_max = -std::numeric_limits<double>::infinity();
-	double dMr = std::numeric_limits<double>::infinity();
-	double dFeH = std::numeric_limits<double>::infinity();
+	double Mr_last = inf_replacement;
+	double FeH_last = inf_replacement;
+	double Mr_min = inf_replacement;
+	double Mr_max = neg_inf_replacement;
+	double FeH_min = inf_replacement;
+	double FeH_max = neg_inf_replacement;
+	double dMr = inf_replacement;
+	double dFeH = inf_replacement;
 	
 	// Do a first pass through the file to get the grid spacing and size
 	std::ifstream in(seds_fname.c_str());
@@ -586,12 +677,15 @@ bool TStellarModel::load_seds(std::string seds_fname) {
 	if(count != N_FeH*N_Mr) {
 		std::cerr << "# Incomplete SED library provided (grid is sparse, i.e. missing some values of (Mr,FeH)). This may cause problems." << std::endl;
 	}
-	std::cerr << "# Loaded " << N_FeH*N_Mr << " SEDs from " << seds_fname << std::endl;
+	std::cout << "# Loaded " << N_FeH*N_Mr << " SEDs from " << seds_fname << std::endl;
 	
 	Mr_min_seds = Mr_min;
 	Mr_max_seds = Mr_max;
 	FeH_min_seds = FeH_min;
 	FeH_max_seds = FeH_max;
+	
+	std::cout << "# " << Mr_min_seds << " < Mr < " << Mr_max_seds << std::endl;
+	std::cout << "# " << FeH_min_seds << " < FeH < " << FeH_max_seds << std::endl;
 	
 	return true;
 }
@@ -659,7 +753,7 @@ double TStellarAbundance::SFR(double tau) const {
 	if(tau >= tau_max) {
 		return 0.;
 	} else {
-		double tmp =  -(tau - tau_burst)*(tau - tau_burst) / (2.*sigma_tau_2);
+		//double tmp =  -(tau - tau_burst)*(tau - tau_burst) / (2.*sigma_tau_2);
 		return SFR_norm * ( 1. + A_burst * exp( -(tau - tau_burst)*(tau - tau_burst) / (2.*sigma_tau_2) ) );
 	}
 }
@@ -846,8 +940,8 @@ TExtinctionModel::TExtinctionModel(std::string A_RV_fname) {
 	std::ifstream in(A_RV_fname.c_str());
 	if(!in) { std::cerr << "Could not read extinction coefficients from '" << A_RV_fname << std::endl; abort(); }
 	std::string line;
-	RV_min = std::numeric_limits<double>::infinity();
-	RV_max = -std::numeric_limits<double>::infinity();
+	RV_min = inf_replacement;
+	RV_max = neg_inf_replacement;
 	while(std::getline(in, line)) {
 		if(!line.size()) { continue; }		// empty line
 		if(line[0] == '#') { continue; }	// comment

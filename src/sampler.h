@@ -91,6 +91,8 @@ struct TMCMCParams {
 	
 	bool vary_RV;
 	double RV_mean, RV_variance;
+	
+	bool use_priors;
 };
 
 
@@ -104,6 +106,9 @@ double logP_single_star_synth(const double *x, double EBV, double RV,
 double logP_single_star_emp(const double *x, double EBV, double RV,
                             const TGalacticLOSModel &gal_model, const TStellarModel &stellar_model,
                             TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed=NULL);
+double logP_single_star_emp_noprior(const double *x, double EBV, double RV,
+                                    const TGalacticLOSModel &gal_model, const TStellarModel &stellar_model,
+                                    TExtinctionModel &ext_model, const TStellarData::TMagnitudes &d, TSED *tmp_sed=NULL);
 
 // Sampling routines
 void sample_model_synth(TGalacticLOSModel& galactic_model, TSyntheticStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data);
@@ -112,12 +117,14 @@ void sample_model_affine_synth(TGalacticLOSModel& galactic_model, TSyntheticStel
 void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                         TSyntheticStellarModel& stellar_model,TExtinctionModel& extinction_model, TStellarData& stellar_data,
                         TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                        double RV_sigma=-1., double minEBV=0., const bool saveSurfs=false, const bool gatherSurfs=true);
+                        double RV_sigma=-1., double minEBV=0., const bool saveSurfs=false, const bool gatherSurfs=true,
+                        int verbosity=1);
 
 void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                       TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                      double RV_sigma=-1., double minEBV=0., const bool saveSurfs=false, const bool gatherSurfs=true);
+                      double RV_mean=3.1, double RV_sigma=-1., double minEBV=0., const bool saveSurfs=false, const bool gatherSurfs=true,
+                      const bool use_priors=true, int verbosity=1);
 
 // Auxiliary functions
 void seed_gsl_rng(gsl_rng **r);

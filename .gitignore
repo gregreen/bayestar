@@ -23,3 +23,19 @@ build
 ##################
 *.kdev*
 .kdev*
+
+# Data Files #
+##############
+*.h5
+*.hdf5
+*.dat
+*.fits
+
+# Text and log files #
+######################
+*.txt
+*.log
+
+# Graphics #
+############
+*.png

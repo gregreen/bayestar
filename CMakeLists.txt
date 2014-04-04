@@ -42,13 +42,29 @@ configure_file(
 include_directories("${PROJECT_BINARY_DIR}/src")
 
 #
-# Intel Compiler Flags
+# Optimizations
 #
 IF(NOT CMAKE_COMPILER_IS_GNUCXX)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ipo -axHOST -no-prec-div ")
 ELSE(NOT CMAKE_COMPILER_IS_GNUCXX)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fno-math-errno -funsafe-math-optimizations ")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 ") #-march=native
 ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
+
+#
+# Profiling
+#
+IF(CMAKE_COMPILER_IS_GNUCXX)
+	IF(PROFILING_GEN)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-generate -pg ")
+		#set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS} -fprofile-generate=profiling/ -pg ")
+		MESSAGE( STATUS "Setting flags to generate profiling information." )
+	ENDIF(PROFILING_GEN)
+	IF(PROFILING_USE)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-use ")
+		#set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS} -fprofile-use=profiling/ ")
+		MESSAGE( STATUS "Setting flags to use profiling information." )
+	ENDIF(PROFILING_USE)
+ENDIF(CMAKE_COMPILER_IS_GNUCXX)
 
 ### OpenCV
 pkg_check_modules(OPENCV opencv)
@@ -66,6 +82,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DHAVE_INLINE=1 -DGSL_RANGE_CHECK=0")
 ### Boost
 find_package(Boost REQUIRED COMPONENTS program_options)
 include_directories(${Boost_INCLUDE_DIRS})
+MESSAGE( STATUS "Boost_INCLUDE_DIRS: ${Boost_INCLUDE_DIRS}" )
+MESSAGE( STATUS "Boost_LIBRARIES: ${Boost_LIBRARIES}" )
+
 
 ### OpenMP support
 #find_package(OpenMP REQUIRED)

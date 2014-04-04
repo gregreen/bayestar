@@ -1,3 +1,28 @@
+/*
+ * chain.h
+ * 
+ * Defines class representing a Markov Chain, for use in MCMC routines.
+ * 
+ * This file is part of bayestar.
+ * Copyright 2012 Gregory Green
+ * 
+ * Bayestar is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+ * MA 02110-1301, USA.
+ * 
+ */
+
 #ifndef _CHAIN_H__
 #define _CHAIN_H__
 
@@ -26,11 +51,13 @@
 #include <gsl/gsl_eigen.h>
 #include <gsl/gsl_sf_gamma.h>
 
-#include "h5utils.h"
+#include <gsl/gsl_errno.h>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
+#include "definitions.h"
+#include "h5utils.h"
 #include "stats.h"
 
 #ifndef PI
@@ -143,7 +170,8 @@ public:
 	unsigned int get_length() const;			// Return the number of unique points in the chain
 	double get_total_weight() const;			// Return the sum of the weights in the chain
 	const double* get_element(unsigned int i) const;	// Return the i-th point in the chain
-	void get_best(std::vector<double> &x) const;				// Return best point in chain
+	void get_best(std::vector<double> &x) const;		// Return best point in chain
+	unsigned int get_index_of_best() const;
 	double get_L(unsigned int i) const;			// Return the likelihood of the i-th point
 	double get_w(unsigned int i) const;			// Return the weight of the i-th point
 	unsigned int get_ndim() const;
@@ -194,7 +222,8 @@ public:
 	
 	void add(const TChain &chain,
 	         bool converged = true,
-	         double lnZ = std::numeric_limits<double>::quiet_NaN()
+	         double lnZ = std::numeric_limits<double>::quiet_NaN(),
+		 double * GR = NULL
 	        );
 	
 	void reserve(unsigned int nReserved);
@@ -298,8 +327,10 @@ double invert_matrix(gsl_matrix* A, gsl_matrix* inv_A=NULL,
                      gsl_permutation* p=NULL, gsl_matrix* LU=NULL);
 
 // Find B s.t. B B^T = A. This is useful for generating vectors from a multivariate normal distribution.
-void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A=NULL, gsl_eigen_symmv_workspace* esv=NULL,
-                 gsl_vector *eival=NULL, gsl_matrix *eivec=NULL, gsl_matrix* sqrt_eival=NULL);
+// Operates on A in-place if sqrt_A == NULL.
+void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A, gsl_eigen_symmv_workspace* esv,
+                 gsl_vector *eival, gsl_matrix *eivec, gsl_matrix* sqrt_eival);
+void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A=NULL);
 
 // Draw a normal varariate from a covariance matrix. The square-root of the covariance (as defined in sqrt_matrix) must be provided.
 void draw_from_cov(double* x, const gsl_matrix* sqrt_cov, unsigned int N, gsl_rng* r);

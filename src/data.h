@@ -44,6 +44,7 @@
 #include <gsl/gsl_randist.h>
 
 #include "h5utils.h"
+#include "cpp_utils.h"
 
 
 // Auxiliary functions
@@ -104,13 +105,15 @@ struct TStellarData {
 		void set(const TStellarData::TFileData& dat, double err_floor = 0.02);
 	};
 	
+	// Pixel metadata
+	std::string pix_name;
 	uint64_t healpix_index;
 	uint32_t nside;
 	bool nested;
 	double l, b, EBV;
 	std::vector<TMagnitudes> star;
 	
-	TStellarData(const std::string& infile, uint32_t _healpix_index, double err_floor = 0.02);
+	TStellarData(const std::string& infile, std::string _pix_name, double err_floor = 0.02);
 	TStellarData(uint64_t _healpix_index, uint32_t _nside, bool _nested, double _l, double _b);
 	TStellarData() {}
 	
@@ -148,7 +151,7 @@ void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model,
                            TStellarData& stellar_data, TExtinctionModel& ext_model, double (&mag_limit)[NBANDS]);
 
 // Return healpix indices of pixels in input file
-void get_input_pixels(std::string fname, std::vector<unsigned int> &healpix_index);
+void get_input_pixels(std::string fname, std::vector<std::string> &pix_name);
 
 
 #endif // _STELLAR_DATA_H__

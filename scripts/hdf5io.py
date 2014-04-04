@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#  hdf5-io.py
+#  hdf5io.py
 #  
 #  I/O for files used by Bayestar, including Markov Chains and stellar
 #  template libraries.
@@ -140,12 +140,18 @@ class TChain:
 	def load(self, dset):
 		self.nChains, self.nSamples, self.nDim = dset.shape
 		self.nDim -= 1
+		self.nSamples -= 1
 		
-		self.converged = dset.attrs['converged'][:]
+		self.converged = dset.attrs['converged'][:].astype(np.bool)
 		self.lnZ = dset.attrs['ln(Z)'][:]
 		
-		self.lnp = dset[:,:,0]
-		self.coords = dset[:,:,1:]
+		self.lnp = dset[:,1:,0]
+		self.coords = dset[:,1:,1:]
+		
+		self.lnp_best = dset[:,1,0]
+		self.coords_best = dset[:,1,1:]
+		
+		self.GR = dset[:,0,1:]
 		
 		self.lnp_max = np.max(self.lnp)
 		self.x_min = np.min(self.coords, axis=1)
@@ -157,13 +163,19 @@ class TChain:
 		else:
 			return self.coords[chainIdx]
 	
-	def get_lnp(self, chainIdx):
+	def get_lnp(self, chainIdx=None):
 		if chainIdx == None:
 			return self.lnp
 		else:
 			return self.lnp[chainIdx]
 	
-	def get_lnZ(self, chainIdx):
+	def get_convergence(self, chainIdx=None):
+		if chainIdx == None:
+			return self.converged
+		else:
+			return self.converged[chainIdx]
+	
+	def get_lnZ(self, chainIdx=None):
 		if chainIdx == None:
 			return self.lnZ
 		else:
@@ -211,9 +223,9 @@ class TProbSurf:
 		self.nImages = dset.shape[0]
 		self.nPix = dset.shape[1:]
 		
-		self.x_min = dset.attrs['min']
-		self.x_max = dset.attrs['max']
-		self.p = dset[:,:,:]
+		self.x_min = dset.attrs['min'][::-1]
+		self.x_max = dset.attrs['max'][::-1]
+		self.p = np.swapaxes(dset[:,:,:], 1, 2)
 		
 		self.p_max = np.max(np.max(self.p, axis=2), axis=1)
 	
@@ -222,6 +234,9 @@ class TProbSurf:
 			return self.p
 		else:
 			return self.p[imgIdx]
+	
+	def get_n_stars(self):
+		return self.nImages
 
 
 
