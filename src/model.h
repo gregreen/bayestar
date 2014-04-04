@@ -43,7 +43,7 @@
 #define _LOGTAU 2
 #define _FEH 3
 
-#define NBANDS 5
+#define NBANDS 8
 
 
 

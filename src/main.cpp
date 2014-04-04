@@ -129,8 +129,8 @@ struct TProgramOpts {
 		verbosity = 0;
 		
 		LF_fname = DATADIR "PSMrLF.dat";
-		template_fname = DATADIR "PScolors.dat";
-		ext_model_fname = DATADIR "PSExtinction.dat";
+		template_fname = DATADIR "PS1_2MASS_colors.dat";
+		ext_model_fname = DATADIR "PS1_2MASS_Extinction.dat";
 	}
 };
 
