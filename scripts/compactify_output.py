@@ -34,10 +34,12 @@ def main():
 	parser.add_argument('input', type=str, help='Bayestar output files.')
 	parser.add_argument('--unified', '-u', type=str, default=None,
 	                                     help='Filename for unified output.')
+	parser.add_argument('--stacks', action='store_true',
+	                                     help='Save stacked pdf surfaces.')
 	parser.add_argument('--summary', '-s', type=str, default=None,
 	                                     help='Filename for summary output.')
 	parser.add_argument('--bounds', '-b', type=float, nargs=4, default=None,
-	                                     help='Bounds of pixels to plot (l_min, l_max, b_min, b_max).')
+	                                     help='Bounds of pixels to include (l_min, l_max, b_min, b_max).')
 	parser.add_argument('--processes', '-proc', type=int, default=1,
 	                                     help='# of processes to spawn.')
 	if 'python' in sys.argv[0]:
@@ -50,12 +52,14 @@ def main():
 	print 'Loading Bayestar output files ...'
 	fnames = glob.glob(args.input)
 	mapper = maptools.LOSMapper(fnames, bounds=args.bounds,
-	                                     processes=args.processes)
+	                                    processes=args.processes,
+	                                    load_stacked_pdfs=args.stacks)
 	
 	# Save to unified output file
 	if args.unified != None:
 		print 'Saving to unified output file ...'
-		mapper.data.save_unified(args.unified)
+		mapper.data.save_unified(args.unified,
+		                         save_stacks=args.stacks)
 	
 	# Save to summary output file
 	#if args.summary != None:

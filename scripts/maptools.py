@@ -844,13 +844,13 @@ class LOSData:
 		
 		# Stacked pdfs
 		if save_stacks and self._has_stack:
-			shape = self.stack[0].shape
+			shape = self.star_stack[0].shape
 			
 			dset = f.create_dataset('stacked_pdfs', shape=shape, dtype='f4',
 			                                        compression='gzip', compression_opts=9,
 			                                        chunks=True)
 			
-			dset[:] = self.star_stack[0][:]
+			dset[:] = self.star_stack[0][:].astype('f4')
 			
 			dset.attrs['EBV_min'] = self.DM_EBV_lim[2]
 			dset.attrs['EBV_max'] = self.DM_EBV_lim[3]
@@ -1235,10 +1235,10 @@ def test_load_multiple():
 
 
 def test_plot_comparison():
-	img_path = '/nfs_pan1/www/ggreen/cloudmaps/AquilaSouthLarge2/comp/anticenter'
+	img_path = '/nfs_pan1/www/ggreen/cloudmaps/AquilaSouthLarge2/comp/AqS_2MASS_gerr'
 	
 	fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
-	fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/anticenter/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
+	fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/AqS_2MASS_gerr/AqS_2MASS_gerr.*.h5')
 	#fnames_1 = ['/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.%.5d.h5' % i for i in xrange(25)]
 	#fnames_2 = ['/n/fink1/ggreen/bayestar/output/gbright_giant/AquilaSouthLarge2/AquilaSouthLarge2.%.5d.h5' % i for i in xrange(25)]
 	
@@ -1247,6 +1247,9 @@ def test_plot_comparison():
 	
 	mapper_1.data.sort()
 	mapper_2.data.sort()
+	
+	print mapper_1.data.pix_idx[0].shape
+	print mapper_2.data.pix_idx[0].shape
 	
 	size = (500, 500)
 	rasterizer = mapper_1.gen_rasterizer(size)
@@ -1377,7 +1380,7 @@ def test_plot_comparison():
 		ax.set_xlabel(r'$\mu$', fontsize=18)
 		ax.set_ylabel(r'$\Delta \mathrm{E} \left( B - V \right)$', fontsize=16)
 		
-		fig.savefig('%s/AqS_comp_2.%.5d.png' % (img_path, i), dpi=100)
+		fig.savefig('%s/AqS_comp.%.5d.png' % (img_path, i), dpi=100)
 		plt.close(fig)
 
 
@@ -1403,17 +1406,17 @@ def test_unified():
 	rasterizer = mapper_1.gen_rasterizer(size)
 	bounds = rasterizer.get_lb_bounds()
 	
-	mu_range = np.linspace(4., 19., 500)
+	mu_range = np.linspace(4., 19., 31)
 	
 	Delta = np.empty((3, 500), dtype='f8')
 	Delta[:] = np.nan
 	
 	for i, mu in enumerate(mu_range):
 		tmp, tmp, pix_val_1 = mapper_1.gen_EBV_map(mu, fit='piecewise',
-		                                               method='sample',
+		                                               method='median',
 		                                               reduce_nside=False)
 		tmp, tmp, pix_val_2 = mapper_2.gen_EBV_map(mu, fit='piecewise',
-		                                               method='sample',
+		                                               method='median',
 		                                               reduce_nside=False)
 		img_1 = rasterizer(pix_val_1)
 		img_2 = rasterizer(pix_val_2)
