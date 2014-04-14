@@ -334,7 +334,7 @@ def rasterizer_plotter_worker(dist_q, lock,
 	pix_identifier = []
 	
 	if show:
-		pix_plotter = PixelPlotter(mapper)
+		pix_plotter = PixelPlotter(mapper.data)
 	
 	# Generate images
 	while True:

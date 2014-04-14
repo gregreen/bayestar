@@ -98,7 +98,8 @@ def observed(mags, mag_lim):
 def err_model(mag, mag_lim, scale=1.):
 	err = 0.2 * np.exp((mag - mag_lim - 0.16) / 0.80)
 	err *= 1. + np.random.normal(loc=0., scale=0.1, size=err.shape)
-	err = scale * np.sqrt(0.02**2 + err**2)
+	#err = scale * np.sqrt(0.02**2 + err**2)
+	err = scale * np.sqrt(0.01**2 + err**2)
 	
 	idx = (err > 0.4)
 	err[idx] = 0.4
