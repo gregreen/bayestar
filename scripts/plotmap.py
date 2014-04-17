@@ -520,6 +520,8 @@ def main():
 	                                     help='Galactic longitudes at which to draw lines.')
 	parser.add_argument('--b-lines', '-bs', type=float, nargs='+', default=None,
 	                                     help='Galactic latitudes at which to draw lines.')
+	parser.add_argument('--EBV-max', '-Em', type=float, default=None,
+	                                     help='Saturation limit for E(B-V) color scale.')
 	
 	if 'python' in sys.argv[0]:
 		offset = 2
@@ -581,36 +583,41 @@ def main():
 	if method == 'sample':
 		method_tmp = 'median'
 	
-	EBV_max = -np.inf
+	EBV_max = None
 	
-	if args.delta_mu == None:
-		mu_eval = None
+	if args.EBV_max == None:
+		EBV_max = -np.inf
 		
-		if method == 'sigma':
-			mu_eval = np.array(mapper.data.get_los_DM_range())
-			idx = (mu_eval >= args.dists[0]) & (mu_eval <= args.dists[1])
-			mu_eval = mu_eval[idx]
+		if args.delta_mu == None:
+			mu_eval = None
+			
+			if method == 'sigma':
+				mu_eval = np.array(mapper.data.get_los_DM_range())
+				idx = (mu_eval >= args.dists[0]) & (mu_eval <= args.dists[1])
+				mu_eval = mu_eval[idx]
+				
+			else:
+				mu_eval = [mu_plot[-1]]
+			
+			for mu in mu_eval:
+				print 'Determining max E(B-V) from mu = %.2f ...' % mu
+				
+				nside_tmp, pix_idx_tmp, EBV = mapper.gen_EBV_map(mu,
+				                                                 fit=args.model,
+				                                                 method=method_tmp,
+				                                                 mask_sigma=args.mask,
+				                                                 delta_mu=args.delta_mu)
+				idx = np.isfinite(EBV)
+				EBV_max_tmp = np.percentile(EBV[idx], 95.)
+				
+				if EBV_max_tmp > EBV_max:
+					EBV_max = EBV_max_tmp
 			
 		else:
-			mu_eval = [mu_plot[-1]]
-		
-		for mu in mu_eval:
-			print 'Determining max E(B-V) from mu = %.2f ...' % mu
-			
-			nside_tmp, pix_idx_tmp, EBV = mapper.gen_EBV_map(mu,
-			                                                 fit=args.model,
-			                                                 method=method_tmp,
-			                                                 mask_sigma=args.mask,
-			                                                 delta_mu=args.delta_mu)
-			idx = np.isfinite(EBV)
-			EBV_max_tmp = np.percentile(EBV[idx], 95.)
-			
-			if EBV_max_tmp > EBV_max:
-				EBV_max = EBV_max_tmp
-		
+			EBV_max = mapper.est_dEBV_pctile(95., delta_mu=args.delta_mu,
+			                                      fit=args.model)
 	else:
-		EBV_max = mapper.est_dEBV_pctile(95., delta_mu=args.delta_mu,
-		                                      fit=args.model)
+		EBV_max = args.EBV_max
 	
 	mask = args.mask
 	
