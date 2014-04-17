@@ -158,24 +158,33 @@ def load_output_file_raw(f, bounds=None,
 			n_stars.append(star_samples.shape[0])
 			
 			idx = conv & (np.percentile(lnZ, 98.) - lnZ < 5.)
-			star_samples = star_samples[idx]
 			
-			n_stars_tmp, n_star_samples, n_star_dim = star_samples.shape
-			star_samples.shape = (n_stars_tmp * n_star_samples, n_star_dim)
+			stack_tmp = None
 			
-			res = (501, 121)
+			try:
+				dset = item['stellar pdfs']
+				stack_tmp = dset[idx, :, :]
+				stack_tmp = np.sum(stack_tmp, axis=0)
+			except:
+				print 'Using chains...'
+				star_samples = star_samples[idx]
 			
-			E_range = np.linspace(EBV_min, EBV_max, res[0]*2+1)
-			DM_range = np.linspace(DM_min, DM_max, res[1]*2+1)
+				n_stars_tmp, n_star_samples, n_star_dim = star_samples.shape
+				star_samples.shape = (n_stars_tmp * n_star_samples, n_star_dim)
+				
+				res = (501, 121)
+				
+				E_range = np.linspace(EBV_min, EBV_max, res[0]*2+1)
+				DM_range = np.linspace(DM_min, DM_max, res[1]*2+1)
+				
+				stack_tmp, tmp1, tmp2 = np.histogram2d(star_samples[:,0], star_samples[:,1],
+				                                       bins=[E_range, DM_range])
+				
+				stack_tmp = gaussian_filter(stack_tmp.astype('f8'),
+				                            sigma=(4, 2), mode='reflect')
+				stack_tmp = stack_tmp.reshape([res[0], 2, res[1], 2]).mean(3).mean(1)
 			
-			stack_tmp, tmp1, tmp2 = np.histogram2d(star_samples[:,0], star_samples[:,1],
-			                                       bins=[E_range, DM_range])
-			
-			stack_tmp = gaussian_filter(stack_tmp.astype('f8'),
-			                            sigma=(4, 2), mode='reflect')
-			stack_tmp = stack_tmp.reshape([res[0], 2, res[1], 2]).mean(3).mean(1)
 			stack_tmp *= 100. / np.max(stack_tmp)
-			
 			stack_tmp = stack_tmp.astype('f2')
 			stack_tmp.shape = (1, stack_tmp.shape[0], stack_tmp.shape[1])
 			
