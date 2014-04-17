@@ -1105,12 +1105,15 @@ class MapRasterizer:
 
 
 class PixelIdentifier:
-	def __init__(self, ax, rasterizer, lb_bounds=False):
+	def __init__(self, ax, rasterizer, lb_bounds=False,
+	                                   event_type='button_press_event',
+	                                   event_key=None):
 		self.ax = ax
-		self.cid = ax.figure.canvas.mpl_connect('button_press_event', self)
+		self.cid = ax.figure.canvas.mpl_connect(event_type, self)
 		
 		self.rasterizer = rasterizer
 		self.lb_bounds = lb_bounds
+		self.event_key = event_key
 		
 		self.objs = []
 	
@@ -1118,16 +1121,23 @@ class PixelIdentifier:
 		if event.inaxes != self.ax:
 			return
 		
+		if self.event_key != None:
+			#print event.key
+			if event.key != self.event_key:
+				return
+		
 		# Determine map index of the raster coordinates
 		x, y = event.xdata, event.ydata
 		
 		map_idx = self.rasterizer.xy2idx(x, y, lb_bounds=self.lb_bounds)
 		
-		print '(%.2f, %.2f) -> %d' % (x, y, map_idx)
+		#print '(%.2f, %.2f) -> %d' % (x, y, map_idx)
 		
 		# Pass map index to attached objects
 		for obj in self.objs:
 			obj(map_idx)
+		
+		event.key = None
 	
 	def attach_obj(self, obj):
 		self.objs.append(obj)
