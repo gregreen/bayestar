@@ -27,6 +27,7 @@ import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 
 import matplotlib as mplib
+mplib.use('GTKAgg')
 #mplib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
@@ -170,21 +171,75 @@ class PixelPlotter:
 	def __init__(self, data, model='piecewise'):
 		self.data = data
 		self.model = model
+		
+		self.fig = None
+		self.idx_current = None
+		self.shown = False
 	
 	def __call__(self, map_idx):
 		self.plot_pixel(map_idx)
 	
+	def setup_figure(self):
+		if self.fig != None:
+			return
+		
+		plt.ion()
+		
+		# Set up figure
+		self.fig = plt.figure(figsize=(8,5), dpi=150)
+		self.ax = self.fig.add_subplot(1,1,1)
+		self.fig.subplots_adjust(left=0.12, bottom=0.12, top=0.85)
+		
+		# Plot dummy stacked stellar pdfs
+		shape = self.data.star_stack[0].shape[1:]
+		img = np.zeros(shape, dtype='f8')
+		bounds = self.data.DM_EBV_lim
+		self.im = self.ax.imshow(np.sqrt(img), extent=bounds, origin='lower',
+		                    aspect='auto', cmap='Blues', interpolation='nearest')
+		
+		# Plot dummy samples
+		shape = self.data.los_EBV[0].shape[1:]
+		EBV_all = np.zeros(shape, dtype='f8')
+		alpha = 1. / np.power(shape[0], 0.55)
+		
+		self.sample_plt = []
+		mu = self.data.get_los_DM_range()
+		for i,EBV in enumerate(EBV_all[1:]):
+			self.sample_plt.append(self.ax.plot(mu, EBV, alpha=alpha)[0])
+		
+		# Plot dummy best fit
+		self.best_plt = self.ax.plot(mu, EBV_all[0, :], 'g', lw=2, alpha=0.5)[0]
+		
+		self.ax.set_xlim(mu[0], mu[-1])
+		self.ax.set_ylim(0., 1.)
+		
+		# Add labels
+		self.ax.set_xlabel(r'$\mu$', fontsize=16)
+		self.ax.set_ylabel(r'$\mathrm{E} \left( B - V \right)$', fontsize=16)
+		
+		#title_txt = '$\mathrm{nside} = %d, \ \mathrm{i} = %d$\n' % (nside, pix_idx)
+		#title_txt += '$\ell = %.2f, \ b = %.2f$' % (l, b)
+		
+		self.ax.set_title(r'$$', fontsize=16, multialignment='center')
+		
+		ylim = self.ax.get_ylim()
+		y_txt = ylim[0] + 0.95 * (ylim[1] - ylim[0])
+		x_txt = mu[0] + 0.05 * (mu[-1] - mu[0])
+		self.txt = self.ax.text(x_txt, y_txt, r'$$', fontsize=16,
+		                                             multialignment='left',
+		                                             va='top')
+	
 	def plot_pixel(self, map_idx):
 		if map_idx == -1:
 			return
+		if map_idx == self.idx_current:
+			return
+		self.idx_current = map_idx
+		
+		self.setup_figure()
 		
 		# Load and stretch stacked stellar pdfs
 		star_stack = self.data.star_stack[0][map_idx].astype('f8')
-		
-		#dE = self.los_coll.star_E_range[1] - self.los_coll.star_E_range[0]
-		#dDM = self.los_coll.star_DM_range[1] - self.los_coll.star_DM_range[0]
-		#sigma = [0.015/dE, 0.15/dDM]
-		#star_stack = gaussian_filter(star_stack, sigma, mode='mirror')
 		
 		star_stack /= np.max(star_stack)
 		norm1 = 1. / np.power(np.max(star_stack, axis=0), 0.8)
@@ -199,7 +254,6 @@ class PixelPlotter:
 		EBV_stack_max = y_max * (5. / star_stack.shape[0])
 		
 		# Load piecewise-linear profiles
-		mu = self.data.get_los_DM_range()
 		EBV_all = self.data.los_EBV[0][map_idx, :, :]
 		
 		nside = self.data.nside[0][map_idx]
@@ -231,47 +285,52 @@ class PixelPlotter:
 		else:
 			lnp = [0. for EBV in EBV_all]
 		
-		# Set up figure
-		fig = plt.figure(figsize=(8,5), dpi=150)
-		ax = fig.add_subplot(1,1,1)
-		fig.subplots_adjust(left=0.12, bottom=0.12, top=0.85)
-		
 		# Plot stacked stellar pdfs
-		bounds = self.data.DM_EBV_lim
-		ax.imshow(np.sqrt(star_stack), extent=bounds, origin='lower',
-		          aspect='auto', cmap='Blues', interpolation='nearest')
+		self.im.set_data(np.sqrt(star_stack))
+		self.im.autoscale()
 		
 		# Plot samples
-		alpha = 1. / np.power(EBV_all.shape[0], 0.55)
-		
 		for i,EBV in enumerate(EBV_all[1:]):
 			c = (1.-lnp[i+1], 0., lnp[i+1])
-			ax.plot(mu, EBV, c=c, alpha=alpha)
+			self.sample_plt[i].set_ydata(EBV)
+			self.sample_plt[i].set_color(c)
+			#ax.plot(mu, EBV, c=c, alpha=alpha)
 		
 		# Plot best fit
-		ax.plot(mu, EBV_all[0, :], 'g', lw=2, alpha=0.5)
+		self.best_plt.set_ydata(EBV_all[0, :])
 		
-		ax.set_xlim(mu[0], mu[-1])
-		ax.set_ylim(0., EBV_max)
+		self.ax.set_ylim(0., EBV_max)
 		
 		# Add labels
-		ax.set_xlabel(r'$\mu$', fontsize=16)
-		ax.set_ylabel(r'$\mathrm{E} \left( B - V \right)$', fontsize=16)
+		self.ax.set_xlabel(r'$\mu$', fontsize=16)
+		self.ax.set_ylabel(r'$\mathrm{E} \left( B - V \right)$', fontsize=16)
 		
 		title_txt = '$\mathrm{nside} = %d, \ \mathrm{i} = %d$\n' % (nside, pix_idx)
 		title_txt += '$\ell = %.2f, \ b = %.2f$' % (l, b)
 		
-		ax.set_title(title_txt, fontsize=16, multialignment='center')
+		self.ax.set_title(title_txt, fontsize=16, multialignment='center')
 		
 		if lnp_txt != None:
-			ylim = ax.get_ylim()
+			xlim = self.ax.get_xlim()
+			ylim = self.ax.get_ylim()
 			y_txt = ylim[0] + 0.95 * (ylim[1] - ylim[0])
-			x_txt = mu[0] + 0.05 * (mu[-1] - mu[0])
-			ax.text(x_txt, y_txt, lnp_txt, fontsize=16,
-			                               multialignment='left',
-			                               va='top')
+			x_txt = xlim[0] + 0.05 * (xlim[-1] - xlim[0])
+			self.txt.set_text(lnp_txt)
+			self.txt.set_x(x_txt)
+			self.txt.set_y(y_txt)
+			#ax.text(x_txt, y_txt, lnp_txt, fontsize=16,
+			#                               multialignment='left',
+			#                               va='top')
 		
-		plt.show()
+		print 'drawing'
+		self.ax.figure.canvas.draw()
+		#self.fig.show()
+		#plt.draw()
+		#plt.show()
+		
+		if not self.shown:
+			plt.show()
+			self.shown = True
 
 
 def rasterizer_plotter_worker(dist_q, lock,
@@ -334,7 +393,7 @@ def rasterizer_plotter_worker(dist_q, lock,
 	pix_identifier = []
 	
 	if show:
-		pix_plotter = PixelPlotter(mapper)
+		pix_plotter = PixelPlotter(mapper.data)
 	
 	# Generate images
 	while True:
@@ -458,7 +517,10 @@ def rasterizer_plotter_worker(dist_q, lock,
 			if show:
 				# Add pixel identifier to allow user to find info on
 				# individual HEALPix pixels
-				pix_identifier.append(hputils.PixelIdentifier(ax, rasterizer, lb_bounds=True))
+				pix_identifier.append(hputils.PixelIdentifier(ax, rasterizer,
+				                                              lb_bounds=True,
+				                                              event_type='motion_notify_event',
+				                                              event_key='alt'))
 				pix_identifier[-1].attach_obj(pix_plotter)
 			else:
 				plt.close(fig)
