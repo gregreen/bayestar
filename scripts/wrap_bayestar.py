@@ -7,9 +7,9 @@ def write_infile(filename, mag, err, maglimit,
 	
 	data = np.empty(n_stars, dtype=[('obj_id','u8'),
 	                                ('l','f8'), ('b','f8'), 
-	                                ('mag','f4',5), ('err','f4',5),
-	                                ('maglimit','f4',5),
-	                                ('nDet','u4',5),
+	                                ('mag','f4',8), ('err','f4',8),
+	                                ('maglimit','f4',8),
+	                                ('nDet','u4',8),
 	                                ('EBV','f4')])
 	
 	data['obj_id'][:] = np.arange(n_stars)

@@ -942,7 +942,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLOSModel& galactic_model,
                       TStellarModel& stellar_model, TExtinctionModel& extinction_model, TStellarData& stellar_data,
                       TImgStack& img_stack, std::vector<bool> &conv, std::vector<double> &lnZ,
-                      double RV_mean, double RV_sigma, double minEBV,
+                      double RV_mean, double RV_sigma, double minEBV, double smoothing_slope, double EBV_smoothing_max,
                       const bool saveSurfs, const bool gatherSurfs, const bool use_priors, int verbosity) {
 	// Parameters must be consistent - cannot save surfaces without gathering them
 	assert(!(saveSurfs & (!gatherSurfs)));
@@ -1132,7 +1132,6 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 		if(gatherSurfs) {
 			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 0.0125, 0.1, 30.);
 		}
-		if(saveSurfs) { imgBuffer->add(*(img_stack.img[n])); }
 		
 		lnZ.push_back(lnZ_tmp);
 		conv.push_back(converged);
@@ -1157,6 +1156,24 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 			std::cout << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
 			std::cout << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
 			std::cout << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
+		}
+	}
+	
+	if((EBV_smoothing_max > 0.) && (smoothing_slope > 0.)) {
+		std::vector<double> sigma_EBV;
+		double sigma_EBV_tmp;
+		double sigma_EBV_max = EBV_smoothing_max / img_stack.rect->dx[0];
+		for(int i = 0; i < img_stack.rect->N_bins[0]; i++) {
+			sigma_EBV_tmp = 0.1 + smoothing_slope * (double)i;
+			if(sigma_EBV_tmp > sigma_EBV_max) { sigma_EBV_tmp = sigma_EBV_max; }
+			sigma_EBV.push_back(sigma_EBV_tmp);
+		}
+		img_stack.smooth(sigma_EBV);
+	}
+	
+	if(saveSurfs) {
+		for(int n=0; n<params.N_stars; n++) {
+			imgBuffer->add(*(img_stack.img[n]));
 		}
 	}
 	

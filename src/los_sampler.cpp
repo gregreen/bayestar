@@ -1793,6 +1793,104 @@ void TImgStack::stack(cv::Mat& dest) {
 	}
 }
 
+void TImgStack::smooth(std::vector<double> sigma, double n_sigma) {
+	const int N_rows = rect->N_bins[0];
+	const int N_cols = rect->N_bins[1];
+	
+	assert(sigma.size() == N_rows);
+	assert(n_sigma > 0);
+	
+	// Create copy of each image
+	cv::Mat **img_s = new cv::Mat*[N_images];
+	for(int i=0; i<N_images; i++) {
+		if(img[i] == NULL) {
+			img_s[i] = NULL;
+		} else {
+			img_s[i] = new cv::Mat(img[i]->clone());
+		}
+	}
+	
+	// Source and destination rows for convolution
+	float *src_img_row_up, *src_img_row_down, *dest_img_row;
+	int src_row_idx_up, src_row_idx_down;
+	
+	// Weight applied to each row
+	float *dc = new float[N_rows];
+	float a, c;
+	
+	// Number of times to shift image (= sigma * n_sigma)
+	int m_max;
+	
+	// Loop over destination rows
+	for(int dest_row_idx=0; dest_row_idx<N_rows; dest_row_idx++) {
+		// Determine kernel width (based on sigma at destination)
+		m_max = int(ceil(sigma[dest_row_idx] * n_sigma));
+		if(m_max > N_rows) { m_max = N_rows; }
+		
+		// Determine weight to apply to each source pixel
+		a = -0.5 / (sigma[dest_row_idx]*sigma[dest_row_idx]);
+		c = 1.;
+		
+		for(int m=1; m<m_max; m++) {
+			dc[m] = exp(a * (float)(m*m));
+			c += 2. * dc[m];
+		}
+		
+		a = 1. / c;
+		
+		for(int i=0; i<N_images; i++) {
+			img_s[i]->row(dest_row_idx) *= a;
+		}
+		
+		// Loop over row offsets
+		for(int m=1; m<m_max; m++) {
+			dc[m] *= a;
+			src_row_idx_up = dest_row_idx + m;
+			src_row_idx_down = dest_row_idx - m;
+			
+			if(src_row_idx_up >= N_rows) { src_row_idx_up = N_rows - 1; }
+			if(src_row_idx_down < 0) { src_row_idx_down = 0; }
+			
+			// Loop over images
+			for(int i=0; i<N_images; i++) {
+				if(img[i] != NULL) {
+					dest_img_row = img_s[i]->ptr<float>(dest_row_idx);
+					src_img_row_up = img[i]->ptr<float>(src_row_idx_up);
+					src_img_row_down = img[i]->ptr<float>(src_row_idx_down);
+					
+					// Loop over columns
+					for(int col=0; col<N_cols; col++) {
+						dest_img_row[col] += dc[m] * (src_img_row_up[col] + src_img_row_down[col]);
+					}
+				}
+			}
+		}
+	}
+	
+	// Switch out smoothed images for old images
+	for(int i=0; i<N_images; i++) {
+		if(img[i] != NULL) { delete img[i]; }
+	}
+	delete[] img;
+	
+	img = img_s;
+	
+	// Cleanup
+	delete[] dc;
+}
+
+void shift_image_vertical(cv::Mat& img, int n_pix) {
+	
+}
+
+
+
+/****************************************************************************************************************************
+ * 
+ * TLOSTransform
+ * 
+ ****************************************************************************************************************************/
+
 TLOSTransform::TLOSTransform(unsigned int ndim)
 	: TTransformParamSpace(ndim), _ndim(ndim)
 {}

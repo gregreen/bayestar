@@ -77,6 +77,8 @@ struct TImgStack {
 	void resize(size_t _N_images);
 	void set_rect(TRect &_rect);
 	void stack(cv::Mat &dest);
+	
+	void smooth(std::vector<double> sigma, double n_sigma=5);
 };
 
 struct TLOSMCMCParams {

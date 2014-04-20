@@ -79,8 +79,8 @@ def mock_mags(stellarmodel, mu, Ar, Mr, FeH, mag_limit=(23., 23., 23., 23., 23.)
 	err = np.empty(m.size, m.dtype)
 	
 	# Apply extinction and add in errors
-	bands = ['g','r','i','z','y']
-	Ab = np.array([3.172, 2.271, 1.682, 1.322, 1.087])
+	bands = ['g','r','i','z','y','J','H','K']
+	Ab = np.array([3.172, 2.271, 1.682, 1.322, 1.087, 0.786, 0.508, 0.320])
 	for b,A,lim in zip(bands,Ab,mag_limit):
 		m[b] += Ar * A / Ab[1]
 		
@@ -107,13 +107,13 @@ def err_model(mag, mag_lim, scale=1.):
 	return err
 
 def draw_from_model(l, b, N, EBV_spread=0.02,
-                    mag_lim=(23., 22., 22., 21., 20.),
+                    mag_lim=(23., 22., 22., 21., 20., 15., 14., 13.5),
                     EBV_of_mu=None, EBV_uniform=False,
                     redraw=True, n_bands=4,
                     scale=1., model_kwargs={}, t_fname=None):
 	dtype = [('DM', 'f8'), ('EBV', 'f8'),
 	         ('Mr', 'f8'), ('FeH', 'f8'),
-	         ('mag', '5f8'), ('err', '5f8')]
+	         ('mag', '8f8'), ('err', '8f8')]
 	ret = np.empty(N, dtype=dtype)
 	
 	l = np.pi/180. * l
@@ -124,11 +124,11 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	gal_model = TGalacticModel(**model_kwargs)
 	
 	if t_fname == None:
-		t_fname = os.path.expanduser('~/projects/bayestar/data/PScolors.dat')
+		t_fname = os.path.expanduser('~/projects/bayestar/data/PS1_2MASS_colors_new.dat')
 	
 	stellar_model = TStellarModel(t_fname)
 	
-	R = np.array([3.172, 2.271, 1.682, 1.322, 1.087])
+	R = np.array([3.172, 2.271, 1.682, 1.322, 1.087, 0.786, 0.508, 0.320])
 	
 	mu_max = mag_lim[1] - gal_model.Mr_min + 3.
 	mu_min = min(0., mu_max-25.)
@@ -182,24 +182,24 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		# Assign metallicities to halo stars
 		while np.any(halo):
 			ret['FeH'][idx[halo]] = np.random.normal(-1.46, 0.3, size=np.sum(halo))
-			halo &= (ret['FeH'][idx] <= -3.0) | (ret['FeH'][idx] >= 0.5)
+			halo &= (ret['FeH'][idx] <= -2.7) | (ret['FeH'][idx] >= 0.4)
 		
 		# Assign metallicities to thin-disk stars
 		while np.any(thin):
 			ret['FeH'][idx[thin]] = np.random.normal(gal_model.mu_FeH_D(z[thin])-0.067,
 			                                         0.2, size=np.sum(thin))
-			thin &= (ret['FeH'][idx] <= -3.0) | (ret['FeH'][idx] >= 0.5)
+			thin &= (ret['FeH'][idx] <= -2.7) | (ret['FeH'][idx] >= 0.4)
 		
 		# Assign metallicities to thick-disk stars
 		while np.any(thick):
 			ret['FeH'][idx[thick]] = np.random.normal(gal_model.mu_FeH_D(z[thick])-0.067+0.14,
 			                                          0.2, size=np.sum(thick))
-			thick &= (ret['FeH'][idx] <= -3.0) | (ret['FeH'][idx] >= 0.5)
+			thick &= (ret['FeH'][idx] <= -2.7) | (ret['FeH'][idx] >= 0.4)
 		
 		# Assign metallicities to bulge stars
 		while np.any(bulge):
 			ret['FeH'][idx[bulge]] = np.random.normal(0., 0.40, size=np.sum(bulge))
-			bulge &= (ret['FeH'][idx] <= -3.0) | (ret['FeH'][idx] >= 0.5)
+			bulge &= (ret['FeH'][idx] <= -2.7) | (ret['FeH'][idx] >= 0.4)
 		
 		# Calculate absolute stellar magnitudes
 		absmags_tmp = stellar_model.absmags(ret['Mr'][idx], ret['FeH'][idx])
@@ -208,9 +208,12 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		ret['mag'][idx,2] = absmags_tmp['i']
 		ret['mag'][idx,3] = absmags_tmp['z']
 		ret['mag'][idx,4] = absmags_tmp['y']
+		ret['mag'][idx,5] = absmags_tmp['J']
+		ret['mag'][idx,6] = absmags_tmp['H']
+		ret['mag'][idx,7] = absmags_tmp['K']
 		
 		# Determine errors and apparent magnitudes
-		for k in xrange(5):
+		for k in xrange(8):
 			ret['mag'][idx,k] += ret['DM'][idx]
 			ret['mag'][idx,k] += ret['EBV'][idx] * R[k]
 			ret['err'][idx,k] = err_model(ret['mag'][idx][:,k], mag_lim[k], scale=scale)
@@ -219,17 +222,17 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 			#ret['err'][idx[idx_tmp],k] = 1.
 		
 		# Calculate observation probability
-		p_obs = np.empty((size, 5), dtype='f8')
+		p_obs = np.empty((size, 8), dtype='f8')
 		
-		for k in xrange(5):
+		for k in xrange(8):
 			p_obs[:,k] = 1. / (1. + np.exp( (ret['mag'][idx,k] - mag_lim[k] - 0.16) / 0.20 ))
 			#p_obs[:,k] = 0.5 - 0.5 * erf((ret['mag'][idx,k] - mag_lim[k] + 0.1) / 0.25)
 		
 		# Determine which bands stars are observed in
-		obs = (p_obs > np.random.random(size=(size, 5)))
+		obs = (p_obs > np.random.random(size=p_obs.shape))
 		
 		# Add in errors to apparent stellar magnitudes
-		ret['mag'][idx] += ret['err'][idx] * np.random.normal(size=(size,5))
+		ret['mag'][idx] += ret['err'][idx] * np.random.normal(size=(size,8))
 		
 		# Re-estimate errors based on magnitudes
 		for k in xrange(5):
@@ -238,7 +241,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		# Remove observations with errors above 0.2 mags
 		obs = obs & (ret['err'][idx] < 0.2)
 		
-		for k in xrange(5):
+		for k in xrange(8):
 			ret['mag'][idx[~obs[:,k]],k] = 0.
 			ret['err'][idx[~obs[:,k]],k] = 1.e10
 		
@@ -263,9 +266,9 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	
 	fig = plt.figure()
 	
-	for n in xrange(5):
+	for n in xrange(8):
 		# Mag histogram
-		ax = fig.add_subplot(5,2,1+2*n)
+		ax = fig.add_subplot(8,2,1+2*n)
 		
 		idx = ret['err'][:, n] < 1.e9
 		ax.hist(ret['mag'][idx, n], bins=100)
@@ -281,7 +284,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		ax.set_xlim(10., 25.)
 		
 		# Error histogram
-		ax = fig.add_subplot(5,2,2+2*n)
+		ax = fig.add_subplot(8,2,2+2*n)
 		ax.hist(ret['err'][idx, n], bins=100)
 		ax.set_xlim(0., 0.2)
 		
@@ -328,7 +331,7 @@ def main():
 	parser.add_argument('-r', '--max-r', type=float, default=23.,
 	                    metavar='mags', help='Limiting apparent r-band magnitude.')
 	parser.add_argument('-lim', '--limiting-mag', metavar='mags', type=float,
-	                    nargs=5, default=(22.4, 21.7, 21.7, 21.1, 20.1),
+	                    nargs=8, default=(22.4, 21.7, 21.7, 21.1, 20.1, 15., 14., 13.5),
 	                    help='Limiting magnitudes in grizy_{P1}.')
 	parser.add_argument('-nb', '--n-bands', type=int, default=4,
 	                    help='# of bands required to keep object.')
@@ -415,7 +418,7 @@ def main():
 	# Write Bayestar input file
 	if args.output != None:
 		mag_lim = np.array(args.limiting_mag)
-		mag_lim.shape = (1, 5)
+		mag_lim.shape = (1, 8)
 		mag_lim = np.repeat(mag_lim, len(params), axis=0)
 		write_infile(args.output, params['mag'], params['err'], mag_lim,
 		             l=args.gal_lb[0], b=args.gal_lb[1],

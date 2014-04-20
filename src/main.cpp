@@ -56,6 +56,9 @@ struct TProgramOpts {
 	double sigma_RV;
 	double mean_RV;
 	
+	double smoothing_slope;
+	double EBV_smoothing_max;
+	
 	unsigned int N_regions;
 	unsigned int los_steps;
 	unsigned int los_samplers;
@@ -103,6 +106,9 @@ struct TProgramOpts {
 		
 		sigma_RV = -1.;
 		mean_RV = 3.1;
+		
+		smoothing_slope = 0.05;
+		EBV_smoothing_max = -1.;
 		
 		N_regions = 30;
 		los_steps = 4000;
@@ -160,6 +166,9 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
 		
 		("mean-RV", po::value<double>(&(opts.mean_RV)), ("Mean R_V (per star) (default: " + to_string(opts.mean_RV) + ")").c_str())
 		("sigma-RV", po::value<double>(&(opts.sigma_RV)), ("Variation in R_V (per star) (default: " + to_string(opts.sigma_RV) + ", interpreted as no variance)").c_str())
+		
+		("smoothing-pct", po::value<double>(&(opts.smoothing_slope)), ("Degree of smoothing (sigma/EBV) of per-star surfaces (default: " + to_string(opts.smoothing_slope) + ")").c_str())
+		("EBV-smoothing-max", po::value<double>(&(opts.EBV_smoothing_max)), ("Maximum smoothing (in EBV) of per-star surfaces (default: " + to_string(opts.EBV_smoothing_max) + ")").c_str())
 		
 		("regions", po::value<unsigned int>(&(opts.N_regions)), ("# of piecewise-linear regions in l.o.s. extinction profile (default: " + to_string(opts.N_regions) + ")").c_str())
 		("los-steps", po::value<unsigned int>(&(opts.los_steps)), ("# of MCMC steps in l.o.s. fit (per sampler) (default: " + to_string(opts.los_steps) + ")").c_str())
@@ -490,6 +499,7 @@ int main(int argc, char **argv) {
 		} else {
 			sample_indiv_emp(opts.output_fname, star_options, los_model, *emplib, ext_model,
 			                 stellar_data, img_stack, conv, lnZ, opts.mean_RV, opts.sigma_RV, opts.min_EBV,
+			                 opts.smoothing_slope, opts.EBV_smoothing_max,
 			                 opts.save_surfs, gatherSurfs, opts.star_priors, opts.verbosity);
 		}
 		

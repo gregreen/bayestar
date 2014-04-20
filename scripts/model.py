@@ -474,10 +474,10 @@ class TStellarModel:
         #
         # Arbitrary comments
         #
-        # Mr    FeH   gr     ri     iz     zy
+        # Mr    FeH   gr     ri     iz     zy     yJ    JH    HK
         # 
-        -1.00 -2.50 0.5132 0.2444 0.1875 0.0298
-        -0.99 -2.50 0.5128 0.2442 0.1873 0.0297
+        -1.00 -2.50 0.5132 0.2444 0.1875 0.0298  ...
+        -0.99 -2.50 0.5128 0.2442 0.1873 0.0297  ...
         ...
         
         or something similar. A key point is that there be a row
@@ -490,7 +490,7 @@ class TStellarModel:
         
         f = open(abspath(template_fname), 'r')
         row = []
-        self.color_name = ['gr', 'ri', 'iz', 'zy']
+        self.color_name = ['gr', 'ri', 'iz', 'zy', 'yJ', 'JH', 'HK']
         for l in f:
             line = l.rstrip().lstrip()
             if len(line) == 0:    # Empty line
@@ -503,7 +503,7 @@ class TStellarModel:
                         pass
                 continue
             data = line.split()
-            if len(data) < 6:
+            if len(data) < 9:
                 print 'Error reading in stellar templates.'
                 print 'The following line does not have the correct number of entries (6 expected):'
                 print line
@@ -597,7 +597,7 @@ class TStellarModel:
         
         c = self.color(Mr, FeH)
         
-        dtype = [('g','f8'), ('r','f8'), ('i','f8'), ('z','f8'), ('y','f8')]
+        dtype = [('g','f8'), ('r','f8'), ('i','f8'), ('z','f8'), ('y','f8'), ('J','f8'), ('H','f8'), ('K','f8')]
         M = np.empty(c.shape, dtype=dtype)
         
         M['r'] = Mr
@@ -605,6 +605,9 @@ class TStellarModel:
         M['i'] = Mr - c['ri']
         M['z'] = M['i'] - c['iz']
         M['y'] = M['z'] - c['zy']
+        M['J'] = M['y'] - c['yJ']
+        M['H'] = M['J'] - c['JH']
+        M['K'] = M['H'] - c['HK']
         
         return M
     
