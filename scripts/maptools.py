@@ -30,6 +30,7 @@ import matplotlib as mplib
 #mplib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import matplotlib.patheffects as PathEffects
 
 import healpy as hp
 import h5py
@@ -918,15 +919,20 @@ class LOSData:
 ####################################################################################
 
 
-def reduce_to_single_res(pix_idx, nside, pix_val):
+def reduce_to_single_res(pix_idx, nside, pix_val, nside_max=None):
 	nside_unique = np.unique(nside)
-	nside_max = np.max(nside_unique)
 	
-	idx = (nside == nside_max)
-	pix_idx_exp = [pix_idx[idx]]
-	pix_val_exp = [pix_val[idx]]
+	if nside_max == None:
+		nside_max = np.max(nside_unique)
 	
-	for n in nside_unique[:-1]:
+	#idx = (nside == nside_max)
+	#pix_idx_exp = [pix_idx[idx]]
+	#pix_val_exp = [pix_val[idx]]
+	
+	pix_idx_exp = []
+	pix_val_exp = []
+	
+	for n in nside_unique:#[:-1]:
 		n_rep = (nside_max / n)**2
 		
 		idx = (nside == n)
@@ -1165,6 +1171,85 @@ class LOSMapper:
 		return self.data.get_nside_levels()
 
 
+####################################################################################
+#
+# LOS Differencer
+#
+#   Contains methods for differencing two 3D maps, potentially with different
+#   pixelizations.
+#
+####################################################################################
+
+class LOSDifferencer:
+	def __init__(self, nside_1, pix_idx_1,
+	                   nside_2, pix_idx_2):
+		nside_max = max([np.max(nside_1), np.max(nside_2)])
+		
+		#print nside_max
+		#print pix_idx_1
+		#print pix_idx_2
+		
+		src_idx = []
+		dest_idx = []
+		
+		for pix_idx, nside in [(pix_idx_1, nside_1), (pix_idx_2, nside_2)]:
+			src_tmp = np.arange(pix_idx.size)
+			_, dest_tmp, src_tmp = reduce_to_single_res(pix_idx, nside,
+			                                            src_tmp, nside_max=nside_max)
+			src_idx.append(src_tmp)
+			dest_idx.append(dest_tmp)
+		
+		#print ''
+		#print 'dest'
+		#print dest_idx
+		#print ''
+		#print 'src'
+		#print src_idx
+		#print ''
+		
+		self.pix_idx = np.intersect1d(dest_idx[0], dest_idx[1])
+		
+		#print 'pix_idx'
+		#print self.pix_idx
+		#print ''
+		
+		self.src_idx = []
+		
+		for src, dest in zip(src_idx, dest_idx):
+			idx = np.argsort(dest)
+			dest = dest[idx]
+			src = src[idx]
+			
+			#print dest
+			
+			idx = np.searchsorted(dest, self.pix_idx)
+			
+			#print idx
+			
+			self.src_idx.append(src[idx])
+		
+		self.nside = nside_max
+	
+	def gen_rasterizer(self, img_shape, clip=True,
+	                   proj=hputils.Cartesian_projection(),
+	                   l_cent=0., b_cent=0.):
+		nside = self.nside * np.ones(self.pix_idx.size, dtype='i8')
+		
+		return hputils.MapRasterizer(nside, self.pix_idx,
+		                             img_shape, clip=clip, proj=proj,
+		                             l_cent=l_cent, b_cent=b_cent)
+	
+	def pix_diff(self, pix_val_1, pix_val_2):
+		return pix_val_2[self.src_idx[1]] - pix_val_1[self.src_idx[0]]
+
+
+
+
+
+
+#
+# Test functions
+#
 
 def test_load():
 	fname = '/n/fink1/ggreen/bayestar/output/nogiant/AquilaSouthLarge2/AquilaSouthLarge2.00000.h5'
@@ -1244,49 +1329,83 @@ def test_load_multiple():
 
 
 def test_plot_comparison():
-	img_path = '/nfs_pan1/www/ggreen/cloudmaps/AquilaSouthLarge2/comp/AqS_2MASS_gerr'
+	#img_path = '/nfs_pan1/www/ggreen/cloudmaps/AquilaSouthLarge2/comp/AqS_2MASS_gerr_smE'
+	img_path = '/n/fink1/ggreen/bayestar/movies/AqS_2MASS_hires'
+	n_frames = 500
+	method = 'sample'
 	
-	fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
-	fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/AqS_2MASS_gerr/AqS_2MASS_gerr.*.h5')
+	#fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
+	fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/AqS_2MASS_hires_smE/AqS_2MASS_hires.*.h5')
+	fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/AqS_2MASS_smE/AqS_2MASS.*.h5')
+	#fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/AqS_2MASS_smE/AqS_2MASS.*.h5')
 	#fnames_1 = ['/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.%.5d.h5' % i for i in xrange(25)]
 	#fnames_2 = ['/n/fink1/ggreen/bayestar/output/gbright_giant/AquilaSouthLarge2/AquilaSouthLarge2.%.5d.h5' % i for i in xrange(25)]
+	
+	#label_1 = r'$\mathrm{PS1}$'
+	label_1 = r'$\mathrm{PS1 + 2MASS, \ smoothed}$'
+	label_2 = r'$\mathrm{PS1 + 2MASS, \ old, \ smoothed}$'
 	
 	mapper_1 = LOSMapper(fnames_1, processes=4)
 	mapper_2 = LOSMapper(fnames_2, processes=4)
 	
-	mapper_1.data.sort()
-	mapper_2.data.sort()
+	#mapper_1.data.sort()
+	#mapper_2.data.sort()
+	
+	tmp, tmp, val_end_1 = mapper_1.gen_EBV_map(19., fit='piecewise',
+	                                                method='median',
+	                                                reduce_nside=False)
+	tmp, tmp, val_end_2 = mapper_2.gen_EBV_map(19., fit='piecewise',
+	                                                method='median',
+	                                                reduce_nside=False)
 	
 	print mapper_1.data.pix_idx[0].shape
 	print mapper_2.data.pix_idx[0].shape
 	
 	size = (500, 500)
-	rasterizer = mapper_1.gen_rasterizer(size)
-	bounds = rasterizer.get_lb_bounds()
 	
-	mu_range = np.linspace(4., 19., 500)
+	rasterizer_1 = mapper_1.gen_rasterizer(size)
+	rasterizer_2 = mapper_2.gen_rasterizer(size)
 	
-	Delta = np.empty((3, 500), dtype='f8')
+	bounds_1 = rasterizer_1.get_lb_bounds()
+	bounds_2 = rasterizer_2.get_lb_bounds()
+	
+	differencer = LOSDifferencer(mapper_1.data.nside[0], mapper_1.data.pix_idx[0],
+	                             mapper_2.data.nside[0], mapper_2.data.pix_idx[0])
+	rasterizer_3 = differencer.gen_rasterizer(size)
+	bounds_3 = rasterizer_3.get_lb_bounds()
+	
+	bounds = []
+	bounds.append(min(bounds_1[0], bounds_2[0], bounds_3[0]))
+	bounds.append(max(bounds_1[1], bounds_2[1], bounds_3[1]))
+	bounds.append(min(bounds_1[2], bounds_2[2], bounds_3[2]))
+	bounds.append(max(bounds_1[3], bounds_2[3], bounds_3[3]))
+	
+	mu_range = np.linspace(4., 19., n_frames)
+	
+	Delta = np.empty((3, n_frames), dtype='f8')
 	Delta[:] = np.nan
+	
+	med = np.empty((2, 3, n_frames), dtype='f8')
+	med[:] = np.nan
 	
 	for i, mu in enumerate(mu_range):
 		tmp, tmp, pix_val_1 = mapper_1.gen_EBV_map(mu, fit='piecewise',
-		                                               method='sample',
+		                                               method=method,
 		                                               reduce_nside=False)
 		tmp, tmp, pix_val_2 = mapper_2.gen_EBV_map(mu, fit='piecewise',
-		                                               method='sample',
+		                                               method=method,
 		                                               reduce_nside=False)
-		img_1 = rasterizer(pix_val_1)
-		img_2 = rasterizer(pix_val_2)
-		img_3 = rasterizer(pix_val_2 - pix_val_1)
+		pix_val_3 = differencer.pix_diff(pix_val_1, pix_val_2)
 		
-		tmp = np.percentile(pix_val_2 - pix_val_1, [10., 50., 90.])
+		img_1 = rasterizer_1(pix_val_1)
+		img_2 = rasterizer_2(pix_val_2)
+		img_3 = rasterizer_3(pix_val_3)
 		
-		Delta[0, i] = tmp[0]
-		Delta[1, i] = tmp[1]
-		Delta[2, i] = tmp[2]
+		med[0, :, i] = np.percentile(pix_val_1 / val_end_1, [10., 50., 90.])
+		med[1, :, i] = np.percentile(pix_val_2 / val_end_2, [10., 50., 90.])
+		Delta[:, i] = np.percentile(pix_val_3, [10., 50., 90.])
 		
-		print 'Plotting figure %d (mu = %.3f), Delta E(B-V) = %.3f' % (i, mu, tmp[1])
+		print 'Plotting figure %d (mu = %.3f), Delta E(B-V) = %.3f' % (i, mu, Delta[1,i])
 		
 		EBV_max = 0.70
 		diff_max = 0.20
@@ -1330,15 +1449,30 @@ def test_plot_comparison():
 		im_1 = ax_1.imshow(img_1.T, aspect='auto', origin='lower',
 		                            cmap='binary', interpolation='nearest',
 		                            vmin=0., vmax=EBV_max,
-		                            extent=bounds)
+		                            extent=bounds_1)
 		ax_2.imshow(img_2.T, aspect='auto', origin='lower',
 		                     cmap='binary', interpolation='nearest',
 		                     vmin=0., vmax=EBV_max,
-		                     extent=bounds)
+		                     extent=bounds_2)
 		im_3 = ax_3.imshow(img_3.T, aspect='auto', origin='lower',
 		                            cmap='RdBu', interpolation='nearest',
 		                            vmin=-diff_max, vmax=diff_max,
-		                            extent=bounds)
+		                            extent=bounds_3)
+		
+		for ax in [ax_1, ax_2, ax_3]:
+			ax.set_xlim(bounds[:2])
+			ax.set_ylim(bounds[2:])
+		
+		w = bounds[1] - bounds[0]
+		h = bounds[3] - bounds[2]
+		x_txt = bounds[0] + 0.05 * w
+		y_txt = bounds[3] - 0.05 * h
+		
+		for a,lbl in zip([ax_1, ax_2], [label_1, label_2]):
+			txt = a.text(x_txt, y_txt, lbl,
+			             ha='left', va='top', fontsize=22,
+			             path_effects=[PathEffects.withStroke(linewidth=2, foreground='k')])
+			#txt.set_path_effects([PathEffects.Stroke(linewidth=2, foreground='w')])
 		
 		#
 		# Colorbars
@@ -1378,7 +1512,6 @@ def test_plot_comparison():
 		
 		ax.axhline(0., c='k', lw=2., alpha=0.5)
 		
-		ax.set_xlim(mu_range[0], mu_range[-1])
 		ax.set_ylim(-1.5*diff_max, 1.5*diff_max)
 		
 		ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=3))
@@ -1389,7 +1522,31 @@ def test_plot_comparison():
 		ax.set_xlabel(r'$\mu$', fontsize=18)
 		ax.set_ylabel(r'$\Delta \mathrm{E} \left( B - V \right)$', fontsize=16)
 		
-		fig.savefig('%s/AqS_comp.%.5d.png' % (img_path, i), dpi=100)
+		#
+		# E(B-V) vs. distance
+		#
+		
+		ax2 = ax.twinx()
+		
+		ax2.fill_between(mu_range[:i+1], med[0,0,:i+1], med[0,2,:i+1],
+		                 facecolor='r', alpha=0.15)
+		ax2.plot(mu_range[:i+1], med[0,1,:i+1], c='r', lw=2., alpha=0.5)
+		
+		ax2.fill_between(mu_range[:i+1], med[1,0,:i+1], med[1,2,:i+1],
+		                 facecolor='g', alpha=0.15)
+		ax2.plot(mu_range[:i+1], med[1,1,:i+1], c='g', lw=2., alpha=0.5)
+		
+		ax2.yaxis.set_major_locator(ticker.MaxNLocator(nbins=3))
+		ax2.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+		
+		ax2.set_ylim(0., 1.1)
+		
+		ax2.set_ylabel(r'$\mathrm{scaled \ } \mathrm{E} \left( B - V \right)$', fontsize=14)
+		
+		ax.set_xlim(mu_range[0], mu_range[-1])
+		
+		#print 'Saving to %s/2MASS_res_comp.%.5d.png ...' % (img_path, i)
+		fig.savefig('%s/2MASS_res_comp.%.5d.png' % (img_path, i), dpi=100)
 		plt.close(fig)
 
 

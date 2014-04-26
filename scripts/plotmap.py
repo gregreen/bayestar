@@ -27,7 +27,7 @@ import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 
 import matplotlib as mplib
-mplib.use('GTKAgg')
+#mplib.use('GTKAgg')
 #mplib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
