@@ -270,6 +270,7 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 		
 		//double g_err = mag_tmp.err[0];
 		//mag_tmp.err[0] = sqrt(g_err*g_err + 0.1*0.1);
+		//star.push_back(mag_tmp);
 		
 		// Filter bright end
                 // TODO: Put this into query_lsd.py
