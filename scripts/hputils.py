@@ -3,7 +3,7 @@
 #
 #  hputils.py
 #  
-#  Copyright 2013 Greg Green <greg@greg-UX31A>
+#  Copyright 2013-2014 Greg Green <gregorymgreen@gmail.com>
 #  
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -1142,6 +1142,50 @@ class PixelIdentifier:
 	def attach_obj(self, obj):
 		self.objs.append(obj)
 
+
+def stack_highest_res(*maps):
+	'''
+	Stack maps of different resolutions, taking from the highest-resolution
+	map where available, and using lower resolution maps to fill in the
+	gaps. If multiple maps of the same resolution are included, which
+	map is prioritized in undefined.
+	
+	Input:
+	  *maps  HEALPix maps, in nested ordering, in form of numpy arrays.
+	
+	Output:
+	   Numpy array containing nested HEALPix map with nside equal to
+	   highest input nside.
+	'''
+	
+	# Determine nside of each map
+	nside = []
+	
+	for m in maps:
+		nside.append(hp.pixelfunc.npix2nside(m.size))
+	
+	# Order maps from highest to lowest nside
+	idx = np.argsort(nside)[::-1]
+	
+	# Fill in holes using each map
+	stack = np.empty(maps[idx[0]].size, dtype = maps[idx[0]].dtype)
+	stack[:] = maps[idx[0]][:]
+	
+	for i in idx:
+		fill_idx = np.nonzero(~np.isfinite(stack))[0]
+		
+		res_ratio = (nside[idx[0]] / nside[i])**2
+		take_idx = fill_idx / res_ratio
+		
+		stack[fill_idx] = maps[i][take_idx]
+	
+	return stack
+	
+
+
+#
+# Tests
+#
 
 def test_Mollweide():
 	proj = Mollweide_projection()
