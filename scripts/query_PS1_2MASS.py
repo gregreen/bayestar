@@ -310,6 +310,27 @@ def to_file(f, pix_index, nside, nest, EBV, data):
 	return gal_lb
 
 
+def load_2MASS_maglim(fnames):
+	maps = [[] for i in xrange(8)]
+	
+	for fname in fnames:
+		f = h5py.File(fname, 'r')
+		tmp = f['/depth']['m_50'][:]
+		f.close()
+		
+		for i in xrange(8):
+			maps[i].append(tmp[:,i])
+	
+	stack = []
+	
+	for i in xrange(8):
+		stack.append(hputils.stack_highest_res(maps[i]))
+	
+	stack = np.array(stack).T
+	
+	return stack
+
+
 def main():
 	parser = argparse.ArgumentParser(
 	           prog='query_lsd.py',
@@ -338,6 +359,9 @@ def main():
 	                    help='Min. # of detections.')
 	parser.add_argument('-w', '--n-workers', type=int, default=5,
 	                    help='# of workers for LSD to use.')
+	parser.add_argument('--tmass-maglim', type=str, nargs='+', default=None,
+	                    help='Filename of HEALPix maps containing 2MASS completeness,\n'
+	                         'estimated at different resolutions.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -454,12 +478,21 @@ def main():
 	nFiles = 0
 	nInFile = 0
 	
+	
+	# Load HEALPix maps containing 2MASS limiting magnitudes
+	tmass_maglim_map = None
+	tmass_maglim_nside = None
+	
+	if args.tmass_maglim != None:
+		tmass_maglim_map = load_2MASS_maglim(args.tmass_maglim)
+		tmass_maglim_nside = hp.pixelfunc.npix2nside(tmass_maglim_map.shape[0])
+	
+	
 	# Write each pixel to the same file
 	nest = True
 	for (pix_info, obj) in query.execute([(mapper, values.nside_min, nest, values.bounds),
 	                                      reducer,
 	                                      (subdivider, values.nside_min, n_stars_max, values.min_stars, values.nside_max)],
-	                                      #group_by_static_cell=True,
 	                                      bounds=query_bounds,
 	                                      nworkers=values.n_workers):
 		# Filter out pixels that have too few stars
@@ -476,6 +509,29 @@ def main():
 			if not hputils.lb_in_bounds(l_center, b_center, values.bounds):
 				N_pix_out_of_bounds += 1
 				continue
+		
+		# Fix 2MASS magnitude limits
+		if tmass_maglim_map != None:
+			if tmass_maglim_nside <= nside:
+				res_ratio = (tmass_maglim_nside / nside)**2
+				take_idx = fill_idx / res_ratio
+				
+				b_idx = np.nonzero(np.isfinite(tmass_maglim[take_idx,5:]))[0]
+				
+				for k in b_idx:
+					obj['maglimit'][:,k+5] = tmass_maglim[take_idx,k+5]
+			else:
+				res_ratio = (nside / tmass_maglim_nside)**2
+				take_idx = np.arange(pix_idx * res_ratio, (pix_idx+1) * res_ratio)
+				
+				m = tmass_maglim[take_idx, 5:]
+				m = np.ma.masked_array(m, np.isnan(m))
+				m = np.median(m, axis=0)
+				
+				b_idx = np.nonzero(~m.mask)[0]
+				
+				for k in b_idx:
+					obj['maglimit'][:,k+5] = m[take_idx,k+5]
 		
 		# Prepare output for pixel
 		EBV = np.percentile(obj['EBV'][:], 95.)
