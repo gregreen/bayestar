@@ -109,7 +109,7 @@ double logP_single_star_synth(const double *x, double EBV, double RV,
 	for(unsigned int i=0; i<NBANDS; i++) {
 		if(d.err[i] < 1.e9) {
 			tmp = tmp_sed->absmag[i] + x[_DM] + EBV * ext_model.get_A(RV, i);	// Model apparent magnitude
-			logL -= log( 1. + exp((tmp - d.maglimit[i] - 0.16) / 0.20) );
+			logL -= log( 1. + exp((tmp - d.maglimit[i]) / d.maglim_width[i]) );
 			//logL += log( 0.5 - 0.5 * erf((tmp - d.maglimit[i] + 0.1) / 0.25) );	// Completeness fraction
 			tmp = (d.m[i] - tmp) / d.err[i];
 			logL -= 0.5*tmp*tmp;
@@ -167,7 +167,7 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 	for(unsigned int i=0; i<NBANDS; i++) {
 		if(d.err[i] < 1.e9) {
 			tmp = tmp_sed->absmag[i] + x[_DM] + EBV * ext_model.get_A(RV, i);	// Model apparent magnitude
-			logL -= log( 1. + exp((tmp - d.maglimit[i] - 0.16) / 0.20) );
+			logL -= log( 1. + exp((tmp - d.maglimit[i]) / d.maglim_width[i]) );
 			//logL += log( 0.5 - 0.5 * erf((tmp - d.maglimit[i] + 0.1) / 0.25) );	// Completeness fraction
 			//std::cout << tmp << ", " << d.maglimit[i] << std::endl;
 			tmp = (d.m[i] - tmp) / d.err[i];
