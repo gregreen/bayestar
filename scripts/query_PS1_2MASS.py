@@ -324,7 +324,7 @@ def load_2MASS_maglim(fnames):
 	stack = []
 	
 	for i in xrange(8):
-		stack.append(hputils.stack_highest_res(maps[i]))
+		stack.append(hputils.stack_highest_res(*maps[i]))
 	
 	stack = np.array(stack).T
 	
@@ -483,9 +483,10 @@ def main():
 	tmass_maglim_map = None
 	tmass_maglim_nside = None
 	
-	if args.tmass_maglim != None:
-		tmass_maglim_map = load_2MASS_maglim(args.tmass_maglim)
+	if values.tmass_maglim != None:
+		tmass_maglim_map = load_2MASS_maglim(values.tmass_maglim)
 		tmass_maglim_nside = hp.pixelfunc.npix2nside(tmass_maglim_map.shape[0])
+		print tmass_maglim_nside
 	
 	
 	# Write each pixel to the same file
@@ -513,25 +514,25 @@ def main():
 		# Fix 2MASS magnitude limits
 		if tmass_maglim_map != None:
 			if tmass_maglim_nside <= nside:
-				res_ratio = (tmass_maglim_nside / nside)**2
-				take_idx = fill_idx / res_ratio
+				res_ratio = (nside / tmass_maglim_nside)**2
+				take_idx = pix_index / res_ratio
 				
-				b_idx = np.nonzero(np.isfinite(tmass_maglim[take_idx,5:]))[0]
+				b_idx = np.nonzero(np.isfinite(tmass_maglim_map[take_idx,5:]))[0]
 				
 				for k in b_idx:
-					obj['maglimit'][:,k+5] = tmass_maglim[take_idx,k+5]
+					obj['maglimit'][:,k+5] = tmass_maglim_map[take_idx,k+5]
 			else:
-				res_ratio = (nside / tmass_maglim_nside)**2
-				take_idx = np.arange(pix_idx * res_ratio, (pix_idx+1) * res_ratio)
+				res_ratio = (tmass_maglim_nside / nside)**2
+				take_idx = np.arange(pix_index * res_ratio, (pix_index+1) * res_ratio)
 				
-				m = tmass_maglim[take_idx, 5:]
+				m = tmass_maglim_map[take_idx, 5:]
 				m = np.ma.masked_array(m, np.isnan(m))
 				m = np.median(m, axis=0)
 				
 				b_idx = np.nonzero(~m.mask)[0]
 				
 				for k in b_idx:
-					obj['maglimit'][:,k+5] = m[take_idx,k+5]
+					obj['maglimit'][:,k+5] = m[take_idx,k]
 		
 		# Prepare output for pixel
 		EBV = np.percentile(obj['EBV'][:], 95.)
