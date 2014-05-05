@@ -68,6 +68,7 @@ struct TStellarData {
 		double m[NBANDS];
 		double err[NBANDS];
 		double maglimit[NBANDS];
+		double maglim_width[NBANDS];
 		unsigned int N_det[NBANDS];
 		double EBV;
 		double lnL_norm;
@@ -80,6 +81,7 @@ struct TStellarData {
 				m[i] = _m[i];
 				err[i] = _err[i];
 				maglimit[i] = 23.;
+				maglim_width[i] = 0.20;
 				if(err[i] < 9.e9) {	// Ignore missing bands (otherwise, they affect evidence)
 					lnL_norm += 0.9189385332 + log(err[i]);
 				}
@@ -95,6 +97,7 @@ struct TStellarData {
 				m[i] = rhs.m[i];
 				err[i] = rhs.err[i];
 				maglimit[i] = rhs.maglimit[i];
+				maglim_width[i] = rhs.maglim_width[i];
 				N_det[i] = rhs.N_det[i];
 			}
 			lnL_norm = rhs.lnL_norm;
