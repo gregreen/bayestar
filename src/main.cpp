@@ -59,6 +59,7 @@ struct TProgramOpts {
 	//double smoothing_slope;
 	double smoothing_alpha_coeff[2];
 	double smoothing_beta_coeff[2];
+	double pct_smoothing_min;
 	double pct_smoothing_max;
 
 	unsigned int N_regions;
@@ -114,6 +115,7 @@ struct TProgramOpts {
 		smoothing_alpha_coeff[1] = -2.963;
 		smoothing_beta_coeff[0] = 0.578;
 		smoothing_beta_coeff[1] = -1.879;
+		pct_smoothing_min = 0.;
 		pct_smoothing_max = -1.;
 
 		N_regions = 30;
@@ -178,6 +180,7 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
 		                                                                                                                                         + to_string(opts.smoothing_alpha_coeff[1]) + " "
 		                                                                                                                                         + to_string(opts.smoothing_beta_coeff[0]) + " "
 		                                                                                                                                         + to_string(opts.smoothing_beta_coeff[1]) + ")").c_str())
+		("pct-smoothing-min", po::value<double>(&(opts.pct_smoothing_min)), ("Minimum smoothing percent of per-star surfaces (default: " + to_string(opts.pct_smoothing_min) + ")").c_str())
 		("pct-smoothing-max", po::value<double>(&(opts.pct_smoothing_max)), ("Maximum smoothing percent of per-star surfaces (default: " + to_string(opts.pct_smoothing_max) + ")").c_str())
 
 		("regions", po::value<unsigned int>(&(opts.N_regions)), ("# of piecewise-linear regions in l.o.s. extinction profile (default: " + to_string(opts.N_regions) + ")").c_str())
@@ -398,6 +401,7 @@ int main(int argc, char **argv) {
 
 	TEBVSmoothing EBV_smoothing(opts.smoothing_alpha_coeff,
 	                            opts.smoothing_beta_coeff,
+	                            opts.pct_smoothing_min,
 	                            opts.pct_smoothing_max);
 
 	/*
