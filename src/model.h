@@ -339,18 +339,20 @@ private:
 class TEBVSmoothing {
 public:
 	TEBVSmoothing(double alpha_coeff[2], double beta_coeff[2],
-	              double pct_smoothing_max);
+	              double pct_smoothing_min, double pct_smoothing_max);
 	~TEBVSmoothing();
 
 	void calc_pct_smoothing(unsigned int nside,
                             double EBV_min, double EBV_max, int n_samples,
                             std::vector<double>& sigma_pct) const;
 
+	double get_pct_smoothing_min() const;
 	double get_pct_smoothing_max() const;
 
 private:
 	double _alpha_coeff[2];	// Coefficients for the E^2 coefficient
 	double _beta_coeff[2];	// Coefficients for the E coefficient
+	double _pct_smoothing_min;	// Minimum smoothing, in percent
 	double _pct_smoothing_max;	// Maximum smoothing, in percent
 	double _healpix_scale;	// Angular scale of a HEALPix nside=1 pixel
 

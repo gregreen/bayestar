@@ -1000,13 +1000,14 @@ bool TExtinctionModel::in_model(double RV) {
  ****************************************************************************************************************************/
 
 TEBVSmoothing::TEBVSmoothing(double alpha_coeff[2], double beta_coeff[2],
-							 double pct_smoothing_max) {
+							 double pct_smoothing_min, double pct_smoothing_max) {
 	_alpha_coeff[0] = alpha_coeff[0];
 	_alpha_coeff[1] = alpha_coeff[1];
 
 	_beta_coeff[0] = beta_coeff[0];
 	_beta_coeff[1] = beta_coeff[1];
-
+	
+	_pct_smoothing_min = pct_smoothing_min;
 	_pct_smoothing_max = pct_smoothing_max;
 
 	_healpix_scale = 60.0 * 180.0 / (SQRTPI * SQRT3);
@@ -1045,13 +1046,20 @@ void TEBVSmoothing::calc_pct_smoothing(unsigned int nside,
 
 	for(int i=0; i<n_samples; i++, EBV+=dE) {
 		sigma_pct_tmp = alpha * EBV + beta;
-
-		if(sigma_pct_tmp > _pct_smoothing_max) { sigma_pct_tmp = _pct_smoothing_max; }
+		
+		if(sigma_pct_tmp < _pct_smoothing_min) {
+			sigma_pct_tmp = _pct_smoothing_min;
+		} else if(sigma_pct_tmp > _pct_smoothing_max) {
+			sigma_pct_tmp = _pct_smoothing_max;
+		}
 
 		//std::cerr << i << " (" << EBV << "): " << sigma_pct_tmp << std::endl;
+		
 		sigma_pct.push_back(sigma_pct_tmp);
 	}
 }
+
+double TEBVSmoothing::get_pct_smoothing_min() const { return _pct_smoothing_min; }
 
 double TEBVSmoothing::get_pct_smoothing_max() const { return _pct_smoothing_max; }
 
