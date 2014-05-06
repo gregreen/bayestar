@@ -486,7 +486,7 @@ def main():
 	if values.tmass_maglim != None:
 		tmass_maglim_map = load_2MASS_maglim(values.tmass_maglim)
 		tmass_maglim_nside = hp.pixelfunc.npix2nside(tmass_maglim_map.shape[0])
-		print tmass_maglim_nside
+		print 'Loaded 2MASS limiting magnitude map with maximum nside of %d' % tmass_maglim_nside
 	
 	
 	# Write each pixel to the same file
@@ -518,6 +518,10 @@ def main():
 				take_idx = pix_index / res_ratio
 				
 				b_idx = np.nonzero(np.isfinite(tmass_maglim_map[take_idx,5:]))[0]
+				
+				#print ''
+				#print b_idx
+				#print tmass_maglim_map[take_idx, 5:]
 				
 				for k in b_idx:
 					obj['maglimit'][:,k+5] = tmass_maglim_map[take_idx,k+5]
