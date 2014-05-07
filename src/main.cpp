@@ -73,6 +73,9 @@ struct TProgramOpts {
 	double cloud_p_replacement;
 
 	bool disk_prior;
+	double log_Delta_EBV_floor;
+	double log_Delta_EBV_ceil;
+	
 	bool SFD_prior;
 	bool SFD_subpixel;
 	double ev_cut;
@@ -129,6 +132,9 @@ struct TProgramOpts {
 		cloud_p_replacement = 0.2;
 
 		disk_prior = false;
+		log_Delta_EBV_floor = -10.;
+		log_Delta_EBV_ceil = -3.;
+		
 		SFD_prior = false;
 		SFD_subpixel = false;
 		ev_cut = 10.;
@@ -196,6 +202,9 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
 		("cloud-p-replacement", po::value<double>(&(opts.cloud_p_replacement)), ("Probability of taking replacement step (cloud fit) (default: " + to_string(opts.cloud_p_replacement) + ")").c_str())
 
 		("disk-prior", "Assume that dust density roughly traces stellar disk density.")
+		("log-Delta-EBV-min", po::value<double>(&(opts.log_Delta_EBV_floor)), ("Minimum log(Delta EBV) in l.o.s. reddening prior (default: " + to_string(opts.log_Delta_EBV_floor) + ")").c_str())
+		("log-Delta-EBV-max", po::value<double>(&(opts.log_Delta_EBV_ceil)), ("Maximum log(Delta EBV) in l.o.s. reddening prior (default: " + to_string(opts.log_Delta_EBV_floor) + ")").c_str())
+		
 		("SFD-prior", "Use SFD E(B-V) as a prior on the total extinction in each pixel.")
 		("SFD-subpixel", "Use SFD E(B-V) as a subpixel template for the angular variation in reddening.")
 		("evidence-cut", po::value<double>(&(opts.ev_cut)), ("Delta lnZ to use as threshold for including star "
@@ -597,7 +606,9 @@ int main(int argc, char **argv) {
 			if(opts.N_regions != 0) {
 				params.gen_guess_covariance(1.);	// Covariance matrix for guess has (anti-)correlation length of 1 distance bin
 				if(opts.disk_prior) {
-					params.calc_Delta_EBV_prior(los_model, stellar_data.EBV, opts.verbosity);
+					params.calc_Delta_EBV_prior(los_model, opts.log_Delta_EBV_floor,
+					                            opts.log_Delta_EBV_ceil,
+					                            stellar_data.EBV, opts.verbosity);
 				}
 				sample_los_extinction(opts.output_fname, *it, los_options, params, opts.verbosity);
 			}
