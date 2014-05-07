@@ -1329,21 +1329,24 @@ def test_load_multiple():
 
 
 def test_plot_comparison():
-	#img_path = '/nfs_pan1/www/ggreen/cloudmaps/AquilaSouthLarge2/comp/AqS_2MASS_gerr_smE'
-	img_path = '/n/fink1/ggreen/bayestar/movies/AqS_2MASS_hires'
+	#img_path = '/nfs_pan1/www/ggreen/cloudmaps/l30b-30'
+	img_path = '/n/fink1/ggreen/bayestar/movies/l30b-30'
 	n_frames = 500
 	method = 'sample'
 	
+	EBV_max = 0.12
+	diff_max = 0.05
+	
 	#fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
-	fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/AqS_2MASS_hires_smE/AqS_2MASS_hires.*.h5')
-	fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/AqS_2MASS_smE/AqS_2MASS.*.h5')
+	fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/l30b-30/l30b-30.*.h5')
+	fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/l30b-30_largepix/l30b-30_largepix.*.h5')
 	#fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/AqS_2MASS_smE/AqS_2MASS.*.h5')
 	#fnames_1 = ['/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.%.5d.h5' % i for i in xrange(25)]
 	#fnames_2 = ['/n/fink1/ggreen/bayestar/output/gbright_giant/AquilaSouthLarge2/AquilaSouthLarge2.%.5d.h5' % i for i in xrange(25)]
 	
 	#label_1 = r'$\mathrm{PS1}$'
-	label_1 = r'$\mathrm{PS1 + 2MASS, \ smoothed}$'
-	label_2 = r'$\mathrm{PS1 + 2MASS, \ old, \ smoothed}$'
+	label_1 = r'$\mathrm{small \ pixels}$'
+	label_2 = r'$\mathrm{large \ pixels}$'
 	
 	mapper_1 = LOSMapper(fnames_1, processes=4)
 	mapper_2 = LOSMapper(fnames_2, processes=4)
@@ -1406,9 +1409,6 @@ def test_plot_comparison():
 		Delta[:, i] = np.percentile(pix_val_3, [10., 50., 90.])
 		
 		print 'Plotting figure %d (mu = %.3f), Delta E(B-V) = %.3f' % (i, mu, Delta[1,i])
-		
-		EBV_max = 0.70
-		diff_max = 0.20
 		
 		fig = plt.figure(figsize=(19.2, 10.8), dpi=100)
 		
@@ -1546,7 +1546,7 @@ def test_plot_comparison():
 		ax.set_xlim(mu_range[0], mu_range[-1])
 		
 		#print 'Saving to %s/2MASS_res_comp.%.5d.png ...' % (img_path, i)
-		fig.savefig('%s/2MASS_res_comp.%.5d.png' % (img_path, i), dpi=100)
+		fig.savefig('%s/l30b-30_comp.%.5d.png' % (img_path, i), dpi=100)
 		plt.close(fig)
 
 
