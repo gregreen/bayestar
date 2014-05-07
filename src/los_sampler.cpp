@@ -1521,7 +1521,9 @@ void TLOSMCMCParams::set_subpixel_mask(std::vector<double>& new_mask) {
 }
 
 // Calculate the mean and std. dev. of log(delta_EBV)
-void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, double EBV_tot, int verbosity) {
+void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model,
+                                          double log_Delta_EBV_floor, double log_Delta_EBV_ceil,
+										  double EBV_tot, int verbosity) {
 	double mu_0 = img_stack->rect->min[1];
 	double mu_1 = img_stack->rect->max[1];
 	assert(mu_1 > mu_0);
@@ -1545,8 +1547,6 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	
 	// Normalization information
 	double sigma = 1.4;
-	double log_Delta_EBV_floor = -10.;
-	double log_Delta_EBV_ceil = -2.8;
 	double dEBV_ds = 0.2;		// mag kpc^{-1}
 	
 	// Determine normalization
