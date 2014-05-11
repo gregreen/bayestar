@@ -30,8 +30,6 @@ ELSE(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
         SET(GIT_BUILD_VERSION "$ENV{BAYESTARCOMMIT}")
 ENDIF(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
 
-# SET(GIT_BUILD_VERSION 30e84826a29e36eb9459e7fd40ffbef5e2567765)
-
 #
 # Configure a header file to pass some of the CMake
 # settings to the source code
