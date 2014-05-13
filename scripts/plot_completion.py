@@ -3,7 +3,7 @@
 #
 #  plot_completion.py
 #  
-#  Copyright 2013 Greg Green <greg@greg-UX31A>
+#  Copyright 2013-2014 Greg Green <gregorymgreen@gmail.com>
 #  
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -68,14 +68,28 @@ class PixelIdentifier:
 		print '(%.2f, %.2f) -> %d' % (l, b, pix_idx)
 
 
+class TCompletion:
+	def __init__(self, indir, outdir):
+		# Initialize input and output filenames
+		self.infiles = glob.glob(os.path.normpath(indir + '/*.h5'))
+		self.basenames = [os.path.basename(fname) for fname in self.infiles]
+		self.outfiles = [outdir + '/' + fname for fname in self.basenames]
+		
+		self.modtime = dict.fromkeys(self.outfiles, -1)
+		self.has_indiv = dict.fromkeys(self.outfiles, False)
+		self.has_cloud = dict.fromkeys(self.outfiles, False)
+		self.has_los = dict.fromkeys(self.outfiles, False)
+		
+
+
 def main():
 	parser = argparse.ArgumentParser(prog='plot_completion.py',
 	                                 description='Represent competion of Bayestar job as a rasterized map.',
 	                                 add_help=True)
-	parser.add_argument('--infiles', '-i', type=str, required=True,
-	                                       help='Bayestar input files (enclose in quotations).')
-	parser.add_argument('--outfiles', '-o', type=str, required=True,
-	                                       help='Bayestar output files (enclose in quotations).')
+	parser.add_argument('--indir', '-i', type=str, required=True,
+	                                       help='Directory with Bayestar input files.')
+	parser.add_argument('--outdir', '-o', type=str, required=True,
+	                                       help='Directory with Bayestar output files.')
 	parser.add_argument('--plot-fname', '-plt', type=str, required=True,
 	                                       help='Output filename for plot.')
 	parser.add_argument('--figsize', '-fs', type=int, nargs=2, default=(8, 4),
@@ -94,8 +108,6 @@ def main():
 	                                       help='Generate a picture every X hours.')
 	parser.add_argument('--maxtime', '-max', type=float, default=24.,
 	                                       help='Number of hours to continue monitoring job completion.')
-	parser.add_argument('--incomplete-log', '-log', type=str, default=None,
-	                                       help='Log file that will contain names of input files that have not been completely processed.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -120,6 +132,12 @@ def main():
 	
 	size = (int(args.figsize[0] * 0.8 * args.dpi),
 	        int(args.figsize[1] * 0.8 * args.dpi))
+	
+	# Initialize completion log
+	infiles = glob.glob(args.infiles)
+	
+	modtime = {}
+	
 	
 	# Matplotlib settings
 	mplib.rc('text', usetex=True)
