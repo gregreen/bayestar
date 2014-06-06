@@ -648,14 +648,15 @@ def get_SFD_map(fname='~/projects/bayestar/data/SFD_Ebv_512.fits', nside=64):
 def min_max(x):
     return np.min(x), np.max(x)
 
-def plot_EBV_prior(nside=64):
+def plot_Delta_EBV_prior_max(nside=64):
     import healpy as hp
     
     model = TGalacticModel()
     
     n = np.arange(12 * nside**2)
-    EBV = np.empty(n.size)
-    norm = np.empty(n.size)
+    max_log_Delta = np.empty(n.size, dtype='f8')
+    EBV = np.empty(n.size, dtype='f8')
+    norm = np.empty(n.size, dtype='f8')
     
     for i in n:
         t, p = hp.pixelfunc.pix2ang(nside, i, nest=True)
@@ -664,6 +665,7 @@ def plot_EBV_prior(nside=64):
         
         DM, log_Delta_EBV, sigma_log_Delta_EBV, mean_Delta_EBV, norm_tmp = model.EBV_prior(l, b)
         
+        max_log_Delta[i] = np.max(log_Delta_EBV)
         EBV[i] = np.sum(mean_Delta_EBV)
         norm[i] = norm_tmp
         
@@ -698,15 +700,15 @@ def plot_EBV_prior(nside=64):
     vmin, vmax = min_max(np.log10(EBV_SFD))
     
     mplib.rc('text', usetex=True)
-    hp.visufunc.mollview(np.log10(EBV), nest=True,
-            title=r'$\log_{10} \mathrm{E} \left( B - V \right)$',
-            min=vmin, max=vmax)
-    hp.visufunc.mollview(np.log10(EBV_SFD), nest=True,
-            title=r'$\log_{10} \mathrm{E} \left( B - V \right)_{\mathrm{SFD}}$',
-            min=vmin, max=vmax)
-    #hp.visufunc.mollview(EBV, nest=True, max=10.)
-    hp.visufunc.mollview(np.log10(EBV_SFD) - np.log10(EBV), nest=True,
-            title=r'$\mathrm{SFD} - \mathrm{smooth \ model}$')
+    
+    m = np.empty(max_log_Delta.size, dtype='f8')
+    m[:] = -7.
+    
+    for k in [-6., -5., -4., -3., -2., -1., 0.]:
+		idx = (max_log_Delta > k)
+		m[idx] = k
+    
+    hp.visufunc.mollview(m, nest=True)
     
     plt.show()
 
@@ -770,6 +772,68 @@ def Monte_Carlo_EBV_prior(nside=64, n_regions=20):
     
     plt.show()
 
+def plot_EBV_prior(nside=64):
+    import healpy as hp
+    
+    model = TGalacticModel()
+    
+    n = np.arange(12 * nside**2)
+    EBV = np.empty(n.size)
+    norm = np.empty(n.size)
+    
+    for i in n:
+        t, p = hp.pixelfunc.pix2ang(nside, i, nest=True)
+        l = 180./np.pi * p
+        b = 90. - 180./np.pi * t
+        
+        DM, log_Delta_EBV, sigma_log_Delta_EBV, mean_Delta_EBV, norm_tmp = model.EBV_prior(l, b)
+        
+        EBV[i] = np.sum(mean_Delta_EBV)
+        norm[i] = norm_tmp
+        
+        #print '(%.3f, %.3f): %.3f' % (l, b, EBV[i])
+    
+    print ''
+    print np.mean(norm), np.std(norm)
+    
+    # Compare to SFD
+    EBV_SFD = get_SFD_map(nside=nside)
+    
+    #print np.mean(EBV_SFD / EBV)
+    #print np.mean(EBV_SFD) / np.mean(EBV)
+    #print np.std(EBV_SFD), np.std(EBV)
+    
+    # Normalize for b < 10, l > 10
+    t, p = hp.pixelfunc.pix2ang(nside, n, nest=True)
+    l = 180./np.pi * p
+    b = 90. - 180./np.pi * t
+    
+    idx = (b < 15.) & (l > 10.)
+    norm = np.median(EBV_SFD[idx]) / np.median(EBV[idx])
+    EBV *= norm
+    
+    idx = (b > 45.)
+    bias = np.median(EBV_SFD[idx]) - np.median(EBV[idx])
+    EBV += bias
+    
+    print 'Normalization = %.4g' % norm
+    print 'Additive const. = %.4g' % bias
+    
+    vmin, vmax = min_max(np.log10(EBV_SFD))
+    
+    mplib.rc('text', usetex=True)
+    hp.visufunc.mollview(np.log10(EBV), nest=True,
+            title=r'$\log_{10} \mathrm{E} \left( B - V \right)$',
+            min=vmin, max=vmax)
+    hp.visufunc.mollview(np.log10(EBV_SFD), nest=True,
+            title=r'$\log_{10} \mathrm{E} \left( B - V \right)_{\mathrm{SFD}}$',
+            min=vmin, max=vmax)
+    #hp.visufunc.mollview(EBV, nest=True, max=10.)
+    hp.visufunc.mollview(np.log10(EBV_SFD) - np.log10(EBV), nest=True,
+            title=r'$\mathrm{SFD} - \mathrm{smooth \ model}$')
+    
+    plt.show()
+   
 def test_EBV_prior(l, b, nside=64):
     model = TGalacticModel()
     
@@ -905,11 +969,13 @@ def test_bug():
     print x_prime.shape
 
 def main():
+    plot_Delta_EBV_prior_max()
+    
     #test_bug()
     
     #l, b = 45.3516, 1.41762
     
-    test_plot_bulge()
+    #test_plot_bulge()
     
     #print_rho(l, b)
     #plot_EBV_prior_profile(l, b)

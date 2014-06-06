@@ -52,10 +52,10 @@ def los2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	lnp[lnp > 1.] = 1.
 	lnp[lnp < 0.] = 0.
 	
-	for i,EBV in enumerate(EBV_all[1:]):
-		c = (1.-lnp[i], 0., lnp[i])
-		kwargs['c'] = c
-		ax.plot(mu, EBV, *args, **kwargs)
+	#for i,EBV in enumerate(EBV_all[1:]):
+	#	c = (1.-lnp[i], 0., lnp[i])
+	#	kwargs['c'] = c
+	#	ax.plot(mu, EBV, *args, **kwargs)
 	
 	kwargs['c'] = 'g'
 	kwargs['lw'] = 1.5
@@ -196,16 +196,17 @@ class TLOS:
 			kwargs['alpha'] = self.alpha
 		
 		# Plot all paths
-		for i,EBV in enumerate(self.EBV_all[1:]):
-			c = (1.-self.color[i], 0., self.color[i])
-			kwargs['c'] = c
-			ax.plot(self.mu, EBV, *args, **kwargs)
+		#for i,EBV in enumerate(self.EBV_all[1:]):
+		#	c = (1.-self.color[i], 0., self.color[i])
+		#	kwargs['c'] = c
+		#	ax.plot(self.mu, EBV, *args, **kwargs)
 		
 		kwargs['c'] = 'g'
-		kwargs['lw'] = 1.5
+		kwargs['lw'] = 2.
 		kwargs['alpha'] = 0.5
 		
-		ax.plot(self.mu, self.EBV_all[0], *args, **kwargs)
+		#ax.plot(self.mu, self.EBV_all[0], *args, **kwargs)
+		ax.plot(self.mu, np.median(self.EBV_all[1:], axis=0), *args, **kwargs)
 		
 		ax.set_xlim(self.mu[0], self.mu[-1]) 
 		
@@ -224,12 +225,17 @@ def main():
 	                            help='Show piecewise-linear l.o.s. reddening.')
 	parser.add_argument('-cl', '--show-clouds', action='store_true',
 	                            help='Show cloud model of reddening.')
-	parser.add_argument('-ovplt', '--overplot-clouds', type=float, nargs='+', default=None,
+	parser.add_argument('-ovcl', '--overplot-clouds', type=float, nargs='+', default=None,
 	                            help='Overplot clouds at specified distance/depth pairs.')
+	#parser.add_argument('-ovlos', '--overplot-los', type=float, nargs='+', default=None,
+	#                            help='Overplot piecewise-linear reddening profile with'
+	#                                 'specified reddening increases.')
 	parser.add_argument('-g', '--grid', type=int, nargs=2,
 	                            help='Grid shape (rows, columns).')
 	parser.add_argument('-fig', '--figsize', type=float, nargs=2, default=(7, 5.),
 	                            help='Figure width and height in inches.')
+	parser.add_argument('-nfig', '--n-figures', type=int, default=None,
+	                            help='Maximum # of figures to display (default: display all)')
 	parser.add_argument('--stretch', type=str, choices=('linear', 'sqrt', 'log'), default='sqrt',
 	                            help='Stretch for the color scale.')
 	if 'python' in sys.argv[0]:
@@ -307,7 +313,7 @@ def main():
 	
 	# Determine maximum E(B-V)
 	w_y = np.mean(pdf_stack, axis=0)
-	y_max = np.max(np.where(w_y > 1.e-2)[0])
+	y_max = np.max(np.where(w_y > 5.e-2)[0])
 	EBV_max = y_max * (5. / pdf_stack.shape[1])
 	
 	# Set matplotlib style attributes
@@ -355,7 +361,17 @@ def main():
 		k = i % (n_rows * n_cols) + 1
 		
 		if k == 1:
+			if args.n_figures != None:
+				if len(figs) >= args.n_figures:
+					break
+			
 			figs.append( plt.figure(figsize=args.figsize, dpi=150) )
+			
+			ax = figs[-1].add_subplot(1,1,1)
+			ax.set_xticks([])
+			ax.set_yticks([])
+			ax.set_xlabel(r'$\mu$', fontsize=22)
+			ax.set_ylabel(r'$\mathrm{E} \left( B - V \right)$', fontsize=22)
 		
 		ax = figs[-1].add_subplot(n_rows, n_cols, k)
 		
@@ -367,11 +383,11 @@ def main():
 		if lnZ[i] < lnZ_max - 10.:
 			c = 'r'
 		
-		ax.text(x_lnZ, y_lnZ, r'$%.1f$' % lnZ[i],
-		        ha='left', va='top', fontsize=10, color=c)
+		#ax.text(x_lnZ, y_lnZ, r'$%.1f$' % lnZ[i],
+		#        ha='left', va='top', fontsize=10, color=c)
 		
-		ax.text(x_idx, y_lnZ, r'$%d$' % i,
-		        ha='right', va='top', fontsize=10, color='k')
+		#ax.text(x_idx, y_lnZ, r'$%d$' % i,
+		#        ha='right', va='top', fontsize=10, color='k')
 		
 		if args.show_los:
 			los.plot(ax)
@@ -403,7 +419,10 @@ def main():
 			EBV_all[3::2] = EBV_cloud
 			
 			ax.plot(mu_all, EBV_all, 'k--', lw=1.25, alpha=0.5)
-			
+		
+		#if args.overplot_los != None:
+		#	mu_los = np.linspace(4., 19., len(args.overplot_los)+1)
+		
 		ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
 		ax.xaxis.set_minor_locator(AutoMinorLocator())
 		ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
@@ -425,7 +444,7 @@ def main():
 		                    left=0.12, right=0.98,
 		                    wspace=0., hspace=0.)
 		
-		fig.savefig('%s.%.4d.png' % (base_fname, i), dpi=300)
+		fig.savefig('%s.%.4d.png' % (base_fname, i), transparent=True, bbox_inches='tight', dpi=400)
 	
 	if args.show:
 		plt.show()
