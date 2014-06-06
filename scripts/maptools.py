@@ -88,7 +88,7 @@ def load_output_file_raw(f, bounds=None,
 	star_stack = []
 	n_stars = []
 	
-	DM_min, DM_max = None, None
+	DM_min, DM_max = 4., 19.
 	EBV_min, EBV_max = 0., 5.
 	
 	for name,item in f.iteritems():
@@ -103,9 +103,11 @@ def load_output_file_raw(f, bounds=None,
 		if bounds != None:
 			l, b = hputils.pix2lb_scalar(nside_tmp, pix_idx_tmp, nest=True)
 			
-			if (     (l < bounds[0]) or (l > bounds[1])
-			      or (b < bounds[2]) or (b > bounds[3])  ):
+			if not hputils.lb_in_bounds(l, b, bounds):
 				continue
+			#if (     (l < bounds[0]) or (l > bounds[1])
+			#      or (b < bounds[2]) or (b > bounds[3])  ):
+			#	continue
 		
 		# Pixel location
 		pix_idx.append(pix_idx_tmp)
@@ -167,7 +169,7 @@ def load_output_file_raw(f, bounds=None,
 				stack_tmp = dset[idx, :, :]
 				stack_tmp = np.sum(stack_tmp, axis=0)
 			except:
-				print 'Using chains...'
+				#print 'Using chains...'
 				star_samples = star_samples[idx]
 			
 				n_stars_tmp, n_star_samples, n_star_dim = star_samples.shape
@@ -243,6 +245,7 @@ def load_output_file_raw(f, bounds=None,
 def load_output_file_unified(f, bounds=None,
                                 max_samples=None,
                                 load_stacked_pdfs=False):
+	print 'Loading locations...'
 	# Pixel locations
 	dset = f['locations']
 	nside = dset['nside'][:]
@@ -251,6 +254,7 @@ def load_output_file_unified(f, bounds=None,
 	los_mask = dset['piecewise_mask'][:].astype(np.bool)
 	n_stars = dset['n_stars'][:]
 	
+	print 'Loading cloud model...'
 	# Cloud model
 	tmp_samples, cloud_lnp, cloud_GR = unpack_dset(f['cloud'],
 	                                               max_samples=max_samples)
@@ -259,6 +263,7 @@ def load_output_file_unified(f, bounds=None,
 	cloud_mu = tmp_samples[:, :, :n_clouds]
 	cloud_delta_EBV = tmp_samples[:, :, n_clouds:]
 	
+	print 'Loading piecewise-linear model...'
 	# Piecewise-linear model
 	los_EBV, los_lnp, los_GR = unpack_dset(f['piecewise'],
 	                                       max_samples=max_samples)
@@ -271,6 +276,7 @@ def load_output_file_unified(f, bounds=None,
 	star_stack = None
 	
 	if load_stacked_pdfs:
+		print 'Loading stacked pdfs...'
 		dset = f['stacked_pdfs']
 		
 		star_stack = dset[:]
@@ -280,6 +286,7 @@ def load_output_file_unified(f, bounds=None,
 	
 	# Filter out-of-bounds pixels
 	if bounds != None:
+		print 'Filtering pixels by bounds...'
 		l = np.empty(nside.size, dtype='f8')
 		b = np.empty(nside.size, dtype='f8')
 		
@@ -287,8 +294,9 @@ def load_output_file_unified(f, bounds=None,
 			idx = (nside == n)
 			l[idx], b[idx] = hputils.pix2lb(n, pix_idx[idx], nest=True)
 		
-		idx = (  (l >= bounds[0]) & (l <= bounds[1])
-		       & (b >= bounds[2]) & (b <= bounds[3])  )
+		idx = hputils.lb_in_bounds(l, b, bounds)
+		#idx = (  (l >= bounds[0]) & (l <= bounds[1])
+		#       & (b >= bounds[2]) & (b <= bounds[3])  )
 		
 		nside = nside[idx]
 		pix_idx = pix_idx[idx]
@@ -308,6 +316,7 @@ def load_output_file_unified(f, bounds=None,
 		if load_stacked_pdfs:
 			star_stack = star_stack[idx]
 	
+	print 'Returning data...'
 	# Return
 	if len(pix_idx) == 0:
 		return None
@@ -432,7 +441,7 @@ def load_multiple_outputs(fnames, processes=1,
 	Spawns one or more processes, as specified by
 	<processes>.
 	'''
-	
+		
 	# Set up Queues for filenames and output data
 	fname_q = multiprocessing.JoinableQueue()
 	
@@ -1056,7 +1065,11 @@ class LOSMapper:
 		'''
 		
 		if fit == 'piecewise':
-			return np.percentile(np.diff(self.data.los_EBV[0]), pctile) / self.los_dmu	# TODO: Include first distance bin
+			if self.los_dmu > 0.:
+				return np.percentile(np.diff(self.data.los_EBV[0]), pctile) / self.los_dmu	# TODO: Include first distance bin
+			else:
+				s = np.power(10., self.los_DM_anchor - 2.)
+				return np.percentile(np.diff(self.data.los_EBV[0]) / np.diff(s), pctile)
 		elif fit == 'cloud':
 			return np.percentile(self.data.cloud_delta_EBV[0], pctile) / delta_mu
 		else:
@@ -1110,14 +1123,21 @@ class LOSMapper:
 		else:
 			raise ValueError('Unrecognized fit type: "%s"' % fit)
 		
-		# Calculate rate of reddening (dEBV/dDM), if requested
+		# Calculate rate of reddening (dEBV/dDM or dEBV/ds), if requested
 		if delta_mu != None:
-			if fit == 'piecewise':
-				EBV -= self.calc_piecewise_EBV(mu-delta_mu)
-			elif fit == 'cloud':
-				EBV -= self.calc_cloud_EBV(mu-delta_mu)
+			dmu = delta_mu
+			if dmu < 0.:
+				d1 = 10.**(mu/5.-2.)
+				d2 = d1 + dmu
+				dmu = mu - 5. * (2. + np.log10(d2))
+				#print mu, dmu, d1, d2, delta_mu
 			
-			EBV /= delta_mu
+			if fit == 'piecewise':
+				EBV -= self.calc_piecewise_EBV(mu-dmu)
+			elif fit == 'cloud':
+				EBV -= self.calc_cloud_EBV(mu-dmu)
+			
+			EBV /= np.abs(delta_mu)
 		
 		# Mask regions with high uncertainty
 		if mask_sigma != None:
@@ -1169,6 +1189,188 @@ class LOSMapper:
 		'''
 		
 		return self.data.get_nside_levels()
+
+
+
+
+####################################################################################
+#
+# 3D Mapper
+#
+#   Maps pixel data to a Cartesian grid.
+#
+####################################################################################
+
+class Mapper3D:
+	def __init__(self, data):
+		self.data = data
+		
+		# Calculate the density of the map in every voxel,
+		# indexed by (pixel, sample, distance)
+		self.n_dist_bins = data.los_EBV[0].shape[2]
+		self.DM_min, self.DM_max = data.DM_EBV_lim[:2]
+		
+		mu = np.linspace(self.DM_min, self.DM_max, self.n_dist_bins)
+		r = np.power(10., mu/5. + 1.)
+		dr = np.diff(r)
+		
+		self.density = np.einsum('k,ijk->ijk', 1./dr, np.diff(data.los_EBV[0], axis=2))
+		
+		# Calculate a mapping from a nested healpix index
+		# (at the highest resolution present in the map) to
+		# the index of the pixel in the map
+		
+		self.nside_max = np.max(data.nside[0])
+		n_hires = hp.pixelfunc.nside2npix(self.nside_max)
+		self.hires2mapidx = np.empty(n_hires, dtype='i8')
+		self.hires2mapidx[:] = -1
+		
+		for n in np.unique(data.nside[0]):
+			idx = np.nonzero(data.nside[0] == n)[0]
+			pix_idx_hires = 4**(self.nside_max-n) * data.pix_idx[0][idx]
+			self.hires2mapidx[pix_idx_hires] = idx
+		
+		print '%d < hires2mapidx < %d' % (np.min(self.hires2mapidx), np.max(self.hires2mapidx))
+	
+	def _dist2bin(self, r):
+		'''
+		Convert from distance (in pc) to the lower distance bin index.
+		'''
+		
+		mu = 5. * np.log10(r / 10.)
+		bin = np.floor((mu - self.DM_min) / float(self.n_dist_bins))
+		
+		return bin.astype('i4')
+	
+	def Cartesian2idx(self, x, y, z):
+		'''
+		Convert from a heliocentric position (x, y, z) to
+		an index in the map.
+		'''
+		
+		#r = np.sqrt(x**2 + y**2 + z**2)
+		#l = np.arctan2(y, x)
+		#theta = np.pi/2. - np.arcsin(z/r)
+		#hires_idx = hp.pixelfunc.ang2pix(self.nside_max, theta, l, nest=True)
+		
+		#t, p = hp.pixelfunc.vec2ang(x, y, z)
+		#l = 180./np.pi * p
+		#b = 90. - 180./np.pi * t
+		
+		hires_idx = hp.pixelfunc.vec2pix(self.nside_max, x, y, z, nest=True)
+		
+		#idx = ~np.isfinite(hires_idx.flatten()) | (hires_idx.flatten() < 0)
+		#print '# of bad coordinates: %d' % (np.sum(idx))
+		#print ''
+		#for xx,yy,zz,ii in zip(x.flatten()[idx], y.flatten()[idx], z.flatten()[idx], hires_idx.flatten()[idx]):
+		#	print '(%.2f, %2f, %2f) --> %d' % (xx, yy, zz, ii)
+		#print ''
+		
+		return self.hires2mapidx[hires_idx]
+	
+	def _unit_ortho(self, alpha, beta, n_x, n_y, n_z):
+		ijk = np.indices([2*n_x+1, 2*n_y+1, 2])
+		ijk[0] -= n_x
+		ijk[1] -= n_y
+		
+		# Unit vector matrix matrix
+		ca, sa = np.cos(np.pi/180. * alpha), np.sin(np.pi/180. * alpha)
+		cb, sb = np.cos(np.pi/180. * beta), np.sin(np.pi/180. * beta)
+		
+		u = np.array([[ca*cb, -sb, sa*cb],
+		              [ca*sb,  cb, sa*sb],
+		              [  -sa,   0, ca]]).T
+		
+		# Grid of points
+		pos = np.einsum('dn,nijk->dijk', u, ijk)
+		
+		ray_dir = np.diff(pos, axis=3)[:,:,:,0]
+		
+		return pos[:,:,:,0] - n_z*ray_dir, ray_dir
+	
+	def _pos2map(self, pos):
+		idx = self.Cartesian2idx(*pos)
+		r = np.sqrt(pos[0]**2 + pos[1]**2 + pos[2]**2)
+		dist_bin = self._dist2bin(r)
+		
+		return idx, dist_bin
+	
+	def _calc_slice(self, map_val, pos):
+		map_idx, dist_bin = self._pos2map(pos)
+		
+		idx = (map_idx != -1) & (dist_bin >= 0) & (dist_bin < self.density.shape[2])
+		map_idx[~idx] = -1
+		dist_bin[~idx] = -1
+		
+		return map_val[map_idx, dist_bin] * idx
+	
+	def proj_map_in_slices(self, alpha, beta, n_x, n_y, n_z, scale):
+		map_val = np.median(self.density, axis=1)
+		
+		pos, u = self._unit_ortho(alpha, beta, n_x, n_y, n_z)
+		pos *= scale
+		u *= scale
+		
+		img = self._calc_slice(map_val, pos)
+		
+		for k in xrange(2*n_z):
+			pos += u
+			img += self._calc_slice(map_val, pos)
+		
+		return img
+	
+	def _grid_ortho(self, alpha, beta, n_x, n_y, n_z):
+		'''
+		Compute rays for orthographic projection.
+		'''
+		
+		# Increments of unit vectors for each point in grid
+		ijk = np.indices([2*n_x+1, 2*n_y+1, 2*n_z+1])
+		ijk[0] -= n_x
+		ijk[1] -= n_y
+		ijk[2] -= n_z
+		
+		# Unit vector matrix matrix
+		ca, sa = np.cos(np.pi/180. * alpha), np.sin(np.pi/180. * alpha)
+		cb, sb = np.cos(np.pi/180. * beta), np.sin(np.pi/180. * beta)
+		
+		u = np.array([[ca*cb, -sb, sa*cb],
+		              [ca*sb,  cb, sa*sb],
+		              [  -sa,   0, ca]]).T
+		
+		# Grid of points
+		pos = np.einsum('dn,nijk->dijk', u, ijk)
+		
+		#print u[:,2]
+		#print np.diff(pos, axis=3)
+		#print ''
+		
+		return pos
+	
+	def _grid_mappos(self, alpha, beta, n_x, n_y, n_z, scale):
+		pos = scale * self._grid_ortho(alpha, beta, n_x, n_y, n_z)
+		idx = self.Cartesian2idx(*pos)
+		r = np.sqrt(pos[0]**2 + pos[1]**2 + pos[2]**2)
+		dist_bin = self._dist2bin(r)
+		
+		return idx, dist_bin
+	
+	def project_map(self, alpha, beta, n_x, n_y, n_z, scale):
+		map_val = np.median(self.density, axis=1)
+		
+		map_idx, dist_bin = self._grid_mappos(alpha, beta, n_x, n_y, n_z, scale)
+		
+		idx = (map_idx != -1) & (dist_bin >= 0) & (dist_bin < self.density.shape[2])
+		map_idx[~idx] = -1
+		dist_bin[~idx] = -1
+		
+		img = np.sum(map_val[map_idx, dist_bin] * idx, axis=2)
+		
+		return img
+		
+
+
+
 
 
 ####################################################################################
@@ -1330,27 +1532,31 @@ def test_load_multiple():
 
 def test_plot_comparison():
 	#img_path = '/nfs_pan1/www/ggreen/cloudmaps/AqS_2MASS_losbounded'
-	img_name = 'AqS_losbounded_vs_newconfig'
-	img_path = '/n/fink1/ggreen/bayestar/movies/AqS_2MASS_losbounded/'
+	img_name = 'l30_comp'
+	img_path = '/n/fink1/ggreen/bayestar/movies/allsky_2MASS/l30/'
 	n_frames = 500
 	method = 'sample'
 	
-	EBV_max = 0.72
-	diff_max = 0.20
+	bounds = [30., 40., -3., 9.]
+	figsize = figsize=(32, 10.8)
+	size = (1200, 600)
+	
+	EBV_max = 3.80
+	diff_max = 0.40
 	
 	#fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
-	fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/AqS_2MASS_newconfig/AqS_2MASS_newconfig.*.h5')
-	fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/AqS_2MASS_losbounded/AqS_2MASS_losbounded.*.h5')
+	fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/allsky_2MASS/allsky_2MASS.*.h5')
+	fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/allsky/allsky.*.h5')
 	#fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/AqS_2MASS_smE/AqS_2MASS.*.h5')
 	#fnames_1 = ['/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.%.5d.h5' % i for i in xrange(25)]
 	#fnames_2 = ['/n/fink1/ggreen/bayestar/output/gbright_giant/AquilaSouthLarge2/AquilaSouthLarge2.%.5d.h5' % i for i in xrange(25)]
 	
 	#label_1 = r'$\mathrm{PS1}$'
-	label_1 = r'$\mathrm{newconfig}$'
-	label_2 = r'$\mathrm{newconfig , \ bounded \ los \ priors}$'
+	label_1 = r'$\mathrm{PS1}$'
+	label_2 = r'$\mathrm{PS1 + 2MASS}$'
 	
-	mapper_1 = LOSMapper(fnames_1, processes=4)
-	mapper_2 = LOSMapper(fnames_2, processes=4)
+	mapper_1 = LOSMapper(fnames_1, processes=4, load_stacked_pdfs=False, bounds=bounds)
+	mapper_2 = LOSMapper(fnames_2, processes=4, load_stacked_pdfs=False, bounds=bounds)
 	
 	#mapper_1.data.sort()
 	#mapper_2.data.sort()
@@ -1364,8 +1570,6 @@ def test_plot_comparison():
 	
 	print mapper_1.data.pix_idx[0].shape
 	print mapper_2.data.pix_idx[0].shape
-	
-	size = (500, 500)
 	
 	rasterizer_1 = mapper_1.gen_rasterizer(size)
 	rasterizer_2 = mapper_2.gen_rasterizer(size)
@@ -1411,7 +1615,7 @@ def test_plot_comparison():
 		
 		print 'Plotting figure %d (mu = %.3f), Delta E(B-V) = %.3f' % (i, mu, Delta[1,i])
 		
-		fig = plt.figure(figsize=(19.2, 10.8), dpi=100)
+		fig = plt.figure(figsize=figsize, dpi=100)
 		
 		ax_1 = fig.add_subplot(1,3,1, axisbg=(0.6, 0.8, 0.95, 0.95))
 		ax_2 = fig.add_subplot(1,3,2, axisbg=(0.6, 0.8, 0.95, 0.95))
@@ -1701,9 +1905,40 @@ def test_unified():
 		fig.savefig('%s/unified_test.%.5d.png' % (img_path, i), dpi=100)
 		plt.close(fig)
 
+def test_3d_proj():
+	in_fname = glob.glob('/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
+	mapper = LOSMapper(in_fname, processes=8)
+	mapper3d = Mapper3D(mapper.data)
+	
+	#alpha = np.linspace(0., 120., 25)
+	#beta = 60. * np.ones(alpha.size)
+	alpha = [0.]
+	beta = [0.]
+	n_x, n_y, n_z = 1000, 1000, 1000
+	scale = 1.
+	
+	for k, (a, b) in enumerate(zip(alpha, beta)):
+		print 'Rasterizing frame %d ...' % k
+		img = mapper3d.proj_map_in_slices(a, b, n_x, n_y, n_z, scale)
+		
+		print 'Plotting frame %d ...' % k
+		fig = plt.figure(figsize=(8,8), dpi=80)
+		ax = fig.add_subplot(1,1,1)
+		
+		ax.imshow(img.T, origin='lower', cmap='binary',
+		                 interpolation='bilinear', aspect='auto')
+		ax.set_title(r'$\left( \alpha, \beta \right) = \left( %.1f^{\circ} \ %.1f^{\circ} \right)$' % (a, b), fontsize=20)
+		
+		fig.savefig('/n/fink1/ggreen/bayestar/movies/3d_test/test.%05d.png' % k)
+		
+		plt.close(fig)
+		del img
+
+
+
 
 def main():
-	test_plot_comparison()
+	test_3d_proj()
 	
 	return 0
 

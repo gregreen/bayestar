@@ -27,6 +27,7 @@ import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 
 import matplotlib as mplib
+#mplib.use('TkAgg')
 #mplib.use('GTKAgg')
 #mplib.use('Agg')
 import matplotlib.pyplot as plt
@@ -60,9 +61,10 @@ def plot_EBV(ax, img, bounds, **kwargs):
 		print "Ignoring option 'origin'."
 	if 'extent' in kwargs:
 		print "Ignoring option 'extent'."
+	if 'cmap' not in kwargs:
+		kwargs['cmap'] = 'binary'
 	kwargs['origin'] = 'lower'
 	kwargs['extent'] = bounds
-	kwargs['cmap'] = 'binary'
 	
 	# Plot image in B&W
 	img_res = ax.imshow(img.T, **kwargs)
@@ -364,6 +366,8 @@ def rasterizer_plotter_worker(dist_q, lock,
 		# Determine label positions
 		l_labels, b_labels = rasterizer.label_locs(l_lines, b_lines, shift_frac=0.04)
 		
+		print l_lines, l_labels, b_lines, b_labels
+
 		# Determine grid lines to plot
 		l_lines = np.array(l_lines)
 		b_lines = np.array(b_lines)
@@ -416,7 +420,9 @@ def rasterizer_plotter_worker(dist_q, lock,
 			ax = fig.add_subplot(1,1,1, axisbg=(0.6, 0.8, 0.95, 0.95))
 			
 			if method == 'sigma':
-				img = plot_EBV(ax, img, bounds, norm=LogNorm(vmin=0.001, vmax=EBV_max))
+				img = plot_EBV(ax, img, bounds,
+				               norm=LogNorm(vmin=0.001, vmax=EBV_max),
+				               cmap='hsv')
 			else:
 				img = plot_EBV(ax, img, bounds, vmin=0., vmax=EBV_max)
 			
@@ -428,7 +434,10 @@ def rasterizer_plotter_worker(dist_q, lock,
 			
 			clabel = r'$\mathrm{E} \left( B - V \right)$'
 			if delta_mu != None:
-				clabel = r'$\mathrm{d} \mathrm{E} \left( B - V \right) / \mathrm{d} \mu$'
+				if delta_mu > 0.:
+					clabel = r'$\mathrm{d} \mathrm{E} \left( B - V \right) / \mathrm{d} \mu$'
+				else:
+					clabel = r'$\mathrm{d} \mathrm{E} \left( B - V \right) / \mathrm{d} s \ \left( \mathrm{mags} / \mathrm{kpc} \right)$'
 			
 			cb.ax.set_ylabel(clabel, fontsize=24, rotation=270)
 			cb.ax.tick_params(labelsize=20)
@@ -507,12 +516,12 @@ def rasterizer_plotter_worker(dist_q, lock,
 			
 			if first_img:
 				lock.acquire()
-				fig.savefig(full_fname, dpi=dpi)
+				fig.savefig(full_fname, dpi=dpi, bbox_inches='tight')
 				lock.release()
 				
 				first_img = False
 			else:
-				fig.savefig(full_fname, dpi=dpi)
+				fig.savefig(full_fname, dpi=dpi, bbox_inches='tight')
 			
 			if show:
 				# Add pixel identifier to allow user to find info on
@@ -622,6 +631,8 @@ def main():
 	        int(args.figsize[1] * 0.8 * args.dpi))
 	
 	mu_plot = None
+	delta_mu = args.delta_mu
+	
 	if args.dist_step == 'log':
 		mu_plot = np.linspace(args.dists[0], args.dists[1], args.dists[2])
 	else:
@@ -629,6 +640,9 @@ def main():
 		d_1 = 10.**(args.dists[1] / 5. + 1.)
 		d_plot = np.linspace(d_0, d_1, args.dists[2])
 		mu_plot = 5. * (np.log10(d_plot) - 1.)
+		
+		if delta_mu != None:
+			delta_mu = -delta_mu
 	
 	
 	# Load in line-of-sight data
@@ -668,15 +682,15 @@ def main():
 				                                                 fit=args.model,
 				                                                 method=method_tmp,
 				                                                 mask_sigma=args.mask,
-				                                                 delta_mu=args.delta_mu)
+				                                                 delta_mu=delta_mu)
 				idx = np.isfinite(EBV)
-				EBV_max_tmp = np.percentile(EBV[idx], 95.)
+				EBV_max_tmp = np.percentile(EBV[idx], 99.)
 				
 				if EBV_max_tmp > EBV_max:
 					EBV_max = EBV_max_tmp
 			
 		else:
-			EBV_max = mapper.est_dEBV_pctile(95., delta_mu=args.delta_mu,
+			EBV_max = mapper.est_dEBV_pctile(99., delta_mu=delta_mu,
 			                                      fit=args.model)
 	else:
 		EBV_max = args.EBV_max
@@ -726,7 +740,7 @@ def main():
 		                                  args.model, method, mask,
 		                                  proj, l_cent, b_cent, args.bounds,
 		                                  args.l_lines, args.b_lines,
-		                                  args.delta_mu, EBV_max,
+		                                  delta_mu, EBV_max,
 		                                  outfname, args.show)
 		                           )
 		procs.append(p)
