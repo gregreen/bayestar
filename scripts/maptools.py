@@ -88,7 +88,7 @@ def load_output_file_raw(f, bounds=None,
 	star_stack = []
 	n_stars = []
 	
-	DM_min, DM_max = None, None
+	DM_min, DM_max = 4., 19.
 	EBV_min, EBV_max = 0., 5.
 	
 	for name,item in f.iteritems():
