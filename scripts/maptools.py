@@ -1209,6 +1209,7 @@ class Mapper3D:
 		# indexed by (pixel, sample, distance)
 		self.n_dist_bins = data.los_EBV[0].shape[2]
 		self.DM_min, self.DM_max = data.DM_EBV_lim[:2]
+		self.dDM = (self.DM_max - self.DM_min) / float(self.n_dist_bins - 1)
 		
 		mu = np.linspace(self.DM_min, self.DM_max, self.n_dist_bins)
 		r = np.power(10., mu/5. + 1.)
@@ -1238,7 +1239,10 @@ class Mapper3D:
 		'''
 		
 		mu = 5. * np.log10(r / 10.)
-		bin = np.floor((mu - self.DM_min) / float(self.n_dist_bins))
+		bin = np.floor((mu - self.DM_min) / self.dDM)
+		
+		for i in xrange(10):
+			print mu.flatten()[1000*i], bin.flatten()[1000*i]
 		
 		return bin.astype('i4')
 	
@@ -1279,7 +1283,7 @@ class Mapper3D:
 		
 		u = np.array([[ca*cb, -sb, sa*cb],
 		              [ca*sb,  cb, sa*sb],
-		              [  -sa,   0, ca]]).T
+		              [  -sa,   0, ca]])
 		
 		# Grid of points
 		pos = np.einsum('dn,nijk->dijk', u, ijk)
@@ -1299,8 +1303,14 @@ class Mapper3D:
 		map_idx, dist_bin = self._pos2map(pos)
 		
 		idx = (map_idx != -1) & (dist_bin >= 0) & (dist_bin < self.density.shape[2])
-		map_idx[~idx] = -1
-		dist_bin[~idx] = -1
+		
+		if np.sum(~idx) != 0:
+			map_idx[~idx] = -1
+			dist_bin[~idx] = -1
+		
+		if np.sum(idx) != 0:
+			print np.min(dist_bin[idx]), np.max(dist_bin[idx])
+			print np.percentile(dist_bin[idx], [10., 30., 50., 70., 90.])
 		
 		return map_val[map_idx, dist_bin] * idx
 	
@@ -1308,14 +1318,23 @@ class Mapper3D:
 		map_val = np.median(self.density, axis=1)
 		
 		pos, u = self._unit_ortho(alpha, beta, n_x, n_y, n_z)
-		pos *= scale
-		u *= scale
+		
+		for k in xrange(3):
+			pos[k] *= scale[k]
+			u[k] *= scale[k]
 		
 		img = self._calc_slice(map_val, pos)
 		
-		for k in xrange(2*n_z):
-			pos += u
+		for k in xrange(2*n_z+1):
+			print k
+			
+			print 'x:', np.min(pos[0]), np.max(pos[0])
+			print 'y:', np.min(pos[1]), np.max(pos[1])
+			print 'z:', np.min(pos[2]), np.max(pos[2])
+			
 			img += self._calc_slice(map_val, pos)
+			pos += u
+			print ''
 		
 		return img
 	
@@ -1336,7 +1355,7 @@ class Mapper3D:
 		
 		u = np.array([[ca*cb, -sb, sa*cb],
 		              [ca*sb,  cb, sa*sb],
-		              [  -sa,   0, ca]]).T
+		              [  -sa,   0, ca]])
 		
 		# Grid of points
 		pos = np.einsum('dn,nijk->dijk', u, ijk)
@@ -1906,30 +1925,33 @@ def test_unified():
 		plt.close(fig)
 
 def test_3d_proj():
-	in_fname = glob.glob('/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
-	mapper = LOSMapper(in_fname, processes=8)
+	in_fname = glob.glob('/n/fink1/ggreen/bayestar/output/allsky/allsky.*.h5')
+	mapper = LOSMapper(in_fname, processes=8, max_samples=25)
 	mapper3d = Mapper3D(mapper.data)
 	
 	#alpha = np.linspace(0., 120., 25)
 	#beta = 60. * np.ones(alpha.size)
 	alpha = [0.]
 	beta = [0.]
-	n_x, n_y, n_z = 1000, 1000, 1000
-	scale = 1.
+	n_x, n_y, n_z = 2000, 2000, 500
+	scale = (1., 1., 1.)
+	
+	extent = [-scale[0]*n_x, scale[0]*n_x, -scale[1]*n_y, scale[1]*n_y]
 	
 	for k, (a, b) in enumerate(zip(alpha, beta)):
 		print 'Rasterizing frame %d ...' % k
 		img = mapper3d.proj_map_in_slices(a, b, n_x, n_y, n_z, scale)
 		
 		print 'Plotting frame %d ...' % k
-		fig = plt.figure(figsize=(8,8), dpi=80)
+		fig = plt.figure(figsize=(15,15), dpi=600)
 		ax = fig.add_subplot(1,1,1)
 		
 		ax.imshow(img.T, origin='lower', cmap='binary',
-		                 interpolation='bilinear', aspect='auto')
+		                 interpolation='bilinear', aspect='auto',
+		                 extent=extent)
 		ax.set_title(r'$\left( \alpha, \beta \right) = \left( %.1f^{\circ} \ %.1f^{\circ} \right)$' % (a, b), fontsize=20)
 		
-		fig.savefig('/n/fink1/ggreen/bayestar/movies/3d_test/test.%05d.png' % k)
+		fig.savefig('/n/pan1/www/ggreen/3d/mw.%05d.png' % k, dpi=600)
 		
 		plt.close(fig)
 		del img
