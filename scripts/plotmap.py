@@ -564,7 +564,7 @@ def main():
 	parser.add_argument('--delta-mu', '-dmu', type=float, default=None,
 	                                     help='Difference in DM used to estimate rate of\n'
 	                                          'reddening (default: None, i.e. calculate cumulative reddening).')
-	parser.add_argument('--figsize', '-fs', type=int, nargs=2, default=(8, 4),
+	parser.add_argument('--figsize', '-fs', type=float, nargs=2, default=(8, 4),
 	                                     help='Figure size (in inches).')
 	parser.add_argument('--dpi', '-dpi', type=float, default=200,
 	                                     help='Dots per inch for figure.')

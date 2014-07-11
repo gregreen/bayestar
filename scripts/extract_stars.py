@@ -26,6 +26,7 @@
 
 import numpy as np
 import h5py as h5py
+import pyfits
 import glob
 import argparse, sys
 
@@ -154,7 +155,7 @@ def reduce_stellar_data(infnames, outfnames, reduced_fname):
                                  compression='gzip', compression_opts=9)
     dset.attrs['parameter_names'] = 'EBV, DM, Mr, FeH'
     dset.attrs['axes'] = '(star, parameter, percentile)'
-    dset.attrs['percentiles'] = '(' + ', '.join(['%d' % p for p in pctiles]) + ')'
+    dset.attrs['percentiles'] = '(' + ', '.join(['%.2f' % p for p in pctiles]) + ')'
     
     f.close()
 
@@ -199,6 +200,42 @@ def read_reduced_file(fname):
     return stellar_data, samples, lnp, GR
 
 
+def h52fits(infname, outfname):
+    f = h5py.File(infname, 'r')
+    
+    stellar_data = f['/stellar_data'][:]
+    pctile_data = f['/percentiles'][:]
+    param_names = f['/percentiles'].attrs['parameter_names']
+    axes = f['/percentiles'].attrs['axes']
+    pctiles = f['/percentiles'].attrs['percentiles']
+    
+    f.close()
+    
+    hdu0 = pyfits.PrimaryHDU()
+    
+    hdu1 = pyfits.BinTableHDU(stellar_data)
+    hdu1.header['CONTENTS'] = 'STELLAR DATA'
+    
+    hdu2 = pyfits.ImageHDU(pctile_data)
+    hdu2.header['AXIS1'] = 'STAR'
+    hdu2.header['AXIS2'] = 'PARAMETER'
+    hdu2.header['AXIS3'] = 'PERCENTILE'
+    hdu2.header['PARAM1'] = 'EBV'
+    hdu2.header['PARAM2'] = 'DM'
+    hdu2.header['PARAM3'] = 'Mr'
+    hdu2.header['PARAM4'] = 'FeH'
+    hdu2.header['PCTILE1'] = 10.
+    hdu2.header['PCTILE2'] = 15.87
+    hdu2.header['PCTILE3'] = 50.
+    hdu2.header['PCTILE4'] = 84.13
+    hdu2.header['PCTILE5'] = 90.
+    hdu2.header['CONTENTS'] = 'PARAM PERCENTILES'
+    
+    hdulist = pyfits.core.HDUList([hdu0, hdu1, hdu2])
+    hdulist.writeto(outfname, clobber=True)
+
+
+
 def main():
     parser = argparse.ArgumentParser(prog='extract_stars.py',
                                      description='Extract stellar fits from Bayestar output.',
@@ -220,7 +257,16 @@ def main():
         print 'Input filenames do not match output filenames.'
         return 0
     
-    reduce_stellar_data(infnames, outfnames, args.stellar)
+    h5_fname = args.stellar + '.h5'
+    fits_fname = args.stellar + '.fits'
+    
+    print 'Extracting and writing stellar data as HDF5 ...'
+    reduce_stellar_data(infnames, outfnames, h5_fname)
+    
+    print 'Producing FITS output ...'
+    h52fits(h5_fname, fits_fname)
+    
+    print 'Done.'
     
     return 0
 
