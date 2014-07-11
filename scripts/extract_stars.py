@@ -128,8 +128,8 @@ def reduce_stellar_data(infnames, outfnames, reduced_fname):
     
     for k, (infn, outfn) in enumerate(zip(infnames, outfnames)):
         print 'Loading %s (%d of %d) ...' % (outfn, k, n_files)
-	
-	ret = load_stars(infn, outfn)
+    
+    ret = load_stars(infn, outfn)
         
         if ret != None:
             data.append(ret[0])
