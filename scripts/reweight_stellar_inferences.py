@@ -122,9 +122,8 @@ def reweight_samples(stellar_data, los_data): #, n_sigma_warn=1.):
     nside, hp_idx, l, b, SFD, conv, lnZ, stellar_chain = stellar_data
     los_EBV, los_lnp, los_GR, DM_anchors = los_data
     
-    
-    k_outlier = [1, 5, 8]
-    stellar_chain[k_outlier, :, 0] += 0.5
+    #k_outlier = [1, 5, 8]
+    #stellar_chain[k_outlier, :, 0] += 0.5
     
     # Calculate E(DM) for each stellar sample / los sample combination
     shape = stellar_chain.shape[:2]
@@ -224,9 +223,19 @@ def reweight_samples(stellar_data, los_data): #, n_sigma_warn=1.):
     
     '''
     import matplotlib.pyplot as plt
+    from matplotlib import rc
+    
+    rc('text', usetex=True)
+    
+    y_max = max([np.percentile(stellar_chain[:,:,0], 98.),
+                np.percentile(los_EBV[:,-1], 95.)])
+    y_max += 0.1
+    
+    xlim = [DM_anchors[0], DM_anchors[-1]]
+    ylim = [0., y_max]
     
     for k, (chain, chain_w) in enumerate(zip(stellar_chain, w)):
-        fig = plt.figure(figsize=(8,5))#, dpi=200)
+        fig = plt.figure(figsize=(10,5))#, dpi=200)
         ax = fig.add_subplot(1,1,1)
         
         for E in los_EBV:
@@ -238,21 +247,25 @@ def reweight_samples(stellar_data, los_data): #, n_sigma_warn=1.):
         if np.any(np.isnan(c)):
             c = 'k'
         
-        ax.scatter(chain[:,1], chain[:,0], c=c, lw=0)
+        cax = ax.scatter(chain[:,1], chain[:,0], c=c, lw=0)
         
-        xlim = [DM_anchors[0], DM_anchors[-1]]
-        ylim = [0., np.percentile(los_EBV[:,-1], 95.) + 0.1]
+        cbar = fig.colorbar(cax)
+        cbar.set_label(r'$\ln \left(\mathrm{Sample \ Weight} \right)$', fontsize=20)
         
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
         
-        x = xlim[0] + 0.05 * (xlim[1] - xlim[0])
-        y = ylim[0] + 0.95 * (ylim[1] - ylim[0])
+        ax.set_xlabel(r'$\mu$', fontsize=20)
+        ax.set_ylabel(r'$\mathrm{E} \left( B - V \right)$', fontsize=20)
         
-        txt = r'$\chi^{2}_{\mathrm{min}} = %.2f$' % (chisq_min[k])
-        ax.text(x, y, txt, fontsize=16, ha='left', va='top')
+        #x = xlim[0] + 0.05 * (xlim[1] - xlim[0])
+        #y = ylim[0] + 0.95 * (ylim[1] - ylim[0])
         
-        fig.savefig('/home/greg/projects/bayestar/plots/reweighted_samples/reweighted_%05d.png' % k, dpi=150)
+        #txt = r'$\chi^{2}_{\mathrm{min}} = %.2f$' % (chisq_min[k])
+        #ax.text(x, y, txt, fontsize=16, ha='left', va='top')
+        
+        fig.savefig('/home/greg/projects/bayestar/plots/reweighted_samples/reweighted_%05d.png' % k,
+                    dpi=150, bbox_inches='tight')
         
         plt.close(fig)
     '''
@@ -423,6 +436,20 @@ def process_files(in_fnames, out_fnames, rw_fname_base, n_procs=1):
         p.join()
     
     print 'All workers have finished.'
+
+
+def test_calc_sigma_E():
+    E = np.linspace(0., 2., 11)
+    
+    for nside in [128, 256, 512, 1024, 2048]:
+        sigma_E = calc_sigma_E(nside, E)
+        
+        print 'nside = %d:' % nside
+        print ' E    sigma'
+        print '============'
+        for EE,ss in zip(E, sigma_E):
+            print '%.2f\t%.2f' % (EE, ss)
+        print ''
 
 
 def main():
