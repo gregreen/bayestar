@@ -241,35 +241,36 @@ def gen_movie_frames(camera_pos, camera_props, map_fname, frame_fname,
 
 
 def bobbing_movie():
-    camera_props = {'n_x': 600,
-                    'n_y': 300,
-                    'n_z': 2000,
-                    'fov': 90.,
-                    'dr': 3.,
+    camera_props = {'n_x': 960,
+                    'n_y': 540,
+                    'n_z': 3000,
+                    'fov': 200.,
+                    'dr': 4.,
                     'z_0': 15.}
     
     camera_pos = camera_z_bobbing(dn=40,
-                                  z_0=2000., x_0=0., y_0=0.,
+                                  z_0=500., x_0=0., y_0=0.,
                                   dx_stare=1000., dz_stare=-100.,
-                                  beta_0=180.)
+                                  beta_0=130.)
     
     map_fname = '/n/fink1/ggreen/bayestar/output/allsky_2MASS/compact_10samp.h5'
-    frame_fname = '/n/pan1/www/ggreen/3d/allsky_2MASS/z_bobbing/z2000'
+    frame_fname = '/n/pan1/www/ggreen/3d/allsky_2MASS/z_bobbing/z500_fov200'
     
-    gen_movie_frames(camera_pos, camera_props, map_fname, frame_fname, n_procs=8, dpi=120)
+    gen_movie_frames(camera_pos, camera_props, map_fname, frame_fname, n_procs=6, dpi=150)
 
 
 def zoom_out_movie():
     camera_props = {'n_x': 1000,
                     'n_y': 750,
                     'n_z': 5000,
-                    'fov': 90.,
+                    'fov': 120.,
                     'dr': 1.8,
                     'z_0': 20.}
     
-    n_frames = 500
+    n_frames = 600
     
-    d = 0.5 + 0.5 * np.tanh(np.linspace(-2.5, 2.5, n_frames))
+    d = 0.5 + 0.5 * np.tanh(np.linspace(-3., 3., n_frames))
+    #d[0] = 0.
     #d = np.linspace(0., 1., n_frames)**2.
     
     r_0 = np.zeros((n_frames, 3), dtype='f8')
@@ -287,9 +288,9 @@ def zoom_out_movie():
                   'b': b}
     
     map_fname = '/n/fink1/ggreen/bayestar/output/allsky_2MASS/compact_10samp.h5'
-    frame_fname = '/n/pan1/www/ggreen/3d/allsky_2MASS/zoom_out/zoom_slow'
+    frame_fname = '/n/pan1/www/ggreen/3d/allsky_2MASS/zoom_out/zoom_out_stereographic'
     
-    gen_movie_frames(camera_pos, camera_props, map_fname, frame_fname, n_procs=8, dpi=120)
+    gen_movie_frames(camera_pos, camera_props, map_fname, frame_fname, n_procs=4, dpi=120)
 
 
 def GC_perspective_movie():
@@ -388,14 +389,14 @@ def local_rot_movie():
 
 
 def local_dust_movie():
-    camera_props = {'n_x': 800,
-                    'n_y': 600,
-                    'n_z': 2000,
-                    'fov': 90.,
-                    'dr': 3.,
+    camera_props = {'n_x': 800/4,
+                    'n_y': 600/4,
+                    'n_z': 2000/4,
+                    'fov': 120.,
+                    'dr': 3.*4,
                     'z_0': 25.}
     
-    n_frames = 200
+    n_frames = 10 #200
     
     # Zoom out
     r_0 = np.zeros((n_frames/4, 3), dtype='f8')
@@ -429,10 +430,10 @@ def local_dust_movie():
                   'b': np.hstack([b_0, b_1])}
     
     map_fname = '/n/fink1/ggreen/bayestar/output/allsky_2MASS/compact_10samp.h5'
-    frame_fname = '/n/pan1/www/ggreen/3d/allsky_2MASS/local_dust/local_dust'
+    frame_fname = '/n/pan1/www/ggreen/3d/allsky_2MASS/test/test' #local_dust/local_dust'
     
     gen_movie_frames(camera_pos, camera_props, map_fname, frame_fname,
-                     n_procs=6, dpi=120)
+                     n_procs=5, dpi=120)
 
 
 def indiv_frames():
@@ -475,9 +476,9 @@ def indiv_frames():
 
 
 def main():
-    local_rot_movie()
+    #local_rot_movie()
     #zoom_out_movie()
-    #bobbing_movie()
+    bobbing_movie()
     #local_dust_movie()
     #indiv_frames()
     #GC_perspective_movie()
