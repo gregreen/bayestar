@@ -1353,7 +1353,7 @@ class Mapper3D:
         ijk[0] -= n_x
         ijk[1] -= n_y
         
-        # Unit vector matrix matrix
+        # Unit vector matrix
         ca, sa = np.cos(np.pi/180. * alpha), np.sin(np.pi/180. * alpha)
         cb, sb = np.cos(np.pi/180. * beta), np.sin(np.pi/180. * beta)
         
@@ -1408,6 +1408,45 @@ class Mapper3D:
         
         return pos, ray_dir
     
+    def _unit_stereo(self, alpha, beta, n_x, n_y, fov, r_0, ray_step, dist_init):
+        # Produce grid of screen coordinates
+        XY = np.indices([2*n_x+1, 2*n_y+1, 1]).astype('f8')
+        XY[0] -= n_x
+        XY[1] -= n_y
+        
+        # Scale to achieve correct field of view in stereographic projection
+        R_max = 1. / np.tan(np.radians(fov) / 4.)
+        XY *= R_max / float(n_x)
+        
+        # Project to surface of sphere using stereographic projection
+        R2 = np.sum(XY**2., axis=0)
+        a = 1. / (R2 + 1.)
+        
+        xyz = np.empty(XY.shape, dtype='f8')
+        xyz[0,:] = 2. * a * XY[0]
+        xyz[1,:] = 2. * a * XY[1]
+        xyz[2,:] = a * (R2 - 1.)
+        
+        # Rotate to face desired direction
+        ca, sa = np.cos(np.radians(alpha)), np.sin(np.radians(alpha))
+        cb, sb = np.cos(np.radians(beta)), np.sin(np.radians(beta))
+        
+        u = np.array([[ca*cb, -sb, sa*cb],
+                      [ca*sb,  cb, sa*sb],
+                      [  -sa,   0, ca]])
+        
+        ray_dir = np.einsum('dn,nijk->dijk', u, xyz)[:,:,:,0]
+        
+        # Set initial position
+        pos = np.empty(ray_dir.shape, dtype='f8')
+        
+        for i in xrange(3):
+            pos[i,:,:] = r_0[i]
+        
+        pos += ray_dir * dist_init
+        
+        return pos, ray_dir
+    
     def _pos2map(self, pos):
         idx = self.Cartesian2idx(*pos)
         r = np.sqrt(pos[0]**2 + pos[1]**2 + pos[2]**2)
@@ -1443,8 +1482,10 @@ class Mapper3D:
         if camera == 'orthographic':
             pos, u = self._unit_ortho(*args, **kwargs)
             #pos, u = self._unit_ortho(alpha, beta, n_x, n_y, n_z)
-        elif camera == 'pinhole':
+        elif camera in ('gnomonic', 'pinhole', 'rectilinear'):
             pos, u = self._unit_pinhole(*args, **kwargs)
+        elif camera == 'stereographic':
+            pos, u = self._unit_stereo(*args, **kwargs)
         else:
             raise ValueError('Unrecognized camera: "%s" (choose "orthographic" or "pinhole")')
         

@@ -154,7 +154,7 @@ def gen_frame_worker(frame_q, lock,
             img = np.empty((n_averaged, 2*n_y+1, 2*n_x+1), dtype='f8')
             
             for i in xrange(n_averaged):
-                img[i] = mapper3d.proj_map_in_slices('pinhole', n_z, 'sample',
+                img[i] = mapper3d.proj_map_in_slices('stereo', n_z, 'sample',
                                                       a, b, n_x, n_y, fov, r, dr, z_0)
             
             img = np.median(img, axis=0)
