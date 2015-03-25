@@ -644,7 +644,7 @@ bool TStellarModel::load_seds(std::string seds_fname) {
 	sed_interp = new TBilinearInterp<TSED>(Mr_min, Mr_max, N_Mr, FeH_min, FeH_max, N_FeH);
 	unsigned int idx;
 	double colors[NBANDS-1];
-	unsigned int r_index = 1; // TODO: indicate r_index in the template file
+	unsigned int r_index = 0; // TODO: indicate r_index in the template file
 
 	// Now do a second pass to load the SEDs
 	in.clear();
@@ -1006,7 +1006,7 @@ TEBVSmoothing::TEBVSmoothing(double alpha_coeff[2], double beta_coeff[2],
 
 	_beta_coeff[0] = beta_coeff[0];
 	_beta_coeff[1] = beta_coeff[1];
-	
+
 	_pct_smoothing_min = pct_smoothing_min;
 	_pct_smoothing_max = pct_smoothing_max;
 
@@ -1046,7 +1046,7 @@ void TEBVSmoothing::calc_pct_smoothing(unsigned int nside,
 
 	for(int i=0; i<n_samples; i++, EBV+=dE) {
 		sigma_pct_tmp = alpha * EBV + beta;
-		
+
 		if(sigma_pct_tmp < _pct_smoothing_min) {
 			sigma_pct_tmp = _pct_smoothing_min;
 		} else if(sigma_pct_tmp > _pct_smoothing_max) {
@@ -1054,7 +1054,7 @@ void TEBVSmoothing::calc_pct_smoothing(unsigned int nside,
 		}
 
 		//std::cerr << i << " (" << EBV << "): " << sigma_pct_tmp << std::endl;
-		
+
 		sigma_pct.push_back(sigma_pct_tmp);
 	}
 }
