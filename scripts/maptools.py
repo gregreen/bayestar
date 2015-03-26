@@ -60,8 +60,8 @@ def unpack_dset(dset, max_samples=None):
         lnp = dset[:, 1:, 0].astype('f4')
         GR = dset[:, 0, 1:].astype('f4')
     else:
-        samples = dset[:, 1:max_samples+1, 1:].astype('f4')
-        lnp = dset[:, 1:max_samples+1, 0].astype('f4')
+        samples = dset[:, 1:max_samples+2, 1:].astype('f4')
+        lnp = dset[:, 1:max_samples+2, 0].astype('f4')
         GR = dset[:, 0, 1:].astype('f4')
     
     return samples, lnp, GR

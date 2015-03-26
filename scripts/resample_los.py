@@ -3,7 +3,7 @@
 #
 #  resample_los.py
 #  
-#  Copyright 2013 Greg Green <greg@greg-UX31A>
+#  Copyright 2013-2014 Greg Green <greg@greg-UX31A>
 #  
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -21,6 +21,9 @@
 #  MA 02110-1301, USA.
 #  
 #  
+
+import matplotlib
+matplotlib.use('Agg')
 
 import numpy as np
 import healpy as hp
@@ -263,60 +266,88 @@ def test_find_neighbors():
 
 
 def test_find_neighbors_adaptive_res():
-    n_neighbors = 36
-    n_disp = 5
+    n_neighbors = 128
+    n_disp = 4
     processes = 4
-    bounds = [60., 80., -5., 5.]
+    bounds = None
     
     import glob
     
-    fnames = glob.glob('/n/fink1/ggreen/bayestar/output/l70/l70.*.h5')
+    fnames = ['/n/fink1/ggreen/bayestar/output/allsky_2MASS/Orion_500samp.h5']
     
-    los_coll = maptools.los_collection(fnames, bounds=bounds,
-                                               processes=processes)
+    resampler = MapResampler(fnames, bounds=bounds, processes=processes,
+                                     n_neighbors=n_neighbors)
     
-    nside, pix_idx = los_coll.nside, los_coll.pix_idx
+    #mapper = maptools.LOSMapper(fnames, bounds=bounds,
+    #                                    processes=processes)
     
-    print 'Finding neighbors ...'
-    neighbor_idx, neighbor_dist = find_neighbors(nside, pix_idx,
-                                                       n_neighbors)
-    print 'Done.'
+    #nside, pix_idx = mapper.data.nside[0], mapper.data.pix_idx[0]
+    
+    #print 'Finding neighbors ...'
+    #neighbor_idx, neighbor_dist = find_neighbors(nside, pix_idx,
+    #                                                    n_neighbors)
+    #print 'Done.'
+    
+    nside = resampler.mapper.data.nside[0]
+    pix_idx = resampler.mapper.data.pix_idx[0]
+    neighbor_idx = resampler.neighbor_idx
+    neighbor_corr = resampler.neighbor_corr
     
     # Highlight a couple of nearest-neighbor sections
-    pix_val = np.zeros(pix_idx.size)
+    pix_val = np.empty((3, pix_idx.size))
+    pix_val[:] = np.nan
     
-    l = 0.025 * np.pi / 180.
-    print l
-	
     for k in xrange(n_disp):
 	    idx = np.random.randint(pix_idx.size)
-	    pix_val[idx] = 2
-	    pix_val[neighbor_idx[idx, :]] = 1
+	    pix_val[:, idx] = np.nan
 	    
-	    d = neighbor_dist[idx, :]
-	    print 'Center pixel: %d' % idx
-	    print d
-	    print np.exp(-(d/l)**2.)
-	    print ''
+	    for d in xrange(3):
+	        tmp = neighbor_corr[idx, :, 4*d]
+	        pix_val[d, neighbor_idx[idx, :]] = tmp
+	        print tmp
     
-    nside_max, pix_idx_exp, pix_val_exp = maptools.reduce_to_single_res(pix_idx,
-                                                                        nside,
-                                                                        pix_val)
+    pix_val_min = np.nanmin(pix_val)
+    pix_val_max = np.nanmax(pix_val)
+    pix_val_min = max([1.e-5 * pix_val_max, pix_val_min])
     
-    size = (2000, 2000)
+    print pix_val_min, pix_val_max
     
-    img, bounds, xy_bounds = hputils.rasterize_map(pix_idx_exp, pix_val_exp,
-                                                   nside_max, size)
+    idx = np.isnan(pix_val)
+    pix_val[idx] = pix_val_min
     
-    # Plot nearest neighbors
     
     import matplotlib.pyplot as plt
     
-    fig = plt.figure()
-    ax = fig.add_subplot(1,1,1)
+    fig = plt.figure(figsize=(7,10), dpi=150)
     
-    ax.imshow(img, extent=bounds, origin='lower', aspect='auto',
-                                  interpolation='nearest')
+    for d in xrange(3):
+        nside_max, pix_idx_exp, pix_val_exp = maptools.reduce_to_single_res(pix_idx,
+                                                                            nside,
+                                                                            pix_val[d])
+        
+        size = (2000, 2000)
+        
+        img, bounds, xy_bounds = hputils.rasterize_map(pix_idx_exp, pix_val_exp,
+                                                       nside_max, size)
+        
+        # Plot nearest neighbors
+        
+        ax = fig.add_subplot(3,1,d+1)
+        
+        dist = np.power(10., (4. + 3.*d)/5. + 1.)
+        ax.set_title(r'$d = %d \, \mathrm{pc}$' % dist, fontsize=18)
+        
+        im = ax.imshow(np.log10(img), extent=bounds, origin='lower',
+                                      aspect='auto', interpolation='nearest',
+                                      vmin=np.log10(pix_val_min),
+                                      vmax=np.log10(pix_val_max))
+    
+    fig.subplots_adjust(bottom=0.05, top=0.95, left=0.05, right=0.80)
+    
+    ax = fig.add_axes([0.83, 0.05, 0.04, 0.90])
+    
+    cbar = fig.colorbar(im, cax=ax)
+    cbar.set_label(r'$\Sigma^{-1} \ \mathrm{log}_{10} \left( \mathrm{coefficient} \right)$', fontsize=18)
     
     plt.show()
 
@@ -344,15 +375,15 @@ def get_prior_ln_Delta_EBV(nside, pix_idx, n_regions=30):
     return ln_Delta_EBV
 
 
-class map_resampler:
+class MapResampler:
     def __init__(self, fnames, bounds=None,
                                processes=1,
                                n_neighbors=32,
-                               corr_length_core=0.25,
-                               corr_length_tail=1.,
-                               max_corr=1.,
-                               tail_weight=0.,
-                               dist_floor=0.1):
+                               corr_length_core=0.10,
+                               corr_length_tail=1.00,
+                               max_corr=0.25,
+                               tail_weight=0.50,
+                               dist_floor=0.25):
         
         self.n_neighbors = n_neighbors
         
@@ -361,11 +392,21 @@ class map_resampler:
         self.max_corr = max_corr
         self.tail_weight = tail_weight
         
-        self.los_coll = maptools.los_collection(fnames, bounds=bounds,
-                                                        processes=processes)
+        '''
+        import matplotlib.pyplot as plt
+        fig = plt.figure(figsize=(8,4), dpi=200)
+        d = np.linspace(0., 20., 1000)
+        c = self.corr_of_dist(d)
+        ax = fig.add_subplot(1,1,1)
+        ax.semilogy(d, c)
+        plt.show()
+        '''
         
-        self.nside = self.los_coll.nside
-        self.pix_idx = self.los_coll.pix_idx
+        self.mapper = maptools.LOSMapper(fnames, bounds=bounds,
+                                                   processes=processes)
+        
+        self.nside = self.mapper.data.nside[0]
+        self.pix_idx = self.mapper.data.pix_idx[0]
         
         print 'Finding neighbors ...'
         self.neighbor_idx, self.neighbor_ang_dist = find_neighbors(self.nside,
@@ -373,8 +414,30 @@ class map_resampler:
                                                                    self.n_neighbors)
         
         # Determine difference from priors
-        self.delta = np.log(self.los_coll.los_delta_EBV)
+        los_EBV = self.mapper.data.los_EBV[0]
+        print 'los_EBV.shape =', los_EBV.shape
+        
+        tmp = np.diff(los_EBV, axis=2)
+        print 'min, median, max:', np.min(tmp), np.median(tmp), np.max(tmp)
+        
+        idx = (tmp == 0.)
+        idx = np.any(idx, axis=2)
+        idx_0, idx_1 = np.where(idx)
+        print 'Has zero jump:'
+        print los_EBV[idx_0[0], idx_1[0]]
+        print ''
+        print np.sum(idx)
+        
+        slice_0 = np.reshape(los_EBV[:,:,0], (los_EBV.shape[0], los_EBV.shape[1], 1))
+        print 'slice_0.shape =', slice_0.shape
+        
+        self.los_delta_EBV = np.concatenate([slice_0, np.diff(los_EBV, axis=2)], axis=2)
+        print 'self.los_delta_EBV.shape =', self.los_delta_EBV.shape
+        
+        self.delta = np.log(self.los_delta_EBV)
         self.n_pix, self.n_samples, self.n_slices = self.delta.shape
+        
+        self.delta[~np.isfinite(self.delta)] = 0.
         
         print 'Calculating priors ...'
         ln_Delta_EBV_prior = get_prior_ln_Delta_EBV(self.nside,
@@ -383,10 +446,15 @@ class map_resampler:
         
         #print ''
         #print 'priors:'
-        #print ln_Delta_EBV_prior[0, :]
+        print ln_Delta_EBV_prior[0, :]
         
-        for n in xrange(self.n_samples):
-            self.delta[:, n, :] -= ln_Delta_EBV_prior
+        print '# of non-finite entries in ln_Delta_EBV_prior:', np.sum(~np.isfinite(ln_Delta_EBV_prior))
+        print '# of non-finite entries in delta:', np.sum(~np.isfinite(self.delta))
+        print '# of non-finite entries in los_EBV:', np.sum(~np.isfinite(los_EBV))
+        
+        self.delta[:,:,:] -= ln_Delta_EBV_prior[:,np.newaxis,:]
+        #for n in xrange(self.n_samples):
+        #    self.delta[:, n, :] -= ln_Delta_EBV_prior
         
         self.delta /= 1.5  # Standardize to units of the std. dev. on the priors
         
@@ -395,7 +463,7 @@ class map_resampler:
         #print self.delta
         
         # Distance in pc to each bin
-        slice_dist = np.power(10., self.los_coll.los_mu_anchor/5. + 1.)
+        slice_dist = np.power(10., self.mapper.los_DM_anchor/5. + 1.)
         slice_dist = np.hstack([[0.], slice_dist])
         self.bin_dist = 0.5 * (slice_dist[:-1] + slice_dist[1:])
         
@@ -403,9 +471,15 @@ class map_resampler:
         # shape = (pix, neighbor, slice)
         print 'Determining neighbor correlation weights ...'
         self.neighbor_dist = np.einsum('ij,k->ijk', self.neighbor_ang_dist, self.bin_dist)
-        self.neighbor_dist = np.sqrt(self.neighbor_dist * self.neighbor_dist + dist_floor * dist_floor)
+        self.neighbor_dist = np.sqrt(self.neighbor_dist**2. + dist_floor**2.)
         self.neighbor_corr = self.corr_of_dist(self.neighbor_dist)
         #self.neighbor_corr = self.hard_sphere_corr(self.neighbor_dist, self.corr_length_core)
+        
+        ang_dist = 1. * hp.nside2resol(512)
+        shape = self.neighbor_ang_dist.shape
+        self.neighbor_ang_dist.shape = (shape[0], shape[1], 1)
+        self.neighbor_ang_dist = np.repeat(self.neighbor_ang_dist, self.bin_dist.size, axis=2)
+        self.neighbor_corr = 0.5 / np.cosh(self.neighbor_ang_dist/ang_dist)
         
         #print ''
         #print 'dist:'
@@ -438,9 +512,9 @@ class map_resampler:
     def randomize(self):
         self.sel_idx = np.random.randint(self.n_samples, size=self.n_pix)
     
-    def update_pixel(self, idx):
+    def update_pixel(self, idx, downhill=False):
         '''
-        Update one pixel, using a Gibbs step.
+        Update one pixel, using a Gibbs or downhill step.
         '''
         
         n_idx = self.neighbor_idx[idx, :]
@@ -456,25 +530,36 @@ class map_resampler:
         p -= np.einsum('ij,nj->i', delta*delta, n_corr)
         p -= np.sum(n_delta*n_delta * n_corr)
         
-        p = np.exp(0.5 * self.beta * p)
+	p *= 0.5 * self.beta
+        #p = np.exp(0.5 * self.beta * p)
         
         #p = np.exp(0.5 * np.einsum('ij,nj->i', delta, n_delta * n_corr))
-        p /= np.sum(p)
         
         if idx == 0:
-        	#print delta
-        	#print n_delta
+        	print '\ndelta'
+        	print delta
+        	print '\nn_delta'
+        	print n_delta
+        	print '\nneighbor_dist'
         	print self.neighbor_dist[idx, :, :]
+        	print '\nn_corr'
         	print n_corr
         	#print p_norm
+        	print '\np summary'
+        	print np.sum(np.isnan(p))
         	print np.min(p), np.percentile(p, 5.), np.median(p), np.percentile(p, 95.), np.max(p)
+        	print ''
         
-        P = np.cumsum(p)
-        new_sample = np.sum(P < np.random.random())
-        
-        self.sel_idx[idx] = new_sample
+        if downhill:
+            new_sample = np.argmax(p)
+            self.sel_idx[idx] = new_sample
+        else:
+            p -= np.max(p)
+            P = np.cumsum(np.exp(p))
+            new_sample = np.sum(P < np.random.random() * P[-1])
+            self.sel_idx[idx] = new_sample
     
-    def round_robin(self):
+    def round_robin(self, downhill=False):
         '''
         Update all pixels in a random order and add
         the resulting state to the chain.
@@ -483,7 +568,7 @@ class map_resampler:
         np.random.shuffle(self.update_order)
         
         for n in self.update_order:
-            self.update_pixel(n)
+            self.update_pixel(n, downhill=downhill)
         
         self.log_state()
         
@@ -535,10 +620,14 @@ class map_resampler:
         
         print data.shape
         
-        print self.los_coll.los_delta_EBV.shape
+        #print self..los_delta_EBV.shape
+        
+        #los_EBV = self.mapper.data.los_EBV[0]
+        #slice_0 = np.reshape(los_EBV[:,:,0], (los_EBV.shape[0], los_EBV.shape[1], 1))
+        #los_delta_EBV = np.concatenate([slice_0, np.diff(los_EBV, axis=2)], axis=2)
         
         for n,idx in enumerate(sample_idx):
-            data[n, :, :] = self.los_coll.los_delta_EBV[m, idx, :]
+            data[n, :, :] = self.los_delta_EBV[m, idx, :]
         
         # Store locations to a record array
         loc = np.empty(self.n_pix, dtype=[('nside', 'i4'), ('pix_idx', 'i8')])
@@ -554,8 +643,8 @@ class map_resampler:
                                              compression_opts=9)
         dset[:,:,:] = data[:,:,:]
         
-        dset.attrs['DM_min'] = self.los_coll.DM_min
-        dset.attrs['DM_max'] = self.los_coll.DM_max
+        dset.attrs['DM_min'] = self.mapper.los_DM_anchor[0]
+        dset.attrs['DM_max'] = self.mapper.los_DM_anchor[-1]
         
         dset = f.create_dataset('/location', loc.shape, loc.dtype,
                                             compression='gzip', compression_opts=9)
@@ -565,32 +654,36 @@ class map_resampler:
 
 
 def test_map_resampler():
-    n_steps = 1000
+    n_steps = 5
     n_neighbors = 12
     processes = 4
-    bounds = [60., 80., -5., 5.]
+    bounds = None #[60., 80., -5., 5.]
     
     import glob
     
-    fnames = glob.glob('/n/fink1/ggreen/bayestar/output/l70/l70.*.h5')
+    fnames = ['/n/fink1/ggreen/bayestar/output/allsky_2MASS/Orion_500samp.h5']
     
-    resampler = map_resampler(fnames, bounds=bounds,
-                                      processes=processes,
-                                      n_neighbors=n_neighbors)
+    resampler = MapResampler(fnames, bounds=bounds,
+                                     processes=processes,
+                                     n_neighbors=n_neighbors)
     
     print 'Resampling map ...'
     
-    for n in xrange(n_steps):
-        print 'step %d' % n
-        
-        resampler.round_robin()
+    for n in xrange(5):
+        print 'downhill step %d' % n
+        resampler.round_robin(downhill=True)
     
-    outfname = '/n/home09/ggreen/projects/bayestar/output/resample_test_4.h5'
+    for n in xrange(n_steps):
+        print 'Gibbs step %d' % n
+        resampler.round_robin(downhill=False)
+    
+    outfname = '/n/home09/ggreen/projects/bayestar/output/Orion_resampled_ang1_corr50_neighbors12.h5'
     resampler.save_resampled(outfname)
 
+
 def test_plot_resampled_map():
-    infname = '/n/home09/ggreen/projects/bayestar/output/resample_test_4.h5'
-    plot_fname = '/nfs_pan1/www/ggreen/maps/l70/resampled_4'
+    infname = '/n/home09/ggreen/projects/bayestar/output/Orion_resampled_ang1_corr50_neighbors12.h5'
+    plot_fname = '/n/pan1/www/ggreen/maps/Orion_resampled/Orion_ang1_corr50_neighbors12'
     size = (2000, 2000)
     
     # Load in chain
@@ -608,28 +701,56 @@ def test_plot_resampled_map():
     pix_idx = loc[:]['pix_idx']
     
     # Rasterize each sample and plot
+    import matplotlib
+    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
+    import matplotlib.patheffects as PathEffects
+    
+    mu = np.linspace(4., 19., 31)
+    d = np.power(10., mu/5. + 1.)
     
     for n,sample in enumerate(chain):
         print 'Plotting sample %d ...' % n
-        pix_val = np.sum(sample[:, :12], axis=1)
+        fig = plt.figure(figsize=(16,12), dpi=150)
         
-    	nside_max, pix_idx_exp, pix_val_exp = maptools.reduce_to_single_res(pix_idx,
-                                                                            nside,
-                                                                            pix_val)
+        for k in xrange(12):
+            pix_val = np.sum(sample[:, k:(k+1)], axis=1) #np.sum(sample[:, 5], axis=1)
+            
+            nside_max, pix_idx_exp, pix_val_exp = maptools.reduce_to_single_res(pix_idx,
+                                                                                nside,
+                                                                                pix_val)
+            
+            
+            img, bounds, xy_bounds = hputils.rasterize_map(pix_idx_exp, pix_val_exp,
+                                                           nside_max, size)
+            
+            ax = fig.add_subplot(3,4,k+1)
+            
+            ax.imshow(np.sqrt(img.T), extent=bounds, origin='lower', aspect='auto',
+                             interpolation='nearest', vmin=0., vmax=1.3)
+            
+            xlim = ax.get_xlim()
+            ylim = ax.get_ylim()
+            x = xlim[0] + 0.02 * (xlim[1] - xlim[0])
+            y = ylim[0] + 0.98 * (ylim[1] - ylim[0])
+            
+            txt = ax.text(x, y, '$\mathbf{%d - %d \, pc}$' % (d[k], d[(k+1)]),
+                          fontsize=20, color='k',
+                          ha='left', va='top',
+                          path_effects=[PathEffects.withStroke(linewidth=0.1, foreground='w')])
+            txt.set_bbox(dict(color='w', alpha=0.75, edgecolor='w'))
+            
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
         
-        
-        img, bounds, xy_bounds = hputils.rasterize_map(pix_idx_exp, pix_val_exp,
-                                                       nside_max, size)
-        
-        fig = plt.figure()
-        ax = fig.add_subplot(1,1,1)
-        
-        ax.imshow(img.T, extent=bounds, origin='lower', aspect='auto',
-                                      interpolation='nearest')
+        fig.subplots_adjust(wspace=0.02, hspace=0.02,
+                            left=0.02, right=0.98,
+                            bottom=0.02, top=0.98)
         
         fname = '%s.%.5d.png' % (plot_fname, n)
-        fig.savefig(fname, dpi=300)
+        fig.savefig(fname, dpi=150, bbox_inches='tight')
         
         plt.close(fig)
         del img
@@ -645,6 +766,7 @@ def main():
     test_plot_resampled_map()
     
     return 0
+
 
 if __name__ == '__main__':
     main()

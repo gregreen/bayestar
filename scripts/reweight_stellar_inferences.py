@@ -146,7 +146,7 @@ def reweight_samples(stellar_data, los_data): #, n_sigma_warn=1.):
     # Interpolated E(DM), with shape (star, stellar sample, los sample)
     EBV = np.einsum('j,kj->jk', 1.-a, los_EBV[:, low_idx])
     EBV += np.einsum('j,kj->jk', a, los_EBV[:, low_idx+1])
-    EBV[mask_idx,:] = -100.
+    EBV[mask_idx,:] = 1000. #-100.
     EBV.shape = (shape[0], shape[1], EBV.shape[1])
     
     
@@ -160,6 +160,9 @@ def reweight_samples(stellar_data, los_data): #, n_sigma_warn=1.):
     w = -0.5 * (Delta_EBV/sigma_EBV)**2
     
     chisq_min = -0.5 * np.nanmax(np.nanmax(w, axis=1), axis=1)
+    
+    w -= np.log(EBV[:,:])
+    
     #outlier_flag = (chisq_min > n_sigma_warn**2.)
     
     #print 'Weights:'
@@ -264,7 +267,7 @@ def reweight_samples(stellar_data, los_data): #, n_sigma_warn=1.):
         #txt = r'$\chi^{2}_{\mathrm{min}} = %.2f$' % (chisq_min[k])
         #ax.text(x, y, txt, fontsize=16, ha='left', va='top')
         
-        fig.savefig('/home/greg/projects/bayestar/plots/reweighted_samples/reweighted_%05d.png' % k,
+        fig.savefig('/home/greg/projects/bayestar/plots/reweighted_samples/reweighted_%05d_v2.png' % k,
                     dpi=150, bbox_inches='tight')
         
         plt.close(fig)
