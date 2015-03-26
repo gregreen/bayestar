@@ -159,16 +159,16 @@ def main():
 	mplib.rc('xtick.major', size=6)
 	mplib.rc('xtick.minor', size=4)
 	mplib.rc('axes', grid=True)
-	fig = plt.figure(figsize=(8.5, 11.))
+	fig = plt.figure(figsize=(8.5, 11.), dpi=100)
 	fig.suptitle(r'$\mathrm{Priors \ for} \ ( \ell = %d^{\circ} , \, b = %d^{\circ} )$' % (round(l) , round(b)), fontsize=24, y=0.97)
 	ax = []
 	for i in range(2):
 		ax.append(fig.add_subplot(2, 1, i+1))
 	#fig.subplots_adjust(left=0.12, right=0.90, hspace=0.25)
-	fig.subplots_adjust(left=0.14, right=0.90, top=0.88, bottom=0.08, hspace=0.20)
+	fig.subplots_adjust(left=0.14, right=0.90, top=0.88, bottom=0.08, hspace=0.25)
 	
 	# Intialize Galactic model
-	model = TGalacticModel(fh=0.0030)
+	model = TGalacticModel(fh=0.0006)
 	model.L_epsilon = 500.
 	
 	# Precompute trigonometric functions
