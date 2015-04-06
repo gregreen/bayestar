@@ -25,6 +25,24 @@
 import numpy as np
 import healpy as hp
 
+def gal2equ(l, b):
+    '''
+    Convert (l, b) to (RA, Dec).
+    
+    All inputs and outputs are in degrees.
+    '''
+    
+    rot = hp.rotator.Rotator(coord=['G', 'Equatorial'])
+    
+    t_g = np.radians(90. - b)
+    p_g = np.radians(l)
+    
+    t_e, p_e = rot(t_g, p_g)
+    ra = np.degrees(p_e)
+    dec = 90. - np.degrees(t_e)
+    
+    return ra, dec
+
 
 def lb2pix(nside, l, b, nest=True):
     '''
@@ -34,7 +52,13 @@ def lb2pix(nside, l, b, nest=True):
     theta = np.pi/180. * (90. - b)
     phi = np.pi/180. * l
     
-    return hp.pixelfunc.ang2pix(nside, theta, phi, nest=nest)
+    idx = (b >= -90.) & (b <= 90.)
+    
+    pix_idx = np.empty(l.shape, dtype='i8')
+    pix_idx[idx] = hp.pixelfunc.ang2pix(nside, theta[idx], phi[idx], nest=nest)
+    pix_idx[~idx] = -1
+    
+    return pix_idx
 
 
 def pix2lb(nside, ipix, nest=True, use_negative_l=False):
@@ -148,7 +172,7 @@ class Mollweide_projection:
         
         self.lam_0 = np.pi/180. * lam_0
     
-    def proj(self, phi, lam, iterations=15):
+    def proj(self, phi, lam, iterations=15, ret_bounds=False):
         '''
         Mollweide projection.
         
@@ -163,6 +187,9 @@ class Mollweide_projection:
         
         #x = 180. * (lam - self.lam_0) * np.cos(theta) / np.pi
         #y = 90. * np.sin(theta)
+        
+        if ret_bounds:
+            return x, y, np.zeros(x.shape, dtype=np.bool)
         
         return x, y
     
@@ -232,7 +259,7 @@ class EckertIV_projection:
         #self.d = np.sqrt((4. + np.pi) / np.pi)
         #self.e = np.sqrt(np.pi * (4. + np.pi))
     
-    def proj(self, phi, lam, iterations=10):
+    def proj(self, phi, lam, iterations=10, ret_bounds=False):
         '''
         Eckert IV projection.
         
@@ -244,6 +271,9 @@ class EckertIV_projection:
         
         x = self.x_scale * 2. / self.a * (lam - self.lam_0) * (1. + np.cos(theta))
         y = self.y_scale * 2. * self.b * np.sin(theta)
+        
+        if ret_bounds:
+            return x, y, np.zeros(x.shape, dtype=np.bool)
         
         return x, y
     
@@ -294,7 +324,7 @@ class Hammer_projection:
         
         self.lam_0 = np.pi/180. * lam_0
     
-    def proj(self, phi, lam):
+    def proj(self, phi, lam, ret_bounds=False):
         '''
         Hammer projection.
         
@@ -306,6 +336,9 @@ class Hammer_projection:
         
         x = 2. * np.sqrt(2.) * np.cos(phi) * np.sin((lam - self.lam_0)/2.) / denom
         y = np.sqrt(2.) * np.sin(phi) / denom
+        
+        if ret_bounds:
+            return x, y, np.zeros(x.shape, dtype=np.bool)
         
         return x, y
     
@@ -343,9 +376,12 @@ class Cartesian_projection:
     def __init__(self, lam_0=180.):
         self.lam_0 = np.pi / 180. * lam_0
     
-    def proj(self, phi, lam):
+    def proj(self, phi, lam, ret_bounds=False):
         x = 180./np.pi * (lam - self.lam_0)
         y = 180./np.pi * phi
+        
+        if ret_bounds:
+            return x, y, np.zeros(x.shape, dtype=np.bool)
         
         return x, y
     
@@ -354,6 +390,104 @@ class Cartesian_projection:
         phi = np.pi/180. * y
         
         out_of_bounds = (lam < 0.) | (lam > 2.*np.pi) | (phi < -np.pi) | (phi > np.pi)
+        
+        return phi, lam, out_of_bounds
+
+
+class Gnomonic_projection:
+    '''
+    Gnomonic projection of the sphere into a flat plane.
+    '''
+    
+    def __init__(self, phi_0=0., lam_0=180., fov=90.):
+        self.phi_0 = np.radians(phi_0)
+        self.lam_0 = np.radians(lam_0)
+        self.fov = np.radians(fov)
+        
+        self.cp0 = np.cos(self.phi_0)
+        self.sp0 = np.sin(self.phi_0)
+    
+    def proj(self, phi, lam, ret_bounds=False):
+        p = phi
+        l = lam
+        
+        cp = np.cos(p)
+        sp = np.sin(p)
+        
+        cDl = np.cos(l - self.lam_0)
+        sDl = np.sin(l - self.lam_0)
+        
+        a = 1. / (self.sp0 * sp + self.cp0 * cp * cDl)
+        
+        x = a * cp * sDl
+        y = a * (self.cp0 * sp - self.sp0 * cp * cDl)
+        
+        if ret_bounds:
+            out_of_bounds = (np.arccos(1./a) > self.fov)
+            return x, y, out_of_bounds
+        
+        return x, y
+    
+    def inv(self, x, y):
+        rho = np.sqrt(x**2. + y**2.)
+        c = np.arctan(rho)
+        
+        cc = np.cos(c)
+        sc = np.sin(c)
+        
+        phi = np.arcsin(cc * self.sp0 + y * sc * self.cp0 / rho)
+        lam = self.lam_0 + np.arctan2((x * sc), (rho * self.cp0 * cc - y * self.sp0 * sc))
+        
+        out_of_bounds = (np.abs(c) > self.fov)
+        
+        return phi, lam, out_of_bounds
+
+
+class Stereographic_projection:
+    '''
+    Stereographic projection of the sphere into a flat plane.
+    '''
+    
+    def __init__(self, phi_0=0., lam_0=180., fov=180.):
+        self.phi_0 = np.radians(phi_0)
+        self.lam_0 = np.radians(lam_0)
+        self.fov = np.radians(fov)
+        
+        self.cp0 = np.cos(self.phi_0)
+        self.sp0 = np.sin(self.phi_0)
+    
+    def proj(self, phi, lam, ret_bounds=False):
+        cp = np.cos(phi)
+        sp = np.sin(phi)
+        
+        cDl = np.cos(lam - self.lam_0)
+        sDl = np.sin(lam - self.lam_0)
+        
+        a = 2. / (1. + self.sp0 * sp + self.cp0 * cp * cDl)
+        
+        x = a * cp * sDl
+        y = a * (self.cp0 * sp - self.sp0 * cp * cDl)
+        
+        if ret_bounds:
+            rho = np.sqrt(x**2. + y**2.)
+            c = 2. * np.arctan(0.5 * rho)
+            out_of_bounds = (c > self.fov)
+            
+            return x, y, out_of_bounds
+        
+        return x, y
+    
+    def inv(self, x, y):
+        rho = np.sqrt(x**2. + y**2.)
+        c = 2. * np.arctan(0.5 * rho)
+        
+        cc = np.cos(c)
+        sc = np.sin(c)
+        
+        phi = np.arcsin(cc * self.sp0 + y * sc * self.cp0 / rho)
+        lam = self.lam_0 + np.arctan2((x * sc), (rho * self.cp0 * cc - y * self.sp0 * sc))
+        
+        out_of_bounds = (np.abs(c) > self.fov)
         
         return phi, lam, out_of_bounds
 
@@ -599,7 +733,9 @@ def latlon_lines(ls, bs,
     lam = 180. - l
     
     # Project to (x, y)
-    x, y = proj.proj(np.pi/180. * b, np.pi/180. * lam)
+    x, y, oob = proj.proj(np.pi/180. * b, np.pi/180. * lam, ret_bounds=True)
+    x = x[~oob]
+    y = y[~oob]
     
     # Scale (x, y) to display bounds
     if (bounds != None) and (xy_bounds != None):
@@ -775,6 +911,10 @@ class MapRasterizer:
                 
             # Determine pixel centers
             idx = (nside == n)
+            
+            if np.sum(idx) == 0:
+                continue
+            
             l_0, b_0 = pix2lb(n, pix_idx[idx], nest=nest, use_negative_l=True)
             
             # Rotate coordinate system to center (l_0, b_0)
@@ -789,17 +929,20 @@ class MapRasterizer:
                 for s_y in np.linspace(-pix_scale, pix_scale, 3):
                     lam, b = shift_lon_lat(lam_0, b_0, 0.75*s_x, 0.75*s_y, clip=True)
                     
-                    x_0, y_0 = proj.proj(np.pi/180. * b, np.pi/180. * lam)
+                    x_0, y_0, idx_out = proj.proj(np.pi/180. * b, np.pi/180. * lam,
+                                                  ret_bounds=True)
                     
-                    x_min.append(np.min(x_0))
-                    x_max.append(np.max(x_0))
-                    y_min.append(np.min(y_0))
-                    y_max.append(np.max(y_0))
+                    if np.sum(~idx_out) != 0:
+                        x_min.append(np.min(x_0[~idx_out]))
+                        x_max.append(np.max(x_0[~idx_out]))
+                        y_min.append(np.min(y_0[~idx_out]))
+                        y_max.append(np.max(y_0[~idx_out]))
                     
                     del x_0
                     del y_0
                     del lam
                     del b
+                    del idx_out
         
         x_min = np.min(x_min)
         x_max = np.max(x_max)
@@ -840,6 +983,9 @@ class MapRasterizer:
         
         for n in nside_unique:
             idx = (nside == n)
+            
+            if np.sum(idx) == 0:
+                continue
             
             # Determine healpix index of each remaining image pixel
             disp_idx = lb2pix(n, l, b, nest=nest)
@@ -894,6 +1040,39 @@ class MapRasterizer:
     
     def __call__(self, pix_val):
         return self.rasterize(pix_val)
+    
+    def proj_lb(self, l, b):
+        '''
+        Project (l,b)-coordinates to the image space.
+        '''
+        
+        print 'l/b:'
+        print l
+        print b
+        
+        # Rotate coordinate system to center (l_0, b_0)
+        if (self.l_cent != 0.) | (self.b_cent != 0.):
+            b, l = Euler_rotation_ang(b, l, -self.l_cent, self.b_cent, 0.,
+                                                              degrees=True)
+        
+        lam = 180. - l
+        
+        x, y = self.proj.proj(np.radians(b), np.radians(lam))
+        print 'unscaled:'
+        print x
+        print y
+        x, y = self._scale_disp_coords(x, y)
+        print 'scaled:'
+        print x
+        print y
+        ''
+        #x_scale = (self.lb_bounds[1] - self.lb_bounds[0]) / (self.xy_bounds[1] - self.xy_bounds[0])
+        #y_scale = (self.lb_bounds[3] - self.lb_bounds[2]) / (self.xy_bounds[3] - self.xy_bounds[2])
+        
+        #x = self.lb_bounds[0] + (x - self.xy_bounds[0]) * x_scale
+        #y = self.lb_bounds[2] + (y - self.xy_bounds[2]) * y_scale
+        
+        return x, y
     
     def xy2idx(self, x, y, lb_bounds=True):
         '''
@@ -1104,6 +1283,108 @@ class MapRasterizer:
         return self.xy_bounds
 
 
+def plot_graticules(ax, rasterizer, l_lines, b_lines,
+                    l_labels=None, b_labels=None,
+                    l_formatter=None, b_formatter=None,
+                    meridian_style=70., parallel_style='lh',
+                    x_excise=5., y_excise=5.,
+                    fontsize=8, txt_c='k', txt_path_effects=None,
+                    label_dist=3.5, label_ang_tol=20.,
+                    ls='-', thick_c='k', thin_c='k',
+                    thick_alpha=0.2, thin_alpha=0.3,
+                    thick_lw=1., thin_lw=0.3):
+                    
+    '''
+    Plot meridians and parallels.
+    '''
+    
+    # Auto-generate labels, if not given
+    if l_formatter == None:
+        l_formatter = lambda ll: r'$\,%s%d^{\circ}\,$' % (r'\,\,' if ll >= 0. else '', ll)
+    
+    if b_formatter == None:
+        b_formatter = lambda bb: r'$\,%s%d^{\circ}\,$' % (r'\,\,' if bb >= 0. else '', bb)
+    
+    if l_labels == None:
+        l_labels = [l_formatter(l) for l in l_lines]
+    elif (type(l_labels[0]) in [int, float]) or (type(l_labels) == np.ndarray):
+        l_labels = [l_formatter(l) for l in l_labels]
+    
+    if b_labels == None:
+        b_labels = [b_formatter(b) for b in b_lines]
+    elif (type(b_labels[0]) in [int, float]) or (type(b_labels) == np.ndarray):
+        b_labels = [b_formatter(b) for b in b_labels]
+    
+    # Project meridians and parallels
+    x_merid = []
+    y_merid = []
+    
+    for l in l_lines:
+        tmp = rasterizer.latlon_lines([l], 0., mode='meridians',
+                                             b_spacing = 0.05)
+        x_merid.append(tmp[0])
+        y_merid.append(tmp[1])
+    
+    x_para = []
+    y_para = []
+    
+    for b in b_lines:
+        tmp = rasterizer.latlon_lines(0., [b], mode='parallels',
+                                             l_spacing = 0.05)
+        x_tmp = np.array(tmp[0])
+        y_tmp = np.array(tmp[1])
+        #idx = np.argsort(x_tmp)
+        x_para.append(x_tmp)#[idx])
+        y_para.append(y_tmp)#[idx])
+    
+    # Plot meridians and parallels
+    for grat_style,lab_grat,x_grat,y_grat in zip([meridian_style, parallel_style],
+                                                 [l_labels, b_labels],
+                                                 [x_merid, x_para],
+                                                 [y_merid, y_para]):
+        for lab,x,y in zip(lab_grat, x_grat, y_grat):
+            for looped, x, y in split_graticule(x, y):
+                idx_plot = np.ones(x.size, dtype=np.bool)
+                
+                if type(grat_style) == str:
+                    k_use = []
+                    if 'h' in grat_style:
+                        k_use.append(0)
+                    if 'l' in grat_style:
+                        k_use.append(1)
+                    
+                    if not looped:
+                        x_lab, y_lab, ha, va = segment_label_pos(x, y,
+                                                                 dist=label_dist,
+                                                                 tol=label_ang_tol)
+                        for k in k_use:
+                            ax.text(x_lab[k], y_lab[k], lab,
+                                    ha=ha[k], va=va[k], fontsize=fontsize,
+                                    color=txt_c, path_effects=txt_path_effects)
+                    
+                elif type(grat_style) in [float, int, complex]:
+                    if (not looped) or (type(grat_style) == complex):
+                        pct = grat_style
+                        
+                        if type(pct) == complex:
+                            pct = np.imag(pct)
+                        
+                        x_lab, y_lab, ha, va = segment_label_pos_middle(x, y,
+                                                                        pct=pct)
+                        for k in range(len(x_lab)):
+                            idx_plot = ((x-x_lab)/x_excise)**2. + ((y-y_lab)/y_excise)**2. > 1.
+                            #print np.sum(~idx_plot)
+                            
+                            ax.text(x_lab[k], y_lab[k], lab,
+                                    ha=ha[k], va=va[k], fontsize=fontsize,
+                                    color=txt_c, path_effects=txt_path_effects)
+                
+                for idx in np.split(np.arange(idx_plot.size), np.nonzero(~idx_plot)[0]):
+                    if len(idx) > 1:
+                        ax.plot(x[idx], y[idx], ls=ls, c=thick_c, alpha=thick_alpha, lw=thick_lw)
+                        ax.plot(x[idx], y[idx], ls=ls, c=thin_c, alpha=thin_alpha, lw=thin_lw)
+
+
 class PixelIdentifier:
     def __init__(self, ax, rasterizer, lb_bounds=False,
                                        event_type='button_press_event',
@@ -1200,6 +1481,9 @@ def split_graticule(x, y, threshold=5.):
                x- and y-coordinates of a contiguous segment of the arc.
     '''
     
+    if len(x) < 2:
+        return []
+    
     # Calculate distance between points in graticule.
     # The zeroeth entry is the distance between the first and last
     # elements of the graticule.
@@ -1207,19 +1491,19 @@ def split_graticule(x, y, threshold=5.):
     dy = np.hstack([y[-1] - y[0], np.diff(y)])
     ds2 = dx**2. + dy**2.
     
-    print 'x:'
-    print x
-    print 'y:'
-    print y
-    print 'ds:'
-    print ds2
+    #print 'x:'
+    #print x
+    #print 'y:'
+    #print y
+    #print 'ds:'
+    #print ds2
     
     # Locate splits, based on distance between points in graticule.
     ds2_min = threshold**2. * np.percentile(ds2, 98.)
     split_idx = np.where(ds2 > ds2_min)[0]
     
-    print 'split_idx:'
-    print split_idx
+    #print 'split_idx:'
+    #print split_idx
     
     # If the first and last points are connected, then append the first
     # point to the end of the list
@@ -1232,15 +1516,15 @@ def split_graticule(x, y, threshold=5.):
     x = np.roll(x, -split_idx[0])
     y = np.roll(y, -split_idx[0])
     
-    print split_idx.dtype
+    #print split_idx.dtype
     
     split_idx = np.mod(split_idx - split_idx[0], x.size)
     
-    print split_idx
+    #print split_idx
     
     split_idx = np.hstack([split_idx, x.size])
     
-    print split_idx
+    #print split_idx
     
     segments = []
     
@@ -1255,7 +1539,8 @@ def split_graticule(x, y, threshold=5.):
             xx = np.hstack([xx, xx[0]])
             yy = np.hstack([yy, yy[0]])
         
-        segments.append((looped, xx, yy))
+        if len(xx) > 5:
+            segments.append((looped, xx, yy))
     
     #segments = [(x[s0:s1], y[s0:s1]) for s0,s1 in zip(split_idx[:-1], split_idx[1:])]
     
@@ -1263,8 +1548,10 @@ def split_graticule(x, y, threshold=5.):
 
 
 def segment_label_pos(x, y, flip_x=True, dist=5., tol=20.):
-    dx = np.array([x[-1]-x[-2], x[0]-x[1]])
-    dy = np.array([y[-1]-y[-2], y[0]-y[1]])
+    dx = np.array([ np.median(np.diff(x[-5:])), -np.median(np.diff(x[:5])) ])
+    dy = np.array([ np.median(np.diff(y[-5:])), -np.median(np.diff(y[:5])) ])
+    #dx = np.array([x[-1]-x[-2], x[0]-x[1]])
+    #dy = np.array([y[-1]-y[-2], y[0]-y[1]])
     theta = np.mod(np.degrees(np.arctan2(dy, dx)), 360.)
     
     ha = []
@@ -1299,7 +1586,7 @@ def segment_label_pos(x, y, flip_x=True, dist=5., tol=20.):
             ha.append('right')
             va.append('center')
         
-        print t, ha[-1], va[-1]
+        #print t, ha[-1], va[-1]
     
     if not flip_x:
         ha_new = ['right' if a=='left' else 'left' for a in ha]
@@ -1328,6 +1615,28 @@ def segment_label_pos_v2(x, y, dist=5.):
     y = np.array([y[-1], y[0]]) + dy
     
     return x, y, ha, va
+
+def segment_label_pos_middle(x, y, pct=50.):
+    dx = np.diff(x)
+    dy = np.diff(y)
+    ds = np.sqrt(dx**2. + dy**2.)
+    s = np.hstack([0., np.cumsum(ds)])
+    s /= s[-1]
+    
+    #print ''
+    #print 'pct: %.3f' % pct
+    #print ''
+    #print 's:'
+    #print s[::int(s.size/50.)]
+    #print ''
+    
+    idx = np.sum(s < pct/100.)
+    
+    #print 'idx: %d of %d' % (idx, s.size)
+    #print ''
+    
+    return [x[idx]], [y[idx]], ['center'], ['center']
+
 
 
 #
@@ -1415,24 +1724,85 @@ def test_Cartesian():
         print '%.2f %.2f %.2f %.2f' % (phi[i], phi_1[i], lam[i], lam_1[i])
 
 
+def test_Gnomonic():
+    proj = Gnomonic_projection(lam_0=30., phi_0=40., fov=90.)
+    
+    N = 1000
+    phi = 1 * np.pi * (np.random.random(N) - 0.5)
+    lam = 1 * 2. * np.pi * (np.random.random(N) - 0.5)
+    
+    x, y, oob1 = proj.proj(phi, lam, ret_bounds=True)
+    phi_1, lam_1, oob2 = proj.inv(x, y)
+    
+    print 'lat  lon  x    y     o.o.b.'
+    
+    for i in xrange(len(phi)):
+        print '%.4f %.4f %.4f %.4f %d' % (phi[i]*180./np.pi, lam[i]*180./np.pi, x[i], y[i], oob1[i])
+    
+    lam = np.mod(lam, 2.*np.pi)
+    lam_1 = np.mod(lam_1, 2.*np.pi)
+    
+    print ''
+    print "phi  phi'  lam  lam'"
+    for i in xrange(len(phi)):
+        print '%.4f %.4f %.4f %.4f' % (phi[i], phi_1[i], lam[i], lam_1[i])
+        print '  %.4f   %.4f   %.2f' % (phi_1[i]/phi[i], lam_1[i]/lam[i], oob1[i])
+    
+    import matplotlib.pyplot as plt
+    fig = plt.figure()
+    
+    idx = (np.abs(phi_1/phi - 1.) < 1.e-5) & (np.abs(lam_1/lam - 1.) < 1.e-5)
+    c = oob1
+    
+    ax = fig.add_subplot(2,2,1)
+    ax.scatter(c, phi_1/phi, c='k')
+    #ax.scatter(c, lam_1/lam, c='r')
+    
+    ax = fig.add_subplot(2,2,2)
+    ax.scatter(lam[idx], phi[idx], c='b')
+    ax.scatter(lam[~idx], phi[~idx], c='r')
+    
+    ax = fig.add_subplot(2,2,3)
+    ax.scatter(lam, lam_1/lam, c='k')
+    
+    ax = fig.add_subplot(2,2,4)
+    ax.scatter(lam, phi_1/phi, c='k')
+    
+    plt.show()
+
+
+
 def test_proj():
     import matplotlib.pyplot as plt
+    import matplotlib.patheffects as PathEffects
     
-    nside = 4
+    nside = 64
     nest = True
     clip = True
     size = (1000, 500)
-    proj = Hammer_projection()
-    l_cent = 90.
-    b_cent = 40.
+    #proj = Cartesian_projection()
+    #proj = Hammer_projection()
+    #proj = Stereographic_projection(fov=60.5)
+    proj = Gnomonic_projection(fov=60.5)
+    l_cent = 190.
+    b_cent = -10.
     
     n_pix = hp.pixelfunc.nside2npix(nside)
     pix_idx = np.arange(n_pix)#[10000:11000]#[4*n_pix/12:5*n_pix/12]
+    nside_arr = nside * np.ones(pix_idx.size, dtype='i4')
     l, b = pix2lb(nside, pix_idx, nest=nest)
+    
+    idx = lb_in_bounds(l, b, [155., 225., -25., 15.])
+    l = l[idx]
+    b = b[idx]
+    pix_idx = pix_idx[idx]
+    nside_arr = nside_arr[idx]
+    
     pix_val = pix_idx[:].astype('f8')
     
-    idx = np.random.randint(n_pix, size=n_pix/4)
-    pix_val[idx] = np.nan
+    
+    #idx = np.random.randint(n_pix, size=n_pix/4)
+    #pix_val[idx] = np.nan
     
     
     # Plot map
@@ -1441,12 +1811,13 @@ def test_proj():
     ax = fig.add_subplot(1,1,1)#, axisbg=(0.6, 0.8, 0.95, 0.95))
     
     # Generate grid lines
-    ls = np.linspace(-180., 180., 13)
-    bs = np.linspace(-90., 90., 7)[1:-1]
+    #ls = np.linspace(-180., 180., 13)
+    #bs = np.linspace(-90., 90., 7)[1:-1]
+    ls = np.arange(-180., 180.1, 45.)
+    bs = np.arange(-90., 90.1, 15.)[1:-1]
     
     # Rasterize map
     print 'Constructing rasterizer ...'
-    nside_arr = nside * np.ones(pix_idx.size, dtype='i4')
     rasterizer = MapRasterizer(nside_arr, pix_idx, size,
                                proj=proj, l_cent=l_cent, b_cent=b_cent,
                                nest=nest)
@@ -1455,85 +1826,22 @@ def test_proj():
     img = rasterizer(pix_val)
     bounds = rasterizer.get_lb_bounds()
     
-    b_parallels = np.arange(-75., 76., 15.)
-    segments = []
-    
-    for b in b_parallels:
-        print ''
-        print b
-        print ''
-        x, y = rasterizer.latlon_lines(l_lines=0., b_lines=[b],
-                                       l_spacing=1., b_spacing=1.,
-                                       mode='parallels')
-        segments.append(split_graticule(x, y))
-    
-    
-    #x, y = rasterizer.latlon_lines(l_lines=ls, b_lines=bs,
-    #                               l_spacing=2., b_spacing=2.)
-    
-    '''
-    img, bounds, x, y = rasterize_map(pix_idx, pix_val,
-                                      nside, size,
-                                      nest=nest, clip=clip,
-                                      proj=proj,
-                                      l_cent=l_cent, b_cent=b_cent,
-                                      l_lines=ls, b_lines=bs,
-                                      l_spacing=2., b_spacing=2.)
-    '''
-    
     cimg = ax.imshow(img.T, extent=bounds,
                      origin='lower', interpolation='nearest',
                      aspect='auto')
+    
+    # Plot meridians and parallels
+    stroke = [PathEffects.withStroke(linewidth=0.5, foreground='w')]
+    plot_graticules(ax, rasterizer, ls, bs,
+                    parallel_style=40.j,
+                    txt_path_effects=stroke,
+                    fontsize=14,
+                    x_excise=12., y_excise=2.)
     
     # Color bar
     fig.subplots_adjust(left=0.10, right=0.90, bottom=0.20, top=0.90)
     cax = fig.add_axes([0.10, 0.10, 0.80, 0.05])
     fig.colorbar(cimg, cax=cax, orientation='horizontal')
-    
-    #x, y = latlon_lines(ls, bs,
-    #                    proj=proj,
-    #                    l_cent=l_cent, b_cent=b_cent,
-    #                    bounds=bounds, xy_bounds=xy_bounds)
-    
-    
-    # Grid lines
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
-    
-    #ax.scatter(x, y, c='k', s=1, alpha=0.25)
-    for b, segment in zip(b_parallels, segments):
-        for looped,x,y in segment:
-            txt = 'Segment'
-            if looped:
-                txt += ' (looped)'
-            txt += ':'
-            print txt
-            print x
-            print y
-            
-            ax.plot(x, y, 'k-', alpha=0.25)
-            
-            if not looped:
-                x_lab, y_lab, ha, va = segment_label_pos(x, y, dist=3.5, tol=20.)
-                ax.text(x_lab[0], y_lab[0], r'$\,%d^{\circ}\,$' % b,
-                        ha=ha[0], va=va[0], fontsize=12)
-                ax.text(x_lab[1], y_lab[1], r'$\,%d^{\circ}\,$' % b,
-                        ha=ha[1], va=va[1], fontsize=12)
-        
-    # Latitude/Longitude labels
-    #l_labels, b_labels = rasterizer.label_locs(ls, bs, shift_frac=0.055)
-    
-    '''
-    for b, (x_0, y_0), (x_1, y_1) in b_labels:
-        #print b, x_0, y_0
-        
-        ax.text(x_0, y_0, r'$%d^{\circ}$' % b, fontsize=12,
-                                       ha='center',
-                                       va='center')
-        ax.text(x_1, y_1, r'$%d^{\circ}$' % b, fontsize=12,
-                                       ha='center',
-                                       va='center')
-    '''
     
     # Add pixel identifier
     pix_identifier = PixelIdentifier(ax, rasterizer, lb_bounds=True)
@@ -1567,6 +1875,7 @@ def main():
     #test_Cartesian()
     #test_EckertIV()
     #test_Mollweide()
+    #test_Gnomonic()
     test_proj()
     #test_rot()
 

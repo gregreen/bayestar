@@ -60,8 +60,8 @@ def unpack_dset(dset, max_samples=None):
         lnp = dset[:, 1:, 0].astype('f4')
         GR = dset[:, 0, 1:].astype('f4')
     else:
-        samples = dset[:, 1:max_samples+2, 1:].astype('f4')
-        lnp = dset[:, 1:max_samples+2, 0].astype('f4')
+        samples = dset[:, 1:max_samples+1, 1:].astype('f4')
+        lnp = dset[:, 1:max_samples+1, 0].astype('f4')
         GR = dset[:, 0, 1:].astype('f4')
     
     return samples, lnp, GR
@@ -1270,7 +1270,8 @@ class LOSMapper:
 
 class Mapper3D:
     #def __init__(self, data):
-    def __init__(self, nside, pix_idx, los_EBV, DM_min, DM_max):
+    def __init__(self, nside, pix_idx, los_EBV, DM_min, DM_max,
+                       remove_nan=True, keep_cumulative=False):
         #self.data = data
         
         # Calculate the density of the map in every voxel,
@@ -1281,11 +1282,26 @@ class Mapper3D:
         
         mu = np.linspace(self.DM_min, self.DM_max, self.n_dist_bins)
         r = np.power(10., mu/5. + 1.)
-        dr = np.diff(r)
+        dr = np.hstack([r[0], np.diff(r)])
         
-        self.density = np.einsum('k,ijk->ijk', 1./dr, np.diff(los_EBV, axis=2))
-        idx = ~np.isfinite(self.density)
-        self.density[idx] = 0.
+        E0 = los_EBV[:,:,0]
+        E0.shape = (E0.shape[0], E0.shape[1], 1)
+        dE = np.concatenate([E0, np.diff(los_EBV, axis=2)], axis=2)
+        
+        self.density = np.einsum('k,ijk->ijk', 1./dr, dE)
+        
+        self.cumulative = None
+        
+        if keep_cumulative:
+            self.cumulative = los_EBV[:,:,:]
+        
+        if remove_nan:
+            idx = ~np.isfinite(self.density)
+            self.density[idx] = 0.
+            
+            if keep_cumulative:
+                idx = ~np.isfinite(self.cumulative)
+                self.cumulative[idx] = 0.
         
         # Calculate a mapping from a nested healpix index
         # (at the highest resolution present in the map) to
@@ -1308,19 +1324,6 @@ class Mapper3D:
                 self.hires2mapidx[pix_idx_hires+k] = idx
         
         #print '%d < hires2mapidx < %d' % (np.min(self.hires2mapidx), np.max(self.hires2mapidx))
-    
-    def _dist2bin(self, r):
-        '''
-        Convert from distance (in pc) to the lower distance bin index.
-        '''
-        
-        mu = 5. * np.log10(r / 10.)
-        bin = np.floor((mu - self.DM_min) / self.dDM)
-        
-        #for i in xrange(10):
-        #    print mu.flatten()[1000*i], bin.flatten()[1000*i]
-        
-        return bin.astype('i4')
     
     def Cartesian2idx(self, x, y, z):
         '''
@@ -1348,10 +1351,13 @@ class Mapper3D:
         
         return self.hires2mapidx[hires_idx]
     
-    def _unit_ortho(self, alpha, beta, n_x, n_y, n_z, scale):
+    def _unit_ortho(self, alpha, beta, n_x, n_y, n_z, scale, randomize_ang=False):
         ijk = np.indices([2*n_x+1, 2*n_y+1, 2])
         ijk[0] -= n_x
         ijk[1] -= n_y
+        
+        if randomize_ang:
+            ijk[:2] += 2. * (np.random.random(ijk[:2].shape) - 0.5)
         
         # Unit vector matrix
         ca, sa = np.cos(np.pi/180. * alpha), np.sin(np.pi/180. * alpha)
@@ -1359,7 +1365,10 @@ class Mapper3D:
         
         u = np.array([[ca*cb, -sb, sa*cb],
                       [ca*sb,  cb, sa*sb],
-                      [  -sa,   0, ca]])
+                      [  -sa,   0, ca   ]])
+        
+        for k in xrange(3):
+            u[:,k] *= scale[k]
         
         # Grid of points
         pos = np.einsum('dn,nijk->dijk', u, ijk)
@@ -1368,15 +1377,19 @@ class Mapper3D:
         
         pos = pos[:,:,:,0] - n_z*ray_dir
         
-        for k in xrange(3):
-            pos[k] *= scale[k]
-            ray_dir[k] *= scale[k]
+        #for k in xrange(3):
+        #    pos[k] *= scale[k]
+        #    ray_dir[k] *= scale[k]
         
         return pos, ray_dir
     
-    def _unit_pinhole(self, alpha, beta, n_x, n_y, fov, r_0, ray_step, dist_init):
+    def _unit_pinhole(self, alpha, beta, n_x, n_y,
+                            fov, r_0, ray_step, dist_init,
+                            randomize_ang=False):
         # Generate tangent plane and normal vectors to plane
-        pos, dpos = self._unit_ortho(alpha, beta, n_y, n_x, -1, (1.,1.,1.))
+        pos, dpos = self._unit_ortho(alpha, beta, n_y, n_x,
+                                     -1, (1.,1.,1.),
+                                     randomize_ang=randomize_ang)
         
         # Offset plane from camera by appropriate amount to cover given field of view
         #dx = np.max(pos[0,:,:])
@@ -1408,11 +1421,16 @@ class Mapper3D:
         
         return pos, ray_dir
     
-    def _unit_stereo(self, alpha, beta, n_x, n_y, fov, r_0, ray_step, dist_init):
+    def _unit_stereo(self, alpha, beta, n_x, n_y,
+                           fov, r_0, ray_step, dist_init,
+                           randomize_ang=False):
         # Produce grid of screen coordinates
         XY = np.indices([2*n_y+1, 2*n_x+1, 1]).astype('f8')
         XY[0] -= n_y
         XY[1] -= n_x
+        
+        if randomize_ang:
+            XY[:2] += 2. * (np.random.random(XY[:2].shape) - 0.5)
         
         # Scale to achieve correct field of view in stereographic projection
         R_max = 1. / np.tan(np.radians(180.-fov/2.) / 2.)
@@ -1447,15 +1465,40 @@ class Mapper3D:
         
         return pos, ray_dir * ray_step
     
+    def _dist2bin(self, r):
+        '''
+        Convert from distance (in pc) to the lower distance bin index.
+        '''
+        
+        # Bin index
+        mu = 5. * np.log10(r / 10.)
+        bin = np.floor((mu - self.DM_min) / self.dDM)
+        bin[bin < 0] = -1
+        bin += 1
+        
+        # Interpolation coefficient
+        mu_edge = np.linspace(self.DM_min, self.DM_max, self.n_dist_bins)
+        r_edge = np.hstack([0., np.power(10., mu_edge/5. + 1.)])
+        
+        bin = bin.astype('i4')
+        
+        r_lower = r_edge[bin]
+        a = (r - r_lower) / (r_edge[bin+1] - r_lower)
+        
+        return bin, a
+    
     def _pos2map(self, pos):
         idx = self.Cartesian2idx(*pos)
         r = np.sqrt(pos[0]**2 + pos[1]**2 + pos[2]**2)
-        dist_bin = self._dist2bin(r)
+        dist_bin, a_interp = self._dist2bin(r)
         
-        return idx, dist_bin
+        return idx, dist_bin, a_interp, r
     
-    def _calc_slice(self, map_val, pos):
-        map_idx, dist_bin = self._pos2map(pos)
+    def _calc_slice(self, map_val, pos,
+                          mask=False,
+                          interpolate=False,
+                          add_DM=-1.):
+        map_idx, dist_bin, a_interp, r = self._pos2map(pos)
         
         idx = (map_idx != -1) & (dist_bin >= 0) & (dist_bin < self.density.shape[2])
         
@@ -1467,17 +1510,51 @@ class Mapper3D:
         #    print np.min(dist_bin[idx]), np.max(dist_bin[idx])
         #    print np.percentile(dist_bin[idx], [10., 30., 50., 70., 90.])
         
-        return map_val[map_idx, dist_bin] * idx
+        m = map_val[map_idx, dist_bin]
+        
+        if interpolate:
+            m *= a_interp
+            
+            interp_idx = (dist_bin > 0)
+            
+            if np.sum(interp_idx) != 0:
+                m[interp_idx] += (  (1. - a_interp[interp_idx])
+                                  * map_val[map_idx[interp_idx], dist_bin[interp_idx] - 1] )
+        
+        if add_DM > 0.:
+            bad_idx = (m < 1.e-30)
+            m[bad_idx] = np.nan
+            m *= add_DM
+            DM = 5. * (np.log10(r) - 1.)
+            m += DM
+            idx &= np.isfinite(DM) & (DM >= 4.)
+        
+        if mask:
+            m[~idx] = np.nan
+        else:
+            m[~idx] = 0.
+        
+        return m
     
     def proj_map_in_slices(self, camera, steps, reduction, *args, **kwargs): #alpha, beta, n_x, n_y, n_z, scale):
         verbose = kwargs.pop('verbose', False)
+        mask = kwargs.pop('mask', False)
+        cumulative = kwargs.pop('cumulative', False)
+        add_DM = kwargs.pop('add_DM', -1.)
+        stack = kwargs.pop('stack', 'all')
+        randomize_dist = kwargs.pop('randomize_dist', False)
         
         if verbose:
             t_start = time.time()
             print '[.....................]',
             print '\b'*23,
         
-        map_val = take_measure_nd(self.density, reduction)
+        map_val = None
+        
+        if cumulative:
+            map_val = take_measure_nd(self.cumulative, reduction)
+        else:
+            map_val = take_measure_nd(self.density, reduction)
         
         if camera in ('orthographic', 'ortho'):
             pos, u = self._unit_ortho(*args, **kwargs)
@@ -1490,23 +1567,65 @@ class Mapper3D:
             raise ValueError('Unrecognized camera: "%s"\n'
                              '(choose from "orthographic", "gnomonic" or "stereographic")' % camera)
         
-        img = self._calc_slice(map_val, pos)
+        n_images = 1
         
-        for k in xrange(steps):
+        if stack != 'all':
+            n_images = steps / stack + (1 if steps % stack else 0)
+        
+        #print 'n_images:', n_images
+        #print 'steps:', steps
+        #print 'stack:', stack
+        
+        shape = (n_images, u.shape[1], u.shape[2])
+        img = np.zeros(shape, dtype=map_val.dtype)
+        
+        kf = np.random.random(u.shape)
+        img[0] = self._calc_slice(map_val, pos+kf*u,
+                                  mask=mask,
+                                  interpolate=cumulative,
+                                  add_DM=add_DM)
+        
+        n_per_tick = int((steps-1) / 20)
+        n_per_tick = max(1, n_per_tick)
+        
+        img_idx = 0
+        
+        for k in xrange(steps-1):
             if verbose:
-                if k % int((steps) / 20) == 0:
+                if k % n_per_tick == 0:
                     sys.stdout.write('>')
                     sys.stdout.flush()
             
-            pos += u
-            img += self._calc_slice(map_val, pos)
+            if stack != 'all':
+                if (k+1) % stack == 0:
+                    img_idx += 1
+            
+            kf = np.float(k) + np.random.random(u.shape)
+            
+            #pos += u
+            img[img_idx] += self._calc_slice(map_val, pos+kf*u,
+                                             interpolate=cumulative,
+                                             add_DM=add_DM)
+            
+            #print ''
+            #print 'x'
+            #print pos[0]
+            #print ''
+            #print 'y'
+            #print pos[1]
+            #print ''
+            #print 'z'
+            #print pos[2]
+            #print ''
         
-        #img /= 2.*n_z + 1.
+        #img /= float(steps)
         
         if verbose:
             dt = time.time() - t_start
             sys.stdout.write('] %.1f s \n' % dt)
             sys.stdout.flush()
+        
+        #print 'img_idx:', img_idx
         
         return img
     
