@@ -351,6 +351,86 @@ def load_output_file_unified(f, bounds=None,
     return pix_info, cloud_info, los_info, star_stack, DM_EBV_lim
 
 
+def load_output_file_compact(f, bounds=None,
+                                max_samples=None,
+                                load_stacked_pdfs=False):
+    # Pixel locations
+    print 'Loading pixel information'
+    dset = f['pixel_info']
+    nside = dset['nside'][:]
+    pix_idx = dset['healpix_index'][:].astype('i8')
+    cloud_mask = np.zeros(nside.size, dtype=np.bool)
+    los_mask = np.ones(nside.size, dtype=np.bool)
+    n_stars = dset['n_stars'][:]
+    
+    DM_bin_edges = dset.attrs['DM_bin_edges'][:]
+    DM_min, DM_max = np.min(DM_bin_edges), np.max(DM_bin_edges)
+    EBV_min, EBV_max = 0., 5.
+    
+    # Cloud model
+    has_cloud = False
+    
+    # Piecewise-linear model
+    has_los = True
+    
+    dset = f['samples']
+    
+    print 'Loading piecewise-linear model...'
+    los_EBV = f['samples'][:,:max_samples,:]
+    los_lnp = np.empty(nside.size, dtype='f4')
+    los_lnp[:] = np.nan
+    los_GR = f['GRDiagnostic'][:]
+    
+    # Stacked pdfs
+    star_stack = None
+    
+    # Filter out-of-bounds pixels
+    if bounds != None:
+        print 'Filtering pixels by bounds...'
+        l = np.empty(nside.size, dtype='f8')
+        b = np.empty(nside.size, dtype='f8')
+        
+        for n in np.unique(nside):
+            idx = (nside == n)
+            l[idx], b[idx] = hputils.pix2lb(n, pix_idx[idx], nest=True)
+        
+        idx = hputils.lb_in_bounds(l, b, bounds)
+        
+        nside = nside[idx]
+        pix_idx = pix_idx[idx]
+        cloud_mask = cloud_mask[idx]
+        los_mask = los_mask[idx]
+        n_stars = n_stars[idx]
+        
+        los_EBV = los_EBV[idx]
+        los_GR = los_GR[idx]
+        los_lnp = los_lnp[idx]
+    
+    print 'Returning data...'
+    # Return
+    if len(pix_idx) == 0:
+        return None
+    
+    pix_info = (pix_idx, nside, cloud_mask, los_mask, n_stars)
+    
+    # Cloud information
+    cloud_info = None
+    
+    if has_cloud and (np.sum(cloud_mask) > 0):
+        cloud_info = (cloud_mu, cloud_delta_EBV, cloud_lnp, cloud_GR)
+    
+    # Piecewise-linear model information
+    los_info = None
+    
+    if has_los and (np.sum(los_mask) > 0):
+        los_info = (los_EBV, los_lnp, los_GR)
+    
+    # Limits on DM and E(B-V) (for l.o.s. fits and stacked surfaces)
+    DM_EBV_lim = (DM_min, DM_max, EBV_min, EBV_max)
+    
+    return pix_info, cloud_info, los_info, star_stack, DM_EBV_lim
+
+
 def load_output_file(fname, bounds=None,
                             max_samples=None,
                             load_stacked_pdfs=False):
@@ -405,6 +485,10 @@ def load_output_file(fname, bounds=None,
         ret = load_output_file_unified(f, bounds=bounds,
                                           max_samples=max_samples,
                                           load_stacked_pdfs=load_stacked_pdfs)
+    elif 'pixel_info' in f: # Compact filetype
+        ret = load_output_file_compact(f, bounds=bounds,
+                                          max_samples=max_samples,
+                                          load_stacked_pdfs=load_stacked_pdfs)
     else:  # Native Bayestar output
         ret = load_output_file_raw(f, bounds=bounds,
                                       max_samples=max_samples,
@@ -452,11 +536,17 @@ def load_multiple_outputs(fnames, processes=1,
     <processes>.
     '''
     
+    print('Loading:', fnames)
+    
+    if isinstance(fnames, str):
+        fnames = [fnames]
+    
     # Special case if only one process is requested
     if (processes == 1) or (len(fnames) == 1):
         data = LOSData()
         
         for fn in fnames:
+            print fn
             data.append(load_output_file(fn, bounds=bounds,
                                              max_samples=max_samples,
                                              load_stacked_pdfs=load_stacked_pdfs))
@@ -1181,6 +1271,16 @@ class LOSMapper:
         greater than the provided threshold will be masked out.
         '''
         
+        dmu = delta_mu
+        
+        if delta_mu != None:
+            if dmu < 0.:
+                d1 = 10.**(mu/5.-2.)
+                d2 = d1 + 0.5*dmu
+                d1 -= 0.5*dmu
+                mu = 5. * (2. + np.log10(d1))
+                dmu = mu - 5. * (2. + np.log10(d2))
+        
         EBV = None
         
         if fit == 'piecewise':
@@ -1192,13 +1292,6 @@ class LOSMapper:
         
         # Calculate rate of reddening (dEBV/dDM or dEBV/ds), if requested
         if delta_mu != None:
-            dmu = delta_mu
-            if dmu < 0.:
-                d1 = 10.**(mu/5.-2.)
-                d2 = d1 + dmu
-                dmu = mu - 5. * (2. + np.log10(d2))
-                #print mu, dmu, d1, d2, delta_mu
-            
             if fit == 'piecewise':
                 EBV -= self.calc_piecewise_EBV(mu-dmu)
             elif fit == 'cloud':

@@ -1008,7 +1008,18 @@ class MapRasterizer:
         self.good_idx = ~(self.map_idx_full == -1)
         self.map_idx = self.map_idx_full[self.good_idx]
         
-        l_min, l_max = np.min(l[self.good_idx]), np.max(l[self.good_idx])
+        l_0 = np.mod(l_cent, 360.)
+        dl = np.mod(l - l_0, 360.)
+        dl[dl > 180.] -= 360.
+        #dl = np.mod(l - l_cent, 360.) - 180.
+        dl_min, dl_max = np.min(dl[self.good_idx]), np.max(dl[self.good_idx])
+        l_min = l_cent + dl_min
+        l_max = l_cent + dl_max
+        
+        print('l_cent = {0:.2f}'.format(l_cent))
+        print('dl_min/max = ({0:.2f}, {1:.2f})'.format(dl_min, dl_max))
+        print('l_min/max = ({0:.2f}, {1:.2f})'.format(l_min, l_max))
+        
         b_min, b_max = np.min(b[self.good_idx]), np.max(b[self.good_idx])
         
         self.lb_bounds = (l_max, l_min, b_min, b_max)
@@ -1289,14 +1300,18 @@ def plot_graticules(ax, rasterizer, l_lines, b_lines,
                     meridian_style=70., parallel_style='lh',
                     x_excise=5., y_excise=5.,
                     fontsize=8, txt_c='k', txt_path_effects=None,
-                    label_dist=3.5, label_ang_tol=20.,
+                    label_pad=5., label_dist=3.5, label_ang_tol=20.,
                     ls='-', thick_c='k', thin_c='k',
                     thick_alpha=0.2, thin_alpha=0.3,
-                    thick_lw=1., thin_lw=0.3):
+                    thick_lw=1., thin_lw=0.3,
+                    return_bbox=False):
                     
     '''
     Plot meridians and parallels.
     '''
+    
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
     
     # Auto-generate labels, if not given
     if l_formatter == None:
@@ -1337,6 +1352,15 @@ def plot_graticules(ax, rasterizer, l_lines, b_lines,
         x_para.append(x_tmp)#[idx])
         y_para.append(y_tmp)#[idx])
     
+    txt_list = []
+    
+    bbox = {
+        'facecolor': 'w',
+        'edgecolor': 'w',
+        'alpha': 0.0,
+        'boxstyle': 'round,pad={0}'.format(label_pad)
+    }
+    
     # Plot meridians and parallels
     for grat_style,lab_grat,x_grat,y_grat in zip([meridian_style, parallel_style],
                                                  [l_labels, b_labels],
@@ -1358,10 +1382,12 @@ def plot_graticules(ax, rasterizer, l_lines, b_lines,
                                                                  dist=label_dist,
                                                                  tol=label_ang_tol)
                         for k in k_use:
-                            ax.text(x_lab[k], y_lab[k], lab,
-                                    ha=ha[k], va=va[k], fontsize=fontsize,
-                                    color=txt_c, path_effects=txt_path_effects)
-                    
+                            t = ax.text(x_lab[k], y_lab[k], lab,
+                                        ha=ha[k], va=va[k], fontsize=fontsize,
+                                        color=txt_c, path_effects=txt_path_effects,
+                                        bbox=bbox)
+                            txt_list.append(t)
+                
                 elif type(grat_style) in [float, int, complex]:
                     if (not looped) or (type(grat_style) == complex):
                         pct = grat_style
@@ -1375,14 +1401,38 @@ def plot_graticules(ax, rasterizer, l_lines, b_lines,
                             idx_plot = ((x-x_lab)/x_excise)**2. + ((y-y_lab)/y_excise)**2. > 1.
                             #print np.sum(~idx_plot)
                             
-                            ax.text(x_lab[k], y_lab[k], lab,
-                                    ha=ha[k], va=va[k], fontsize=fontsize,
-                                    color=txt_c, path_effects=txt_path_effects)
+                            t = ax.text(x_lab[k], y_lab[k], lab,
+                                        ha=ha[k], va=va[k], fontsize=fontsize,
+                                        color=txt_c, path_effects=txt_path_effects,
+                                        bbox=bbox)
+                            txt_list.append(t)
                 
                 for idx in np.split(np.arange(idx_plot.size), np.nonzero(~idx_plot)[0]):
                     if len(idx) > 1:
                         ax.plot(x[idx], y[idx], ls=ls, c=thick_c, alpha=thick_alpha, lw=thick_lw)
                         ax.plot(x[idx], y[idx], ls=ls, c=thin_c, alpha=thin_alpha, lw=thin_lw)
+    
+    if return_bbox:
+        bounds = [[xlim[0], ylim[0]], [xlim[1], ylim[1]]]
+        #print('Original bounds:', bounds)
+        
+        renderer = ax.get_figure().canvas.get_renderer()
+        transf = ax.transData.inverted()
+        
+        for t in txt_list:
+            bb = t.get_window_extent(renderer).transformed(transf).get_points()
+            
+            bounds[0][0] = max(bounds[0][0], bb[0,0], bb[1,0])
+            bounds[1][0] = min(bounds[1][0], bb[0,0], bb[1,0])
+            
+            bounds[0][1] = min(bounds[0][1], bb[0,1], bb[1,1])
+            bounds[1][1] = max(bounds[1][1], bb[0,1], bb[1,1])
+        
+        #print('Final bounds:', bounds)
+        
+        bounds = [bounds[0][0], bounds[1][0], bounds[0][1], bounds[1][1]]
+        
+        return bounds
 
 
 class PixelIdentifier:
@@ -1591,9 +1641,20 @@ def segment_label_pos(x, y, flip_x=True, dist=5., tol=20.):
     if not flip_x:
         ha_new = ['right' if a=='left' else 'left' for a in ha]
     
+    #print('')
+    #print('raw dx:', dx)
+    #print('raw dy:', dy)
+    
     ds = np.sqrt(dx**2. + dy**2.)
     dx *= dist/ds
     dy *= dist/ds
+    
+    #print('dx:', dx)
+    #print('dy:', dy)
+    #print('theta:', theta)
+    #print('ha:', ha)
+    #print('va:', va)
+    #print('')
     
     x = np.array([x[-1], x[0]]) + dx
     y = np.array([y[-1], y[0]]) + dy
