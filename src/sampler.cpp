@@ -139,13 +139,13 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 	 * Don't allow NaN parameters
 	 */
 	if(isnan(x[0]) || isnan(x[1]) || isnan(x[2])) {
-		#pragma omp critical (cout)
+		/*#pragma omp critical (cout)
 		{
 		std::cerr << "Encountered NaN parameter value!" << std::endl;
 		std::cerr << "  " << x[0] << std::endl;
 		std::cerr << "  " << x[1] << std::endl;
 		std::cerr << "  " << x[2] << std::endl;
-		}
+		}*/
 		return neg_inf_replacement;
 	}
 
