@@ -31,7 +31,12 @@ import matplotlib.pyplot as plt
 
 import healpy as hp
 import numpy as np
-import pyfits
+
+try:
+    import astropy.io.fits as pyfits
+except ImportError:
+    import pyfits
+
 import h5py
 
 import lsd
@@ -423,6 +428,7 @@ def main():
         query_bounds = lsd.bounds.rectangle(query_bounds[0], query_bounds[2],
                                             query_bounds[1], query_bounds[3],
                                             coordsys='gal')
+    
     #query_bounds = (query_bounds, []) 
     query_bounds = lsd.bounds.make_canonical(query_bounds)
     
@@ -478,7 +484,6 @@ def main():
     nFiles = 0
     nInFile = 0
     
-    
     # Load HEALPix maps containing 2MASS limiting magnitudes
     tmass_maglim_map = None
     tmass_maglim_nside = None
@@ -487,7 +492,6 @@ def main():
         tmass_maglim_map = load_2MASS_maglim(values.tmass_maglim)
         tmass_maglim_nside = hp.pixelfunc.npix2nside(tmass_maglim_map.shape[0])
         print 'Loaded 2MASS limiting magnitude map with maximum nside of %d' % tmass_maglim_nside
-    
     
     # Write each pixel to the same file
     nest = True

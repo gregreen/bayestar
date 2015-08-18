@@ -331,7 +331,7 @@ def main():
 	parser.add_argument('-ppix', '--max-per-pix', type=int, default=None,
 	                    help='Take at most N nearest stars to center of pixel.')
 	parser.add_argument('--n-bands', type=int, default=4,
-	                    help='Min. # of1 passbands with detection.')
+	                    help='Min. # of passbands with detection.')
 	parser.add_argument('--n-PS1-bands', type=int, default=2,
 	                    help='Min. # of PS1 passbands with detection.')
 	parser.add_argument('--n-det', type=int, default=4,

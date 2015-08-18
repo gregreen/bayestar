@@ -78,6 +78,7 @@ struct TProgramOpts {
 	
 	bool SFD_prior;
 	bool SFD_subpixel;
+	double subpixel_max;
 	double ev_cut;
 
 	unsigned int N_runs;
@@ -137,6 +138,7 @@ struct TProgramOpts {
 		
 		SFD_prior = false;
 		SFD_subpixel = false;
+		subpixel_max = 1.e9;
 		ev_cut = 10.;
 
 		N_runs = 4;
@@ -207,6 +209,7 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
 		
 		("SFD-prior", "Use SFD E(B-V) as a prior on the total extinction in each pixel.")
 		("SFD-subpixel", "Use SFD E(B-V) as a subpixel template for the angular variation in reddening.")
+		("subpixel-max", po::value<double>(&(opts.subpixel_max)), ("Maximum subpixel value (above this values, stars will be filtered out). (default: " + to_string(opts.subpixel_max) + ")").c_str())
 		("evidence-cut", po::value<double>(&(opts.ev_cut)), ("Delta lnZ to use as threshold for including star "
 		                                                    "in l.o.s. fit (default: " + to_string(opts.ev_cut) + ")").c_str())
 
@@ -568,7 +571,7 @@ int main(int argc, char **argv) {
 		std::vector<double> subpixel;
 		lnZ_filtered.clear();
 		for(size_t n=0; n<conv.size(); n++) {
-			tmpFilter = conv[n] && (lnZ[n] > lnZmax - (25. + opts.ev_cut)) && !isnan(lnZ[n]) && !is_inf_replacement(lnZ[n]);
+			tmpFilter = conv[n] && (lnZ[n] > lnZmax - (25. + opts.ev_cut)) && !isnan(lnZ[n]) && !is_inf_replacement(lnZ[n]) && (stellar_data.star[n].EBV < opts.subpixel_max);
 			keep.push_back(tmpFilter);
 			if(tmpFilter) {
 				subpixel.push_back(stellar_data.star[n].EBV);
