@@ -82,15 +82,19 @@ include_directories(${GSL_INCLUDE_DIR})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DHAVE_INLINE=1 -DGSL_RANGE_CHECK=0")
 
 ### Boost
-set(BOOST_ROOT /n/sw/centos6/boost-1.54.0_gcc-4.8.0/)
+#set(BOOST_ROOT /n/sw/centos6/boost-1.54.0_gcc-4.8.0/)
+set(BOOST_ROOT /n/sw/fasrcsw/apps/Core/boost/1.59.0-fasrc01/)
 find_package(Boost 1.54 REQUIRED COMPONENTS program_options)
 include_directories(${Boost_INCLUDE_DIRS})
 MESSAGE( STATUS "Boost_LIBRARY_DIRS: ${Boost_LIBRARY_DIRS}" )
 MESSAGE( STATUS "Boost_INCLUDE_DIRS: ${Boost_INCLUDE_DIRS}" )
+#set(Boost_INCLUDE_DIRS /usr/include/boost/)
+MESSAGE( STATUS "Boost_INCLUDE_DIRS (manual override): ${Boost_INCLUDE_DIRS}" )
 MESSAGE( STATUS "Boost_LIBRARIES: ${Boost_LIBRARIES}" )
-set(Boost_LIBRARIES /n/sw/fasrcsw/apps/Core/boost/1.59.0-fasrc01/libboost_program_options.so.1.59.0)
-MESSAGE( STATUS "Boost_LIBRARIES (manual override): ${Boost_LIBRARIES}" )
+#set(Boost_LIBRARIES /usr/lib64/libboost_program_options.so.5)
+set(Boost_LIBRARIES /n/sw/fasrcsw/apps/Core/boost/1.59.0-fasrc01/lib/libboost_program_options.so.1.59.0)
 #set(Boost_LIBRARIES /n/sw/centos6/boost-1.54.0_gcc-4.8.0/lib/libboost_program_options.so.1.54.0)
+MESSAGE( STATUS "Boost_LIBRARIES (manual override): ${Boost_LIBRARIES}" )
 
 ### OpenMP support
 #find_package(OpenMP REQUIRED)
