@@ -47,9 +47,9 @@ include_directories("${PROJECT_BINARY_DIR}/src")
 # Optimizations
 #
 IF(NOT CMAKE_COMPILER_IS_GNUCXX)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ipo -axHOST -no-prec-div ")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -no-prec-div -ipo -xHost ")
 ELSE(NOT CMAKE_COMPILER_IS_GNUCXX)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -march=native ")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 ")
 ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
 
 #
