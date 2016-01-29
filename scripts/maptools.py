@@ -853,6 +853,8 @@ class LOSData:
         if not self._compact:
             self.concatenate()
         
+        print self.nside
+        
         n_pix = self.nside[0].size
         
         arr_list = []
@@ -1154,6 +1156,7 @@ class LOSMapper:
     
     def __init__(self, fnames, **kwargs):
         self.data = load_multiple_outputs(fnames, **kwargs)
+        print self.data.nside
         self.data.expand_missing()
         
         self.los_DM_anchor = self.data.get_los_DM_range()
@@ -1935,31 +1938,33 @@ def test_load_multiple():
 
 def test_plot_comparison():
     #img_path = '/nfs_pan1/www/ggreen/cloudmaps/AqS_2MASS_losbounded'
-    img_name = 'l30_comp'
-    img_path = '/n/fink1/ggreen/bayestar/movies/allsky_2MASS/l30/'
-    n_frames = 500
+    img_name = 'PV3oldR_PV3newR_comp'
+    img_path = '/n/fink1/ggreen/bayestar/testbeds/comparisons/img/'
+    n_frames = 200
     method = 'sample'
     
-    bounds = [30., 40., -3., 9.]
-    figsize = figsize=(32, 10.8)
+    bounds = [38., 50., -19., -15.5] #[38.7, 39.6, -17.1, -16.2]
+    figsize = (24, 10.8)
     size = (1200, 600)
     
-    EBV_max = 3.80
-    diff_max = 0.40
+    EBV_max = 0.70
+    diff_max = 0.20
     
     #fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.*.h5')
-    fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/allsky_2MASS/allsky_2MASS.*.h5')
-    fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/allsky/allsky.*.h5')
+    #fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/allsky_2MASS/allsky_2MASS.*.h5')
+    fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/testbeds/testbeds_PV3/output.v2/AquilaSouth.*.h5')
+    fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/testbeds/testbeds_PV3/output.v1/AquilaSouth.*.h5')
+    #fnames_1 = glob.glob('/n/fink1/ggreen/bayestar/output/allsky/allsky.*.h5')
     #fnames_2 = glob.glob('/n/fink1/ggreen/bayestar/output/AqS_2MASS_smE/AqS_2MASS.*.h5')
     #fnames_1 = ['/n/fink1/ggreen/bayestar/output/AquilaSouthLarge2/AquilaSouthLarge2.%.5d.h5' % i for i in xrange(25)]
     #fnames_2 = ['/n/fink1/ggreen/bayestar/output/gbright_giant/AquilaSouthLarge2/AquilaSouthLarge2.%.5d.h5' % i for i in xrange(25)]
     
     #label_1 = r'$\mathrm{PS1}$'
-    label_1 = r'$\mathrm{PS1}$'
-    label_2 = r'$\mathrm{PS1 + 2MASS}$'
+    label_1 = r'$\mathrm{PV3} \ \left( \mathrm{old} \ \vec{R} \right)$'#r'$\mathrm{PV3} \ \left( f_h = 0.0006 \right)$'
+    label_2 = r'$\mathrm{PV3} \ \left( \mathrm{new} \ \vec{R} \right)$'#r'$\mathrm{PV3} \ \left( f_h = 0.0030 \right)$'
     
-    mapper_1 = LOSMapper(fnames_1, processes=4, load_stacked_pdfs=False, bounds=bounds)
-    mapper_2 = LOSMapper(fnames_2, processes=4, load_stacked_pdfs=False, bounds=bounds)
+    mapper_1 = LOSMapper(fnames_1, processes=1, load_stacked_pdfs=False, bounds=bounds)
+    mapper_2 = LOSMapper(fnames_2, processes=1, load_stacked_pdfs=False, bounds=bounds)
     
     #mapper_1.data.sort()
     #mapper_2.data.sort()
@@ -2076,10 +2081,10 @@ def test_plot_comparison():
         x_txt = bounds[0] + 0.05 * w
         y_txt = bounds[3] - 0.05 * h
         
-        for a,lbl in zip([ax_1, ax_2], [label_1, label_2]):
+        for a,lbl,lc in zip([ax_1, ax_2], [label_1, label_2], 'rg'):
             txt = a.text(x_txt, y_txt, lbl,
                          ha='left', va='top', fontsize=22,
-                         path_effects=[PathEffects.withStroke(linewidth=2, foreground='k')])
+                         path_effects=[PathEffects.withStroke(linewidth=2, foreground=lc)])
             #txt.set_path_effects([PathEffects.Stroke(linewidth=2, foreground='w')])
         
         #
@@ -2154,7 +2159,7 @@ def test_plot_comparison():
         ax.set_xlim(mu_range[0], mu_range[-1])
         
         #print 'Saving to %s/2MASS_res_comp.%.5d.png ...' % (img_path, i)
-        fig.savefig('%s/%s.%.5d.png' % (img_path, img_name, i), dpi=100)
+        fig.savefig('%s/%s.%.5d.png' % (img_path, img_name, i), dpi=100, bbox_inches='tight')
         plt.close(fig)
 
 
@@ -2549,7 +2554,8 @@ def test_save_lowres_map():
 
 def main():
     #test_save_lowres_map()
-    test_pinhole_proj()
+    #test_pinhole_proj()
+    test_plot_comparison()
     
     return 0
 
