@@ -34,6 +34,7 @@
 #include <cstring>
 #include <sstream>
 #include <math.h>
+#include <numeric>
 #include <time.h>
 
 #include <stdint.h>

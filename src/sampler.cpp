@@ -802,8 +802,8 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 	}
 
 	double min[2] = {0., DM_min};
-	double max[2] = {5., DM_max};
-	unsigned int N_bins[2] = {500, 120};
+	double max[2] = {7., DM_max};
+	unsigned int N_bins[2] = {700, 120};
 	TRect rect(min, max, N_bins);
 
 	if(gatherSurfs) {
@@ -963,8 +963,8 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	//std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
 
 	double min[2] = {minEBV, DM_min};
-	double max[2] = {5., DM_max};
-	unsigned int N_bins[2] = {500, 120};
+	double max[2] = {7., DM_max};
+	unsigned int N_bins[2] = {700, 120};
 	TRect rect(min, max, N_bins);
 
 	if(gatherSurfs) {

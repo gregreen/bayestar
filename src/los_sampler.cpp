@@ -633,8 +633,8 @@ void sample_los_extinction(const std::string& out_fname, const std::string& grou
 	//sampler.step_MH(int(N_steps*2./15.), false);
 	sampler.step(2*base_N_steps, false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(base_N_steps, switch_step, false);
-	sampler.step_custom_reversible(base_N_steps, mix_step, false);
+	sampler.step_custom_reversible(2*base_N_steps, switch_step, false);
+	//sampler.step_custom_reversible(base_N_steps, mix_step, false);
 	sampler.step_custom_reversible(base_N_steps, move_one_step, false);
 	
 	if(verbosity >= 2) {
@@ -686,22 +686,22 @@ void sample_los_extinction(const std::string& out_fname, const std::string& grou
 		
 		// Round 1 (5/15)
 		sampler.step(2*base_N_steps, true, 0., options.p_replacement);
-		sampler.step_custom_reversible(base_N_steps, switch_step, true);
-		sampler.step_custom_reversible(base_N_steps, mix_step, true);
+		sampler.step_custom_reversible(2*base_N_steps, switch_step, true);
+		//sampler.step_custom_reversible(base_N_steps, mix_step, true);
 		sampler.step_custom_reversible(base_N_steps, move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		// Round 2 (5/15)
 		sampler.step(2*base_N_steps, true, 0., options.p_replacement);
-		sampler.step_custom_reversible(base_N_steps, switch_step, true);
-		sampler.step_custom_reversible(base_N_steps, mix_step, true);
+		sampler.step_custom_reversible(2*base_N_steps, switch_step, true);
+		//sampler.step_custom_reversible(base_N_steps, mix_step, true);
 		sampler.step_custom_reversible(base_N_steps, move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		// Round 3 (5/15)
 		sampler.step(2*base_N_steps, true, 0., options.p_replacement);
-		sampler.step_custom_reversible(base_N_steps, switch_step, true);
-		sampler.step_custom_reversible(base_N_steps, mix_step, true);
+		sampler.step_custom_reversible(2*base_N_steps, switch_step, true);
+		//sampler.step_custom_reversible(base_N_steps, mix_step, true);
 		sampler.step_custom_reversible(base_N_steps, move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
@@ -1031,24 +1031,49 @@ void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, T
 
 // Guess upper limit for E(B-V) based on stacked probability surfaces
 double guess_EBV_max(TImgStack &img_stack) {
-	cv::Mat stack, row_avg, col_avg;
+	cv::Mat stack, col_avg;
 	
 	// Stack images
 	img_stack.stack(stack);
 	
 	// Sum across each EBV
 	cv::reduce(stack, col_avg, 1, CV_REDUCE_AVG);
-	double max_sum = *std::max_element(col_avg.begin<double>(), col_avg.end<double>());
-	int max = 1;
-	for(int i = col_avg.rows - 1; i > 0; i--) {
-		if(col_avg.at<float>(i, 0) > 0.001 * max_sum) {
-			max = i;
-			break;
-		}
+	//float max_sum = *std::max_element(col_avg.begin<float>(), col_avg.end<float>());
+	//std::cerr << "max_sum = " << max_sum << std::endl;
+	
+	double tot_weight = 0; //std::accumulate(col_avg.begin<float>(), col_avg.end<float>(), 0);
+	
+	for(int i = 0; i < col_avg.rows; i++) {
+	    tot_weight += col_avg.at<float>(i, 0);
+	    //std::cerr << "col_avg.at<float>(" << i << ", 0) = " << col_avg.at<float>(i, 0) << std::endl;
 	}
 	
+	//std::cerr << "tot_weight = " << tot_weight << std::endl;
+	
+	double partial_sum_weight = 0.;
+	
+	for(int i = 0; i < col_avg.rows; i++) {
+	    partial_sum_weight += col_avg.at<float>(i, 0);
+	    if(partial_sum_weight > 0.90 * tot_weight) {
+	        // Return E(B-V) corresponding to bin index
+	        return (double)i * img_stack.rect->dx[0] + img_stack.rect->min[0];
+	        //std::cerr << "Passed 90% of weight at " << i << std::endl;
+	    }
+	}
+	
+	return (col_avg.rows - 1) * img_stack.rect->dx[0] + img_stack.rect->min[0];
+	
+	//int max = 1;
+	//for(int i = col_avg.rows - 1; i > 0; i--) {
+	//    std::cerr << "  " << i << " : " << col_avg.at<float>(i, 0) << std::endl;
+	//	if(col_avg.at<float>(i, 0) > 0.01 * max_sum) {
+	//		max = i;
+	//		break;
+	//	}
+	//}
+	
 	// Convert bin index to E(B-V)
-	return max * img_stack.rect->dx[0] + img_stack.rect->min[0];
+	//return max * img_stack.rect->dx[0] + img_stack.rect->min[0];
 }
 
 void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, int verbosity) {
