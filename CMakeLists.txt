@@ -27,7 +27,7 @@ IF(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
 		SET(GIT_BUILD_VERSION 0)
 	ENDIF(GIT_FOUND)
 ELSE(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
-        SET(GIT_BUILD_VERSION "$ENV{BAYESTARCOMMIT}")
+	SET(GIT_BUILD_VERSION "$ENV{BAYESTARCOMMIT}")
 ENDIF(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
 
 #
@@ -47,9 +47,9 @@ include_directories("${PROJECT_BINARY_DIR}/src")
 # Optimizations
 #
 IF(NOT CMAKE_COMPILER_IS_GNUCXX)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -no-prec-div -ipo -xHost ")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ipo -axHOST -no-prec-div ")
 ELSE(NOT CMAKE_COMPILER_IS_GNUCXX)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -march=native ")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native ")
 ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
 
 #
@@ -82,19 +82,11 @@ include_directories(${GSL_INCLUDE_DIR})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DHAVE_INLINE=1 -DGSL_RANGE_CHECK=0")
 
 ### Boost
-#set(BOOST_ROOT /n/sw/centos6/boost-1.54.0_gcc-4.8.0/)
-set(BOOST_ROOT /n/sw/fasrcsw/apps/Core/boost/1.59.0-fasrc01/)
-find_package(Boost 1.54 REQUIRED COMPONENTS program_options)
+find_package(Boost REQUIRED COMPONENTS program_options)
 include_directories(${Boost_INCLUDE_DIRS})
-MESSAGE( STATUS "Boost_LIBRARY_DIRS: ${Boost_LIBRARY_DIRS}" )
 MESSAGE( STATUS "Boost_INCLUDE_DIRS: ${Boost_INCLUDE_DIRS}" )
-#set(Boost_INCLUDE_DIRS /usr/include/boost/)
-MESSAGE( STATUS "Boost_INCLUDE_DIRS (manual override): ${Boost_INCLUDE_DIRS}" )
 MESSAGE( STATUS "Boost_LIBRARIES: ${Boost_LIBRARIES}" )
-#set(Boost_LIBRARIES /usr/lib64/libboost_program_options.so.5)
-set(Boost_LIBRARIES /n/sw/fasrcsw/apps/Core/boost/1.59.0-fasrc01/lib/libboost_program_options.so.1.59.0)
-#set(Boost_LIBRARIES /n/sw/centos6/boost-1.54.0_gcc-4.8.0/lib/libboost_program_options.so.1.54.0)
-MESSAGE( STATUS "Boost_LIBRARIES (manual override): ${Boost_LIBRARIES}" )
+
 
 ### OpenMP support
 #find_package(OpenMP REQUIRED)
