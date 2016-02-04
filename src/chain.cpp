@@ -833,7 +833,7 @@ void TImgWriteBuffer::write(const std::string& fname, const std::string& group, 
 	}
 	H5::DataSpace dspace(rank, &(dim[0]));
 	H5::DSetCreatPropList plist;
-	plist.setDeflate(9);	// gzip compression level
+	plist.setDeflate(3);	// gzip compression level
 	plist.setChunk(rank, &(chunk_dim[0]));
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
@@ -972,7 +972,7 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 	hsize_t dim[3] = {length_, nSamples_+2, nDim_};
 	H5::DataSpace dspace(rank, &(dim[0]));
 	H5::DSetCreatPropList plist;
-	plist.setDeflate(9);	// gzip compression level
+	plist.setDeflate(3);	// gzip compression level
 	plist.setChunk(rank, &(dim[0]));
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
@@ -1026,7 +1026,7 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 		H5::DSetCreatPropList metaProp;
 		TChainMetadata emptyMetadata = {0, 0};
 		metaProp.setFillValue(metaType, &emptyMetadata);
-		metaProp.setDeflate(9);
+		metaProp.setDeflate(3);
 		metaProp.setChunk(rank, &(dim[0]));
 		
 		H5::DataSet* metaDataset = new H5::DataSet(h5group->createDataSet(meta, metaType, metaSpace, metaProp));

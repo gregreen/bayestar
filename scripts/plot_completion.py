@@ -34,9 +34,11 @@ from matplotlib.colors import ListedColormap, BoundaryNorm
 import argparse, sys, time, glob
 from os.path import expanduser, abspath
 import os.path
+import subprocess
 
 import cPickle
 import gzip
+import ujson as json
 
 import healpy as hp
 import h5py
@@ -51,6 +53,36 @@ pallette = {'orange': (0.9, 0.6, 0.),
             'blue': (0., 0.45, 0.7),
             'vermillion': (0.8, 0.4, 0.),
             'reddish purple': (0.8, 0.6, 0.7)}
+
+
+def multires2nside(nside_multires, pix_idx_multires,
+                   pix_val_multires, nside_target,
+                   fill=np.nan):
+    
+    npix_hires = hp.pixelfunc.nside2npix(nside_target)
+    pix_val_hires = np.empty(npix_hires, dtype=pix_val_multires.dtype)
+    pix_val_hires[:] = fill
+    
+    for nside in np.unique(nside_multires):
+        # Get indices of all pixels at current nside level
+        idx = (nside_multires == nside)
+        
+        # Extract E(B-V) of each selected pixel
+        pix_val_n = pix_val_multires[idx]
+        
+        # Determine nested index of each selected pixel in upsampled map
+        mult_factor = (nside_target/nside)**2
+        pix_idx_n = pix_idx_multires[idx] * mult_factor
+        
+        # Write the selected pixels into the upsampled map
+        for offset in range(mult_factor):
+            pix_val_hires[pix_idx_n+offset] = pix_val_n[:]
+    
+    return pix_val_hires
+
+
+def downsample_by_2(pix_val):
+    return 0.25 * (pix_val[::4] + pix_val[1::4] + pix_val[2::4] + pix_val[3::4])
 
 
 class PixelIdentifier:
@@ -212,6 +244,40 @@ class TCompletion:
         self.has_los = data['has_los']
         
         return True
+    
+    def gen_status_json(self, fname):
+        n_pix = self.nside.size
+        pix_status = np.zeros(n_pix, dtype='f8')
+        pix_status[self.has_indiv] = 1.
+        pix_status[self.has_los] = 2.
+        pix_status[self.get_defunct_pix()] = 3.
+        
+        nside_hires = np.max(self.nside)
+        
+        pix_status_hires = multires2nside(
+            self.nside,
+            self.pix_idx,
+            pix_status,
+            nside_hires
+        )
+        
+        pix_status_lowres = downsample_by_2(downsample_by_2(pix_status_hires))
+        nside_lowres = nside_hires / 4
+        
+        pix_status_lowres[~np.isfinite(pix_status_lowres)] = -1.
+        
+        s = json.dumps({
+            'nside': nside_lowres,
+            'order': 'nest',
+            'vmin': 0.,
+            'vmax': 3.,
+            'pixval': np.round(pix_status_lowres, decimals=1).tolist()
+        })
+        
+        f = open(fname, 'w')
+        f.write(s)
+        f.close()
+        
     
     def get_mtime_safe(self, fname):
         try:
@@ -500,8 +566,10 @@ def main():
                                            help='Directory with Bayestar input files.')
     parser.add_argument('--outdir', '-o', type=str, required=True,
                                            help='Directory with Bayestar output files.')
-    parser.add_argument('--plot-fname', '-plt', type=str, required=True,
+    parser.add_argument('--plot-fname', '-plt', type=str, required=False, default=None,
                                            help='Output filename for plot.')
+    parser.add_argument('--json-dir', '-jsdir', type=str, required=False, default=None,
+                                           help='Directory to put JSON status files.')
     parser.add_argument('--figsize', '-fs', type=int, nargs=2, default=(8, 4),
                                            help='Figure size (in inches).')
     parser.add_argument('--dpi', '-dpi', type=float, default=200,
@@ -540,6 +608,14 @@ def main():
     else:
         raise ValueError("Unrecognized projection: '%s'" % args.proj)
     
+    # Initialize completion log
+    print 'Loading completion counter...'
+    completion = TCompletion(args.indir, args.outdir)
+    
+    if args.plot_fname:
+        print 'Initializing rasterizer...'
+        completion.init_rasterizer(img_shape, proj=proj, l_cent=l_cent, b_cent=b_cent)
+    
     l_cent, b_cent = args.center_lb
     
     img_shape = (int(args.figsize[0] * 0.8 * args.dpi),
@@ -548,12 +624,6 @@ def main():
     # Generate grid lines
     ls = np.linspace(-180., 180., 19)
     bs = np.linspace(-90., 90., 19)[1:-1]
-    
-    # Initialize completion log
-    print 'Loading completion counter...'
-    completion = TCompletion(args.indir, args.outdir)
-    print 'Initializing rasterizer...'
-    completion.init_rasterizer(img_shape, proj=proj, l_cent=l_cent, b_cent=b_cent)
     
     # Matplotlib settings
     #mplib.rc('text', usetex=True)
@@ -575,6 +645,54 @@ def main():
         print 'Updating processing status...'
         completion.update()
         
+        timestr = time.strftime('%m.%d-%H:%M:%S')
+        
+        # Percentage complete, estimated time remaining
+        pct_complete = completion.get_pct_complete()
+        pct_complete_hist.append(pct_complete)
+        
+        rate = None
+        time_remaining = None
+        
+        if len(pct_complete_hist) > 1:
+            pct_comp_tmp = np.array(pct_complete_hist)
+            rate = 24. * np.diff(pct_comp_tmp) / args.interval
+            dist = np.arange(rate.size)[::-1]
+            w = np.exp(-dist.astype('f8'))
+            rate = np.sum(rate * w) / np.sum(w)
+            
+            time_remaining = (100. - pct_complete) / rate
+            
+            if not np.isfinite(time_remaining):
+                time_remaining = -1.
+        
+        # Dump JSON for completion webpage
+        if args.json_dir:
+            print 'Writing status to JSON...'
+            completion.gen_status_json(os.path.join(args.json_dir, 'status_map.json'))
+            
+            n_jobs_running = subprocess.check_output(r'sacct --format="State"', shell=True).count('RUNNING')
+            n_defunct_files = len(completion.get_defunct_idx())
+            
+            fairshare = None
+            try:
+                fairshare = float(subprocess.check_output(r'sshare --users="ggreen" --Users --format="FairShare" -nP', shell=True))
+            except:
+                print 'Failed to query fairshare.'
+            
+            f = open(os.path.join(args.json_dir, 'status_metadata.json'), 'w')
+            f.write(json.dumps({
+                'n_jobs_running': n_jobs_running,
+                'n_defunct_files': n_defunct_files,
+                'timestamp': timestr,
+                'time_remaining': time_remaining,
+                'rate': rate,
+                'pct_complete': pct_complete,
+                'fairshare': fairshare
+            }))
+            f.close()
+        
+        # Write incomplete and defunct files to an ASCII file
         print 'Outputting status to ASCII files...'
         f_idx = completion.get_incomplete_idx(method=args.method)
         f = open(os.path.normpath(args.outdir + '/incomplete.log'), 'w')
@@ -587,63 +705,50 @@ def main():
         f.close()
         
         # Plot completion map
-        print 'Plotting status map...'
-        
-        fig = plt.figure(figsize=args.figsize, dpi=args.dpi)
-        ax = fig.add_subplot(1,1,1)
-        
-        n_active = completion.to_ax(ax, method=args.method, l_lines=ls, b_lines=bs,
-                                                            l_spacing=0.5, b_spacing=0.5)
-        
-        # Labels, ticks, etc.
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_xticklabels([])
-        ax.set_yticklabels([])
-        
-        # Title
-        timestr = time.strftime('%m.%d-%H:%M:%S')
-        
-        pct_complete = completion.get_pct_complete()
-        pct_complete_hist.append(pct_complete)
-        
-        rate_str = ''
-        
-        if len(pct_complete_hist) > 1:
-            pct_comp_tmp = np.array(pct_complete_hist)
-            print pct_complete_hist
-            rate = 24. * np.diff(pct_comp_tmp) / args.interval
-            dist = np.arange(rate.size)[::-1]
-            w = np.exp(-dist.astype('f8'))
-            rate = np.sum(rate * w) / np.sum(w)
+        if args.plot_fname:
+            print 'Plotting status map...'
             
-            time_remaining = (100. - pct_complete) / rate
+            fig = plt.figure(figsize=args.figsize, dpi=args.dpi)
+            ax = fig.add_subplot(1,1,1)
             
-            rate_str = ', \ %.2f \%% / day \ (%.1f \ days \ remaining)' % (rate, time_remaining)
-        
-        title = r'$\mathrm{Status \ as \ of \ %s \ (%.2f \ \%%)%s}$' % (timestr, pct_complete, rate_str)
-        ax.set_title(title, fontsize=32)
-        
-        fig.tight_layout()
-        #fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.90)
-        # Allow user to determine healpix index
-        #pix_identifiers = []
-        #nside_max = np.max(completion.nside)
-        #pix_identifiers.append(PixelIdentifier(ax, nside_max, nest=True, proj=proj))
-        
-        # Save figure
-        print 'Saving plot ...'
-        plt_fname = args.plot_fname
-        if plt_fname.endswith('.png'):
-            plt_fname = plt_fname[:-4]
-        
-        fig.savefig(plt_fname + '.png', dpi=args.dpi)
-        
-        small_dpi = min(args.dpi, 1200./args.figsize[0])
-        fig.savefig(plt_fname + '_thumb.png', dpi=small_dpi)
-        
-        plt.close(fig)
-        del fig
+            n_active = completion.to_ax(ax, method=args.method, l_lines=ls, b_lines=bs,
+                                                                l_spacing=0.5, b_spacing=0.5)
+            
+            # Labels, ticks, etc.
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            
+            # Title
+            rate_str = ''
+            
+            if time_remaining:
+                rate_str = ', \ %.2f \%% / day \ (%.1f \ days \ remaining)' % (rate, time_remaining)
+            
+            title = r'$\mathrm{Status \ as \ of \ %s \ (%.2f \ \%%)%s}$' % (timestr, pct_complete, rate_str)
+            ax.set_title(title, fontsize=32)
+            
+            fig.tight_layout()
+            #fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.90)
+            # Allow user to determine healpix index
+            #pix_identifiers = []
+            #nside_max = np.max(completion.nside)
+            #pix_identifiers.append(PixelIdentifier(ax, nside_max, nest=True, proj=proj))
+            
+            # Save figure
+            print 'Saving plot ...'
+            plt_fname = args.plot_fname
+            if plt_fname.endswith('.png'):
+                plt_fname = plt_fname[:-4]
+            
+            fig.savefig(plt_fname + '.png', dpi=args.dpi)
+            
+            small_dpi = min(args.dpi, 1200./args.figsize[0])
+            fig.savefig(plt_fname + '_thumb.png', dpi=small_dpi)
+            
+            plt.close(fig)
+            del fig
         
         t_sleep = t_next - time.time()
         t_sleep = max([60., t_sleep])

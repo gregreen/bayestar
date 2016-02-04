@@ -31,6 +31,7 @@ import matplotlib.pyplot as plt
 
 import healpy as hp
 import numpy as np
+np.seterr(all='ignore')
 
 try:
     import astropy.io.fits as pyfits
@@ -61,10 +62,28 @@ def pix2lb(nside, ipix, nest=True):
     return l, b
 
 
-def adaptive_subdivide(pix_idx, nside, obj,
-                    n_stars_max, n_stars_min=10, nside_max=2048):
+def adaptive_subdivide(pix_idx, nside, obj, n_stars_max,
+                       n_stars_min=10, nside_max=2048, scale_by_opacity=False):
+    n_obj = len(obj)
+    n_max = n_stars_max[nside]
+    
+    # Scale threshold by (1 - (dust opacity)): more dust -> lower threshold
+    if scale_by_opacity:
+        ebv = obj['EBV'][:]
+        idx = np.isfinite(ebv)
+        if np.any(idx):
+            Av = 3.1 * np.median(ebv[np.isfinite(ebv)])
+            #ebv = np.min([ebv, 2.0])
+            scale_factor = 10.**(-0.4 * Av)
+            scale_factor = np.max([scale_factor, 0.25])
+            n_max = int(np.ceil(n_max * scale_factor))
+    
+    n_max = max(n_max, 12*n_stars_min)
+    
+    # print 'n_max: {} -> {} (EBV = {:.3f} mag)'.format(n_stars_max[nside], n_max, np.median(obj['EBV']))
+    
     # Subdivide pixel
-    if (len(obj) > n_stars_max[nside]) and (nside < nside_max):
+    if (n_obj > n_max) and (nside < nside_max):
         sub_pix_idx = lb2pix(nside*2, obj['l'], obj['b'], nest=True)
         
         # Check that all pixels have more than minimum # of pixels
@@ -89,7 +108,8 @@ def adaptive_subdivide(pix_idx, nside, obj,
             idx = (sub_pix_idx == i)
             
             tmp = adaptive_subdivide(i, nside*2, obj[idx],
-                                     n_stars_max, n_stars_min, nside_max)
+                                     n_stars_max, n_stars_min, nside_max,
+                                     scale_by_opacity=scale_by_opacity)
             
             for pix in tmp:
                 ret.append(pix)
@@ -197,13 +217,14 @@ def reducer(keyvalue):
     yield (pix_index, data)
 
 
-def subdivider(keyvalue, nside, n_stars_max, n_stars_min, nside_max):
+def subdivider(keyvalue, nside, n_stars_max, n_stars_min, nside_max, scale_by_opacity):
     pix_index, obj = keyvalue
     obj = lsd.colgroup.fromiter(obj, blocks=True)
     
     # Adaptively subdivide pixel
     ret = adaptive_subdivide(pix_index, nside, obj,
-                             n_stars_max, n_stars_min, nside_max)
+                             n_stars_max, n_stars_min, nside_max,
+                             scale_by_opacity)
     
     for subpixel in ret:
         sub_nside, sub_idx, sub_obj = subpixel
@@ -336,6 +357,12 @@ def load_2MASS_maglim(fnames):
     return stack
 
 
+def flux2mag(f_mean, f_sigma):
+    m_mean = -2.5 * np.log10(f_mean)
+    m_sigma = -2.5 / np.log(10.) * f_sigma / f_mean
+    return m_mean, m_sigma
+
+
 def main():
     parser = argparse.ArgumentParser(
                prog='query_lsd.py',
@@ -354,6 +381,8 @@ def main():
                         help='Minimum # of stars in pixel (default: 1).')
     parser.add_argument('-max', '--max-stars', type=int, default=50000,
                         help='Maximum # of stars in file')
+    parser.add_argument('-scale', '--scale-by-opacity', action='store_true',
+                        help='Scale threshold for pixel subdivision by [1 - (dust opacity)].')
     parser.add_argument('-sdss', '--sdss', action='store_true',
                         help='Only select objects identified in the SDSS catalog as stars.')
     parser.add_argument('-ext', '--maxAr', type=float, default=None,
@@ -367,6 +396,8 @@ def main():
     parser.add_argument('--tmass-maglim', type=str, nargs='+', default=None,
                         help='Filename of HEALPix maps containing 2MASS completeness,\n'
                              'estimated at different resolutions.')
+    parser.add_argument('--ps1-cat', type=str, default='ucal_magsqx_noref',
+                        help='PS1 catalog version to use.')
     if 'python' in sys.argv[0]:
         offset = 2
     else:
@@ -434,26 +465,55 @@ def main():
     
     # Set up the query
     db = lsd.DB(os.environ['LSD_DB'])
-    query = ("select equgal(ra, dec) as (l, b), "
-             "SFD.EBV(l, b) as EBV, "
-             "obj_id, maglimit, "
-             "mean, err, mean_ap, nmag_ok, "
-             "tmass.ph_qual as ph_qual, "
-             "tmass.use_src as use_src, "
-             "tmass.rd_flg as rd_flg, "
-             "tmass.ext_key as ext_key, "
-             "tmass.gal_contam as gal_contam, "
-             "tmass.cc_flg as cc_flg, "
-             "tmass.j_m as J, tmass.j_msigcom as J_sig, "
-             "tmass.h_m as H, tmass.h_msigcom as H_sig, "
-             "tmass.k_m as K, tmass.k_msigcom as K_sig "
-             "from ucal_magsqx_noref, "
-             "tmass(outer, matchedto=ucal_magsqx_noref, dmax=2.0, nmax=1)"
-             "where (numpy.sum(nmag_ok > 0, axis=1) >= 2) "
-             "& (numpy.sum(nmag_ok, axis=1) >= %d) "
-             "& (numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2)"
-             % (values.n_det))
+    query = None
     
+    if 'flux' in values.ps1_cat:
+        query = (
+            "select equgal(ra, dec) as (l, b), "
+            "SFD.EBV(l, b) as EBV, "
+            "obj_id, maglimit, "
+            "2.5/log(10.)*err/mean as err, -2.5*log10(mean) as mean, -2.5*log10(mean_ap) as mean_ap, nmag_ok, "
+            "tmass.ph_qual as ph_qual, "
+            "tmass.use_src as use_src, "
+            "tmass.rd_flg as rd_flg, "
+            "tmass.ext_key as ext_key, "
+            "tmass.gal_contam as gal_contam, "
+            "tmass.cc_flg as cc_flg, "
+            "tmass.j_m as J, tmass.j_msigcom as J_sig, "
+            "tmass.h_m as H, tmass.h_msigcom as H_sig, "
+            "tmass.k_m as K, tmass.k_msigcom as K_sig "
+            "from {ps1_cat:s}, "
+            "tmass(outer, matchedto={ps1_cat:s}, dmax=2.0, nmax=1) "
+            "where (numpy.sum(nmag_ok > 0, axis=1) >= 2) "
+            "& (numpy.sum(nmag_ok, axis=1) >= {n_det:d}) "
+            "& (numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2)"
+            "".format(
+              n_det=values.n_det,
+              ps1_cat=values.ps1_cat
+            ))
+    elif 'mags' in values.ps1_cat:
+        query = (
+            "select equgal(ra, dec) as (l, b), "
+            "SFD.EBV(l, b) as EBV, "
+            "obj_id, maglimit, "
+            "mean, err, mean_ap, nmag_ok, "
+            "tmass.ph_qual as ph_qual, "
+            "tmass.use_src as use_src, "
+            "tmass.rd_flg as rd_flg, "
+            "tmass.ext_key as ext_key, "
+            "tmass.gal_contam as gal_contam, "
+            "tmass.cc_flg as cc_flg, "
+            "tmass.j_m as J, tmass.j_msigcom as J_sig, "
+            "tmass.h_m as H, tmass.h_msigcom as H_sig, "
+            "tmass.k_m as K, tmass.k_msigcom as K_sig "
+            "from {ps1_cat:s}, "
+            "tmass(outer, matchedto={ps1_cat:s}, dmax=2.0, nmax=1) "
+            "where (numpy.sum(nmag_ok > 0, axis=1) >= 2) "
+            "& (numpy.sum(nmag_ok, axis=1) >= {n_det:d}) "
+            "& (numpy.sum(mean - mean_ap < 0.1, axis=1) >= 2)".format(
+              n_det=values.n_det,
+              ps1_cat=values.ps1_cat
+            ))
     query = db.query(query)
     
     # Initialize stats on pixels, # of stars, etc.
@@ -497,14 +557,9 @@ def main():
     nest = True
     for (pix_info, obj) in query.execute([(mapper, values.nside_min, nest, values.bounds),
                                           reducer,
-                                          (subdivider, values.nside_min, n_stars_max, values.min_stars, values.nside_max)],
+                                          (subdivider, values.nside_min, n_stars_max, values.min_stars, values.nside_max, values.scale_by_opacity)],
                                           bounds=query_bounds,
                                           nworkers=values.n_workers):
-        # Filter out pixels that have too few stars
-        if len(obj) < values.min_stars:
-            N_pix_too_sparse += 1
-            continue
-        
         nside, pix_index = pix_info
         
         # Filter out pixels that are outside of bounds
@@ -514,6 +569,12 @@ def main():
             if not hputils.lb_in_bounds(l_center, b_center, values.bounds):
                 N_pix_out_of_bounds += 1
                 continue
+        
+        # Filter out pixels that have too few stars
+        if len(obj) < values.min_stars:
+            N_pix_too_sparse += 1
+            print '({:.3f}, {:.3f}) : {:d} stars'.format(l_center, b_center, len(obj))
+            continue
         
         # Fix 2MASS magnitude limits
         if tmass_maglim_map != None:
