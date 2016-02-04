@@ -671,7 +671,7 @@ def main():
             print 'Writing status to JSON...'
             completion.gen_status_json(os.path.join(args.json_dir, 'status_map.json'))
             
-            n_jobs_running = subprocess.check_output(r'sacct --format="Exitcode"', shell=True).count('RUNNING')
+            n_jobs_running = subprocess.check_output(r'sacct --format="State"', shell=True).count('RUNNING')
             n_defunct_files = len(completion.get_defunct_idx())
             
             fairshare = None
