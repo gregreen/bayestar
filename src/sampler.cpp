@@ -1208,6 +1208,7 @@ inline void seed_gsl_rng(gsl_rng **r) {
 	clock_gettime(CLOCK_REALTIME, &t_seed);
 	long unsigned int seed = 1e9*(long unsigned int)t_seed.tv_sec;
 	seed += t_seed.tv_nsec;
+	seed ^= (long unsigned int)getpid();
 	*r = gsl_rng_alloc(gsl_rng_taus);
 	gsl_rng_set(*r, seed);
 }

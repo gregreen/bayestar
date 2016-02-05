@@ -127,6 +127,35 @@ struct TLOSMCMCParams {
 	
 };
 
+
+struct TDiscreteLosMcmcParams {
+    TImgStack *img_stack;   // Stack of (distance, reddening) posteriors for stars
+    double y_zero_idx;
+    
+    float *line_int;       // Line integral through line of sight for each thread
+    int16_t *E_pix_idx;     // LOS reddening profile, in the form of the pixel y-index at each distance (for each thread)
+    
+    unsigned int N_runs;    // # of times to repeat inference (to check convergence)
+	unsigned int N_threads; // # of threads (can be less than # of runs)
+	
+	TDiscreteLosMcmcParams(TImgStack *_img_stack, unsigned int _N_runs, unsigned int _N_threads);
+	~TDiscreteLosMcmcParams();
+	
+	// Access fit information for one thread
+	float* get_line_int(unsigned int thread_num);
+	int16_t* get_E_pix_idx(unsigned int thread_num);
+	
+	// Line-of-sight integral calculations
+	void los_integral_discrete(const int16_t *const y_idx, float *const line_int_ret);
+	void los_integral_diff_step(const int16_t x_idx, const int16_t y_idx_old,
+                                const int16_t y_idx_new, float *const delta_line_int_ret);
+    void los_integral_diff_swap(const int16_t x0_idx, const int16_t *const y_idx,
+                                float *const delta_line_int_ret);
+    
+    void guess_EBV_profile_discrete(int16_t *const y_idx_ret, gsl_rng *r);
+};
+
+
 // Transform from log(DeltaEBV) to cumulative EBV for piecewise-linear l.o.s. fit
 class TLOSTransform : public TTransformParamSpace {
 private:
