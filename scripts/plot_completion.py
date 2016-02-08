@@ -55,6 +55,16 @@ pallette = {'orange': (0.9, 0.6, 0.),
             'reddish purple': (0.8, 0.6, 0.7)}
 
 
+# Trap SEGFAULTs
+import signal
+def segfault_handler(signal, frame):
+    print 'SEGFAULT trapped.'
+    raise IOError('SEGFAULT likely caused by failed HDF5 read.')
+
+signal.signal(signal.SIGSEGV, segfault_handler)
+
+
+# Resample a multi-resolution HEALPix image to one NSIDE level
 def multires2nside(nside_multires, pix_idx_multires,
                    pix_val_multires, nside_target,
                    fill=np.nan):
@@ -187,6 +197,14 @@ class TCompletion:
         self.has_los = np.empty(self.nside.size, dtype=np.bool)
         self.has_los[:] = False
         
+        self.EBV = np.empty((self.nside.size, 3), dtype='f2')
+        self.EBV[:] = np.nan
+        
+        self.progress = [
+            [], # Time of update (in hours)
+            []  # % complete
+        ]
+        
         #self.has_indiv = dict.fromkeys(self.pix_name, False)
         #self.has_cloud = dict.fromkeys(self.pix_name, False)
         #self.has_los = dict.fromkeys(self.pix_name, False)
@@ -212,6 +230,8 @@ class TCompletion:
         data['has_indiv'] = self.has_indiv
         data['has_cloud'] = self.has_cloud
         data['has_los'] = self.has_los
+        data['EBV'] = self.EBV
+        data['progress'] = self.progress
         
         f = gzip.open(fname, 'wb')
         cPickle.dump(data, f)
@@ -242,8 +262,29 @@ class TCompletion:
         self.has_indiv = data['has_indiv']
         self.has_cloud = data['has_cloud']
         self.has_los = data['has_los']
+        self.EBV = data['EBV']
+        
+        #self.progress = [[],[]]
+        self.progress = data['progress']
         
         return True
+    
+    def get_rate(self, t_smooth=1.):
+        if len(self.progress[0]) < 2:
+            return None, None
+        
+        t_status = np.array(self.progress[0])
+        pct_complete = np.array(self.progress[1])
+        rate = 24. * np.diff(pct_complete) / np.diff(t_status)
+        w = np.exp(-0.5 * (t_status[-1] - t_status[:-1])**2. / t_smooth**2.)
+        
+        rate = np.sum(rate * w) / np.sum(w)
+        t_remaining = (100. - pct_complete[-1]) / rate
+        
+        if not np.isfinite(t_remaining):
+            t_remaining = -1.
+        
+        return rate, t_remaining
     
     def gen_status_json(self, fname):
         n_pix = self.nside.size
@@ -254,6 +295,7 @@ class TCompletion:
         
         nside_hires = np.max(self.nside)
         
+        # Pixel status
         pix_status_hires = multires2nside(
             self.nside,
             self.pix_idx,
@@ -266,11 +308,23 @@ class TCompletion:
         
         pix_status_lowres[~np.isfinite(pix_status_lowres)] = -1.
         
+        # E(B-V)
+        EBV_hires = multires2nside(
+            self.nside,
+            self.pix_idx,
+            self.EBV[:,-1],
+            nside_hires
+        )
+        
+        EBV_lowres = downsample_by_2(downsample_by_2(EBV_hires))
+        EBV_lowres[~np.isfinite(EBV_lowres)] = -1.
+        
         s = json.dumps({
             'nside': nside_lowres,
             'order': 'nest',
             'vmin': 0.,
             'vmax': 3.,
+            'EBV': np.round(EBV_lowres.astype('f8'), decimals=2).tolist(),
             'pixval': np.round(pix_status_lowres, decimals=1).tolist()
         })
         
@@ -311,10 +365,21 @@ class TCompletion:
                 self.has_indiv[idx] = ('stellar chains' in keys)
                 self.has_cloud[idx] = ('clouds' in keys)
                 self.has_los[idx] = ('los' in keys)
+                
+                if 'los' in keys:
+                    try:
+                        self.EBV[idx,:] = np.cumsum(np.exp(pixel['los'][0, 1, :]))[[10, 15, -1]]
+                    except Exception as error:
+                        print str(error)
+                        print 'Failed to load E(B-V) from pixel.'
             
             f.close()
         
+        self.progress[0].append(time.time()/3600.)
+        self.progress[1].append(self.get_pct_complete())
+        
         print 'Done processing output files.'
+        print 'Writing updates to disk ...'
         
         self.pickle(self.pickle_fname)
     
@@ -637,7 +702,7 @@ def main():
     
     t_start = time.time()
     
-    pct_complete_hist = []
+    #pct_complete_hist = []
     
     while time.time() - t_start < 3600. * args.maxtime:
         t_next = time.time() + 3600.*args.interval
@@ -649,22 +714,28 @@ def main():
         
         # Percentage complete, estimated time remaining
         pct_complete = completion.get_pct_complete()
-        pct_complete_hist.append(pct_complete)
+        rate, time_remaining = completion.get_rate()
         
-        rate = None
-        time_remaining = None
+        print 'Percent complete: {:.2f}%'.format(pct_complete)
+        print 'Rate: {:.2f}%/day'.format(rate)
+        print 'Time remaining: {:.2f} days'.format(time_remaining)
         
-        if len(pct_complete_hist) > 1:
-            pct_comp_tmp = np.array(pct_complete_hist)
-            rate = 24. * np.diff(pct_comp_tmp) / args.interval
-            dist = np.arange(rate.size)[::-1]
-            w = np.exp(-dist.astype('f8'))
-            rate = np.sum(rate * w) / np.sum(w)
-            
-            time_remaining = (100. - pct_complete) / rate
-            
-            if not np.isfinite(time_remaining):
-                time_remaining = -1.
+        #pct_complete_hist.append(pct_complete)
+        
+        #rate = None
+        #time_remaining = None
+        
+        #if len(pct_complete_hist) > 1:
+        #    pct_comp_tmp = np.array(pct_complete_hist)
+        #    rate = 24. * np.diff(pct_comp_tmp) / args.interval
+        #    dist = np.arange(rate.size)[::-1]
+        #    w = np.exp(-dist.astype('f8'))
+        #    rate = np.sum(rate * w) / np.sum(w)
+        #    
+        #    time_remaining = (100. - pct_complete) / rate
+        #    
+        #    if not np.isfinite(time_remaining):
+        #        time_remaining = -1.
         
         # Dump JSON for completion webpage
         if args.json_dir:
