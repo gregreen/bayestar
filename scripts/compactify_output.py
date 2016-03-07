@@ -31,7 +31,7 @@ def main():
 	parser = argparse.ArgumentParser(prog='compactify_output.py',
 	                                 description='Store line-of-sight output to one file.',
 	                                 add_help=True)
-	parser.add_argument('input', type=str, help='Bayestar output files.')
+	parser.add_argument('input', type=str, nargs='+', help='Bayestar output files.')
 	parser.add_argument('--unified', '-u', type=str, default=None,
 	                                     help='Filename for unified output.')
 	parser.add_argument('--stacks', action='store_true',
@@ -55,7 +55,10 @@ def main():
 	
 	# Load in line-of-sight data
 	print 'Loading Bayestar output files ...'
-	fnames = glob.glob(args.input)
+	fnames = []
+	for fn_pattern in args.input:
+	    fnames += glob.glob(fn_pattern)
+	
 	mapper = maptools.LOSMapper(fnames, bounds=args.bounds,
 	                                    processes=args.processes,
 	                                    load_stacked_pdfs=args.stacks,

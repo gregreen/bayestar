@@ -958,6 +958,8 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		//if(line_int[i] < 1.e5*params.p0) {
 		//	line_int[i] += params.p0 * exp(-line_int[i]/params.p0);
 		//}
+		//double tmp_line_int = line_int[i];
+		
 		if(line_int[i] > params.p0_over_Z[i]) {
 			lnp_indiv = log(line_int[i]) + log(1. + params.p0_over_Z[i] / line_int[i]);
 		} else {
@@ -966,9 +968,21 @@ double lnp_los_extinction(const double *const logEBV, unsigned int N, TLOSMCMCPa
 		
 		lnp += lnp_indiv;
 		
-		/*#pragma omp critical (cout)
-		{
-		std::cerr << i << "(" << params.ln_p0_over_Z[i] <<"): " << log(line_int[i]) << " --> " << lnp_indiv << std::endl;
+		/*double lnZ_tmp = params.lnp0 - params.ln_p0_over_Z[i];
+		double Z0_tmp = -5. - params.lnp0;
+		
+		if(lnZ_tmp < -Z0_tmp + 2.) {
+		    #pragma omp critical (cout)
+		    {
+		    std::cerr << "ln I_" << i << " : "
+		              << log(tmp_line_int) << " --> "
+		              << lnp_indiv
+		              << "  [ ln(p0 Z0 / Z_i) = "
+		              << params.ln_p0_over_Z[i]
+		              << " , ln(Z/Z0) = "
+		              << lnZ_tmp
+		              << " ]" << std::endl;
+		    }
 		}*/
 	}
 	

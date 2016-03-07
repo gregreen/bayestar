@@ -233,7 +233,7 @@ class TCompletion:
         data['EBV'] = self.EBV
         data['progress'] = self.progress
         
-        f = gzip.open(fname, 'wb')
+        f = gzip.open(fname, 'wb', 3)
         cPickle.dump(data, f)
         f.close()
     
@@ -268,6 +268,16 @@ class TCompletion:
         self.progress = data['progress']
         
         return True
+    
+    def lookup_pixel_infile(self, nside, pix_idx):
+        idx = np.nonzero((self.nside == nside) & (self.pix_idx == pix_idx))[0]
+        
+        if len(idx):
+            idx = idx[0]
+            infile_idx = self.infile_idx[idx]
+            return self.infiles[infile_idx]
+        
+        return None
     
     def get_rate(self, t_smooth=1.):
         if len(self.progress[0]) < 2:
@@ -649,6 +659,8 @@ def main():
                                            help='Measure of line-of-sight completion to show.')
     parser.add_argument('--interval', '-int', type=float, default=1.,
                                            help='Generate a picture every X hours.')
+    parser.add_argument('--t-smooth', '-ts', type=float, default=1.,
+                                           help='Smoothing timescale (in hours) for rate.')
     parser.add_argument('--maxtime', '-max', type=float, default=24.,
                                            help='Number of hours to continue monitoring job completion.')
     parser.add_argument('--defunct-time', '-dt', type=float, default=4.,
@@ -714,7 +726,7 @@ def main():
         
         # Percentage complete, estimated time remaining
         pct_complete = completion.get_pct_complete()
-        rate, time_remaining = completion.get_rate()
+        rate, time_remaining = completion.get_rate(t_smooth=args.t_smooth)
         
         print 'Percent complete: {:.2f}%'.format(pct_complete)
         print 'Rate: {:.2f}%/day'.format(rate)

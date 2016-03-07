@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 #       plotpdf.py
@@ -205,8 +205,8 @@ class TLOS:
 		kwargs['lw'] = 2.
 		kwargs['alpha'] = 0.5
 		
-		#ax.plot(self.mu, self.EBV_all[0], *args, **kwargs)
-		ax.plot(self.mu, np.median(self.EBV_all[1:], axis=0), *args, **kwargs)
+		ax.plot(self.mu, self.EBV_all[0], *args, **kwargs)
+		#ax.plot(self.mu, np.median(self.EBV_all[1:], axis=0), *args, **kwargs)
 		
 		ax.set_xlim(self.mu[0], self.mu[-1]) 
 		
@@ -238,6 +238,8 @@ def main():
 	                            help='Maximum # of figures to display (default: display all)')
 	parser.add_argument('--stretch', type=str, choices=('linear', 'sqrt', 'log'), default='sqrt',
 	                            help='Stretch for the color scale.')
+	parser.add_argument('-ec', '--ev-cut', type=float, default=10.,
+	                            help='Evidence cut at which to flag sources.')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -380,14 +382,14 @@ def main():
 		
 		c = 'k'
 		
-		if lnZ[i] < lnZ_max - 10.:
+		if lnZ[i] < lnZ_max - args.ev_cut:
 			c = 'r'
 		
-		#ax.text(x_lnZ, y_lnZ, r'$%.1f$' % lnZ[i],
-		#        ha='left', va='top', fontsize=10, color=c)
+		ax.text(x_lnZ, y_lnZ, r'${:.1f}$'.format(lnZ[i] - lnZ_max),
+		        ha='left', va='top', fontsize=10, color=c)
 		
-		#ax.text(x_idx, y_lnZ, r'$%d$' % i,
-		#        ha='right', va='top', fontsize=10, color='k')
+		ax.text(x_idx, y_lnZ, r'${:d}$'.format(i),
+		        ha='right', va='top', fontsize=10, color='k')
 		
 		if args.show_los:
 			los.plot(ax)
@@ -445,6 +447,7 @@ def main():
 		                    wspace=0., hspace=0.)
 		
 		fig.savefig('%s.%.4d.png' % (base_fname, i), transparent=True, bbox_inches='tight', dpi=400)
+		plt.close(fig)
 	
 	if args.show:
 		plt.show()
