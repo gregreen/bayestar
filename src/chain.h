@@ -225,7 +225,7 @@ public:
 	void add(const TChain &chain,
 	         bool converged = true,
 	         double lnZ = std::numeric_limits<double>::quiet_NaN(),
-		 double * GR = NULL
+		     double * GR = NULL
 	        );
 	
 	void reserve(unsigned int nReserved);

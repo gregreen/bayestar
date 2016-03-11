@@ -396,6 +396,8 @@ int main(int argc, char **argv) {
 	TMCMCOptions star_options(opts.star_steps, opts.star_samplers, opts.star_p_replacement, opts.N_runs);
 	TMCMCOptions cloud_options(opts.cloud_steps, opts.cloud_samplers, opts.cloud_p_replacement, opts.N_runs);
 	TMCMCOptions los_options(opts.los_steps, opts.los_samplers, opts.los_p_replacement, opts.N_runs);
+	
+	TMCMCOptions discrete_los_options(100000, 1, opts.los_p_replacement, opts.N_runs);    // TODO: Create commandline options for this
 
 
 	/*
@@ -586,7 +588,18 @@ int main(int argc, char **argv) {
 		if((nFiltered < conv.size()) && ((opts.N_clouds != 0) || (opts.N_regions != 0))) {
 			cout << "# of stars filtered: " << nFiltered << " of " << conv.size();
 			cout << " (" << 100. * (double)nFiltered / (double)(conv.size()) << " %)" << endl;
-
+            
+            cout << "Sampling line of sight discretely ..." << endl;
+            TDiscreteLosMcmcParams discrete_los_params(&img_stack, 1, 1);
+            sample_los_extinction_discrete(
+                opts.output_fname,
+                *it, 
+                discrete_los_options,
+                discrete_los_params,
+                opts.verbosity
+            );
+            cout << "Done with discrete sampling." << endl;
+            
 			double p0 = exp(-5. - opts.ev_cut);
 			double EBV_max = -1.;
 			if(opts.SFD_prior) {
