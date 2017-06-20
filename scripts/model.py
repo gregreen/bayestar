@@ -341,7 +341,7 @@ class TGalacticModel:
         
         return self.rho_ISM(r, z) * np.power(10., DM / 5.)
     
-    def EBV_prior(self, l, b, n_regions=20, EBV_per_kpc=0.2, sigma_bin=1.5, norm_dist=1.):
+    def EBV_prior(self, l, b, n_regions=20, EBV_per_kpc=0.2, sigma_bin=1.4, norm_dist=1.):
         mu_0, mu_1 = 4., 19.
         
         DM = np.linspace(mu_0, mu_1, n_regions+1)
@@ -412,8 +412,11 @@ class TGalacticModel:
         
         log_Delta_EBV += np.log(norm)
         
-        idx = (log_Delta_EBV < -8.)
-        log_Delta_EBV[idx] = -8.
+        idx = (log_Delta_EBV < -12.)
+        log_Delta_EBV[idx] = -12.
+        
+        idx = (log_Delta_EBV > -4.)
+        log_Delta_EBV[idx] = -4.
         
         return DM, log_Delta_EBV, sigma, mean_Delta_EBV, norm
 
@@ -474,10 +477,10 @@ class TStellarModel:
         #
         # Arbitrary comments
         #
-        # Mr    FeH   gr     ri     iz     zy
+        # Mr    FeH   gr     ri     iz     zy     yJ    JH    HK
         # 
-        -1.00 -2.50 0.5132 0.2444 0.1875 0.0298
-        -0.99 -2.50 0.5128 0.2442 0.1873 0.0297
+        -1.00 -2.50 0.5132 0.2444 0.1875 0.0298  ...
+        -0.99 -2.50 0.5128 0.2442 0.1873 0.0297  ...
         ...
         
         or something similar. A key point is that there be a row
@@ -490,7 +493,7 @@ class TStellarModel:
         
         f = open(abspath(template_fname), 'r')
         row = []
-        self.color_name = ['gr', 'ri', 'iz', 'zy']
+        self.color_name = ['gr', 'ri', 'iz', 'zy', 'yJ', 'JH', 'HK']
         for l in f:
             line = l.rstrip().lstrip()
             if len(line) == 0:    # Empty line
@@ -503,7 +506,7 @@ class TStellarModel:
                         pass
                 continue
             data = line.split()
-            if len(data) < 6:
+            if len(data) < 9:
                 print 'Error reading in stellar templates.'
                 print 'The following line does not have the correct number of entries (6 expected):'
                 print line
@@ -597,7 +600,7 @@ class TStellarModel:
         
         c = self.color(Mr, FeH)
         
-        dtype = [('g','f8'), ('r','f8'), ('i','f8'), ('z','f8'), ('y','f8')]
+        dtype = [('g','f8'), ('r','f8'), ('i','f8'), ('z','f8'), ('y','f8'), ('J','f8'), ('H','f8'), ('K','f8')]
         M = np.empty(c.shape, dtype=dtype)
         
         M['r'] = Mr
@@ -605,6 +608,9 @@ class TStellarModel:
         M['i'] = Mr - c['ri']
         M['z'] = M['i'] - c['iz']
         M['y'] = M['z'] - c['zy']
+        M['J'] = M['y'] - c['yJ']
+        M['H'] = M['J'] - c['JH']
+        M['K'] = M['H'] - c['HK']
         
         return M
     
@@ -645,14 +651,15 @@ def get_SFD_map(fname='~/projects/bayestar/data/SFD_Ebv_512.fits', nside=64):
 def min_max(x):
     return np.min(x), np.max(x)
 
-def plot_EBV_prior(nside=64):
+def plot_Delta_EBV_prior_max(nside=64):
     import healpy as hp
     
     model = TGalacticModel()
     
     n = np.arange(12 * nside**2)
-    EBV = np.empty(n.size)
-    norm = np.empty(n.size)
+    max_log_Delta = np.empty(n.size, dtype='f8')
+    EBV = np.empty(n.size, dtype='f8')
+    norm = np.empty(n.size, dtype='f8')
     
     for i in n:
         t, p = hp.pixelfunc.pix2ang(nside, i, nest=True)
@@ -661,6 +668,7 @@ def plot_EBV_prior(nside=64):
         
         DM, log_Delta_EBV, sigma_log_Delta_EBV, mean_Delta_EBV, norm_tmp = model.EBV_prior(l, b)
         
+        max_log_Delta[i] = np.max(log_Delta_EBV)
         EBV[i] = np.sum(mean_Delta_EBV)
         norm[i] = norm_tmp
         
@@ -695,6 +703,135 @@ def plot_EBV_prior(nside=64):
     vmin, vmax = min_max(np.log10(EBV_SFD))
     
     mplib.rc('text', usetex=True)
+    
+    m = np.empty(max_log_Delta.size, dtype='f8')
+    m[:] = -7.
+    
+    for k in [-6., -5., -4., -3., -2., -1., 0.]:
+        idx = (max_log_Delta > k)
+        m[idx] = k
+    
+    hp.visufunc.mollview(m, nest=True)
+    
+    plt.show()
+
+def Monte_Carlo_EBV_prior(nside=16, n_regions=30):
+    import healpy as hp
+    import hputils
+    
+    model = TGalacticModel()
+    
+    n = np.arange(12 * nside**2)
+    l, b = hputils.pix2lb(nside, n)
+    
+    log_Delta_EBV = np.empty((n.size, n_regions+1), dtype='f8')
+    sigma_log_Delta_EBV = None
+    
+    # Determine log(Delta EBV) in each pixel and bin
+    for i,ll,bb in zip(n,l,b):
+        DM, log_Delta_EBV_tmp, sigma_log_Delta_EBV, mean_Delta_EBV, norm_tmp = model.EBV_prior(ll, bb, n_regions=n_regions)
+        log_Delta_EBV[i,:] = log_Delta_EBV_tmp[:]
+    
+    sigma_log_Delta_EBV = sigma_log_Delta_EBV[0]
+    
+    # Simulate a sets of maps with different scatters in the bins
+    n_maps = 4
+    sigma = np.array([1., 1.5, 2.0])
+    #sigma = np.logspace(-2, 3, 11, base=2)
+    
+    EBV = np.empty((sigma.size, n_maps, n.size), dtype='f8')
+    EBV_smooth = np.sum(np.exp(log_Delta_EBV), axis=1)
+    
+    for k,s in enumerate(sigma):
+        for i in xrange(n_maps):
+            scatter = s * np.random.normal(size=(n.size, n_regions+1))
+            EBV[k,i,:] = np.sum(np.exp(log_Delta_EBV + scatter), axis=1) / EBV_smooth
+    
+    for s,m in zip(sigma, EBV[:,0,:]):
+        hp.visufunc.mollview(np.log10(m), nest=True, title=r'$\sigma = %.2f$' % s)
+    
+    # Exclude Galactic center
+    idx = ~hputils.lb_in_bounds(l, b, [-60., 60., -5., 5.])
+    EBV = EBV[:,:,idx]
+    
+    # Load SFD
+    EBV_SFD = get_SFD_map(nside=nside)
+    
+    hp.visufunc.mollview(np.log10(EBV_SFD), nest=True, title=r'$\mathrm{SFD} / \mathrm{smooth}$')
+    
+    n = np.arange(12 * nside**2)
+    l, b = hputils.pix2lb(nside, n)
+    
+    idx = ~hputils.lb_in_bounds(l, b, [-60., 60., -5., 5.])
+    EBV_SFD = EBV_SFD[idx]
+    
+    # Compare variance of prior with SFD
+    EBV_div = np.reshape(EBV, (sigma.size, EBV.size/sigma.size))
+    std_log = np.std(np.log10(EBV_div), axis=1)
+    std_SFD = np.std(np.log10(EBV_SFD / EBV_smooth))
+    
+    for sig,std in zip(sigma, std_log):
+        print 'bin: %.2f  map: %.2f  SFD: %.2f' % (sig, std, std_SFD)
+    
+    plt.show()
+
+def plot_EBV_prior(nside=64):
+    import healpy as hp
+    
+    model = TGalacticModel()
+    
+    n = np.arange(12 * nside**2)
+    EBV = np.empty(n.size)
+    norm = np.empty(n.size)
+    
+    for i in n:
+        t, p = hp.pixelfunc.pix2ang(nside, i, nest=True)
+        l = 180./np.pi * p
+        b = 90. - 180./np.pi * t
+        
+        DM, log_Delta_EBV, sigma_log_Delta_EBV, mean_Delta_EBV, norm_tmp = model.EBV_prior(l, b, n_regions=30)
+        
+        tmp = log_Delta_EBV + sigma_log_Delta_EBV * np.random.normal(size=log_Delta_EBV.shape)
+        
+        EBV[i] = np.sum(np.exp(tmp)) #np.sum(mean_Delta_EBV)
+        norm[i] = norm_tmp
+        
+        #print '(%.3f, %.3f): %.3f' % (l, b, EBV[i])
+    
+    print 'NaN:', np.sum(np.isnan(EBV))
+    print 'min/max:', np.min(EBV), np.max(EBV)
+    
+    print ''
+    print np.mean(norm), np.std(norm)
+    
+    # Compare to SFD
+    EBV_SFD = get_SFD_map(nside=nside)
+    
+    #print np.mean(EBV_SFD / EBV)
+    #print np.mean(EBV_SFD) / np.mean(EBV)
+    #print np.std(EBV_SFD), np.std(EBV)
+    
+    '''
+    # Normalize for b < 10, l > 10
+    t, p = hp.pixelfunc.pix2ang(nside, n, nest=True)
+    l = 180./np.pi * p
+    b = 90. - 180./np.pi * t
+    
+    idx = (np.abs(b) < 15.) & (l > 10.)
+    norm = np.median(EBV_SFD[idx]) / np.median(EBV[idx])
+    EBV *= norm
+    
+    idx = (np.abs(b) > 45.)
+    bias = np.median(EBV_SFD[idx]) - np.median(EBV[idx])
+    EBV += bias
+    
+    print 'Normalization = %.4g' % norm
+    print 'Additive const. = %.4g' % bias
+    '''
+    
+    vmin, vmax = min_max(np.log10(EBV_SFD))
+    
+    mplib.rc('text', usetex=True)
     hp.visufunc.mollview(np.log10(EBV), nest=True,
             title=r'$\log_{10} \mathrm{E} \left( B - V \right)$',
             min=vmin, max=vmax)
@@ -706,67 +843,7 @@ def plot_EBV_prior(nside=64):
             title=r'$\mathrm{SFD} - \mathrm{smooth \ model}$')
     
     plt.show()
-
-def Monte_Carlo_EBV_prior(nside=64, n_regions=20):
-    import healpy as hp
-    
-    model = TGalacticModel()
-    
-    n = np.arange(12 * nside**2)
-    t, p = hp.pixelfunc.pix2ang(nside, n, nest=True)
-    l = 180./np.pi * p
-    b = 90. - 180./np.pi * t
-    
-    log_Delta_EBV = np.empty((n.size, n_regions+1), dtype='f8')
-    
-    # Determine log(Delta EBV) in each pixel and bin
-    for i,ll,bb in zip(n,l,b):
-        DM, log_Delta_EBV_tmp, sigma_log_Delta_EBV, mean_Delta_EBV, norm_tmp = model.EBV_prior(ll, bb, n_regions=n_regions)
-        log_Delta_EBV[i,:] = log_Delta_EBV_tmp[:]
-    
-    # Simulate a sets of maps with different scatters in the bins
-    n_maps = 4
-    sigma = np.logspace(-2, 3, 11, base=2)
-    
-    EBV = np.empty((sigma.size, n_maps, n.size), dtype='f8')
-    
-    for k,s in enumerate(sigma):
-        for i in xrange(n_maps):
-            scatter = s * np.random.normal(size=(n.size, n_regions+1))
-            EBV[k,i,:] = np.sum(np.exp(log_Delta_EBV + scatter), axis=1)
-    
-    for s,m in zip(sigma, EBV[:,0,:]):
-        hp.visufunc.mollview(np.log10(m), nest=True, title=r'$\sigma = %.2f$' % s)
-    
-    # Exclude Galactic center
-    idx = (b > 20.)
-    #idx = ~((np.abs(l) < 90.) & (b < 10.))
-    #idx = (l > 0.) & (l < 50.) & (b > 40.) & (b < 50.)
-    EBV = EBV[:,:,idx]
-    
-    # Load SFD
-    EBV_SFD = get_SFD_map(nside=512)
-    
-    n = np.arange(12 * 512**2)
-    t, p = hp.pixelfunc.pix2ang(512, n, nest=True)
-    l = 180./np.pi * p
-    b = 90. - 180./np.pi * t
-    
-    idx = (b > 20.)
-    #idx = ~((np.abs(l) < 90.) & (b < 10.))
-    #idx = (l > 00.) & (l < 50.) & (b > 40.) & (b < 50.)
-    EBV_SFD = EBV_SFD[idx]
-    
-    # Compare variance of prior with SFD
-    EBV = np.reshape(EBV, (sigma.size, EBV.size/sigma.size))
-    std_log = np.std(np.log10(EBV), axis=1)
-    std_SFD = np.std(np.log10(EBV_SFD))
-    
-    for sig,std in zip(sigma, std_log):
-        print 'bin: %.2f  map: %.2f  SFD: %.2f' % (sig, std, std_SFD)
-    
-    plt.show()
-
+   
 def test_EBV_prior(l, b, nside=64):
     model = TGalacticModel()
     
@@ -902,11 +979,13 @@ def test_bug():
     print x_prime.shape
 
 def main():
+    #plot_Delta_EBV_prior_max()
+    
     #test_bug()
     
     #l, b = 45.3516, 1.41762
     
-    test_plot_bulge()
+    #test_plot_bulge()
     
     #print_rho(l, b)
     #plot_EBV_prior_profile(l, b)
@@ -921,6 +1000,7 @@ def main():
     test_EBV_prior(-10., 20., nside=32)'''
     
     #plot_EBV_prior(nside=16)
+    Monte_Carlo_EBV_prior(nside=16)
     
     '''
     for n_regions in [10, 20, 30, 40]:

@@ -173,10 +173,19 @@ void TStellarData::TMagnitudes::set(const TStellarData::TFileData& dat, double e
 		m[i] = dat.mag[i];
 		err[i] = sqrt(dat.err[i]*dat.err[i] + err_floor*err_floor);
 		maglimit[i] = dat.maglimit[i];
+		maglim_width[i] = 0.20;
 		if(err[i] < 9.e9) {	// Ignore missing bands (otherwise, they affect evidence)
 			lnL_norm += 0.9189385332 + log(err[i]);
 		}
 		N_det[i] = dat.N_det[i];
+		
+		// Specific tweaks to PS1 / 2MASS
+		if(i < 5) {
+			maglimit[i] += 0.16;	// Fix PS1 magnitude limit
+		} else {
+			maglimit[i] += 0.20;	// Increase 2MASS magnitude limit, to be conservative
+			maglim_width[i] = 0.30;	// Widen 2MASS magnitude cutoff
+		}
 	}
 	EBV = dat.EBV;
 }
@@ -270,6 +279,7 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 		
 		//double g_err = mag_tmp.err[0];
 		//mag_tmp.err[0] = sqrt(g_err*g_err + 0.1*0.1);
+		//star.push_back(mag_tmp);
 		
 		// Filter bright end
                 // TODO: Put this into query_lsd.py

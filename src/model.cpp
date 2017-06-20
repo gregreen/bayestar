@@ -1,26 +1,26 @@
 /*
  * model.cpp
- * 
+ *
  * Defines the stellar and galactic models.
- * 
+ *
  * This file is part of bayestar.
  * Copyright 2012 Gregory Green
- * 
+ *
  * Bayestar is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
  * MA 02110-1301, USA.
- * 
+ *
  */
 
 #include "model.h"
@@ -35,41 +35,41 @@
 
 
 /****************************************************************************************************************************
- * 
+ *
  * TGalStructParams
- * 
+ *
  ****************************************************************************************************************************/
 
 TGalStructParams::TGalStructParams() {
 	// Solar position
 	R0 = 8000;
 	Z0 = 25;
-	
+
 	// Thin disk
 	L1 = 2150;
 	H1 = 245;
-	
+
 	// Thick disk
 	f_thick = 0.13;
 	L2 = 3261;
 	H2 = 743;
-	
+
 	// Smoothing radial scale of disk
 	L_epsilon = 500;
-	
+
 	// Halo
 	fh = 0.0030; //0.0051;
 	qh = 0.70;
 	nh = -2.62;
 	R_br = 27800;
 	nh_outer = -3.8;
-	
+
 	// Drimmel & Spergel (2001)
 	H_ISM = 134.4;
 	L_ISM = 2260.;
 	dH_dR_ISM = 0.0148;
 	R_flair_ISM = 4400.;
-	
+
 	// Metallicity
 	mu_FeH_inf = -0.82;
 	delta_mu_FeH = 0.55;
@@ -78,15 +78,15 @@ TGalStructParams::TGalStructParams() {
 
 
 /****************************************************************************************************************************
- * 
+ *
  * TGalacticModel
- * 
+ *
  ****************************************************************************************************************************/
 
 TGalacticModel::TGalacticModel() {
 	TGalStructParams gal_struct_params;
 	set_struct_params(gal_struct_params);
-	
+
 	// IMF and SFR
 	disk_abundance = new TStellarAbundance(0);
 	halo_abundance = new TStellarAbundance(1);
@@ -94,7 +94,7 @@ TGalacticModel::TGalacticModel() {
 
 TGalacticModel::TGalacticModel(const TGalStructParams& gal_struct_params) {
 	set_struct_params(gal_struct_params);
-	
+
 	disk_abundance = new TStellarAbundance(0);
 	halo_abundance = new TStellarAbundance(1);
 }
@@ -109,19 +109,19 @@ void TGalacticModel::set_struct_params(const TGalStructParams& gal_struct_params
 	// Solar position
 	R0 = gal_struct_params.R0;
 	Z0 = gal_struct_params.Z0;
-	
+
 	// Thin disk
 	L1 = gal_struct_params.L1;
 	H1 = gal_struct_params.H1;
-	
+
 	// Thick disk
 	f_thick = gal_struct_params.f_thick;
 	L2 = gal_struct_params.L2;
 	H2 = gal_struct_params.H2;
-	
+
 	// Smoothing radial scale of disk
 	L_epsilon = gal_struct_params.L_epsilon;
-	
+
 	// Halo
 	fh = gal_struct_params.fh;
 	qh = gal_struct_params.qh;
@@ -130,13 +130,13 @@ void TGalacticModel::set_struct_params(const TGalStructParams& gal_struct_params
 	nh_outer = gal_struct_params.nh_outer;
 	fh_outer = fh * pow(R_br/R0, nh - nh_outer);
 	R_epsilon2 = gal_struct_params.R_epsilon * gal_struct_params.R_epsilon;
-	
+
 	// Smooth ISM disk
 	H_ISM = gal_struct_params.H_ISM;
 	L_ISM = gal_struct_params.L_ISM;
 	dH_dR_ISM = gal_struct_params.dH_dR_ISM;
 	R_flair_ISM = gal_struct_params.R_flair_ISM;
-	
+
 	// Metallicity
 	mu_FeH_inf = gal_struct_params.mu_FeH_inf;
 	delta_mu_FeH = gal_struct_params.delta_mu_FeH;
@@ -145,7 +145,7 @@ void TGalacticModel::set_struct_params(const TGalStructParams& gal_struct_params
 
 double TGalacticModel::rho_halo(double R, double Z) const {
 	double r_eff2 = R*R + (Z/qh)*(Z/qh) + R_epsilon2;
-	
+
 	if(r_eff2 <= R_br*R_br) {
 		return fh*pow(r_eff2/(R0*R0), nh/2.);
 	} else {
@@ -155,7 +155,7 @@ double TGalacticModel::rho_halo(double R, double Z) const {
 
 double TGalacticModel::rho_disk(double R, double Z) const {
 	double R_eff = sqrt(R*R + L_epsilon*L_epsilon);
-	
+
 	double rho_thin = exp(-(fabs(Z+Z0) - fabs(Z0))/H1 - (R_eff-R0)/L1);
 	double rho_thick = f_thick * exp(-(fabs(Z+Z0) - fabs(Z0))/H2 - (R_eff-R0)/L2);
 	return rho_thin + rho_thick;
@@ -164,16 +164,16 @@ double TGalacticModel::rho_disk(double R, double Z) const {
 double TGalacticModel::rho_ISM(double R, double Z) const {
 	double H = H_ISM;
 	if(R > R_flair_ISM) { H += (R - R_flair_ISM) * dH_dR_ISM; }
-	
+
 	double L_term;
 	if(R > 0.5 * R0) {
 		L_term = exp(-R / L_ISM);
 	} else {
 		L_term = exp(-0.5*R0 / L_ISM - (R - 0.5*R0)*(R - 0.5*R0)/(0.25 * R0*R0));
 	}
-	
+
 	double sqrt_H_term = cosh((Z+Z0) / H);
-	
+
 	return L_term / (sqrt_H_term * sqrt_H_term);
 }
 
@@ -184,22 +184,22 @@ double TGalacticModel::mu_FeH_disk(double Z) const {
 
 double TGalacticModel::log_p_FeH(double FeH, double R, double Z) const {
 	double f_H = rho_halo(R, Z) / rho_disk(R, Z);
-	
+
 	// Halo
 	double mu_H = -1.46;
 	double sigma_H = 0.3;
 	double P_tmp = f_H * exp(-(FeH-mu_H)*(FeH-mu_H)/(2.*sigma_H*sigma_H)) / (SQRT2PI*sigma_H);
-	
+
 	// Metal-poor disk
 	double mu_D = mu_FeH_disk(Z) - 0.067;
 	double sigma_D = 0.2;
 	P_tmp += 0.63 * (1-f_H) * exp(-(FeH-mu_D)*(FeH-mu_D)/(2.*sigma_D*sigma_D)) / (SQRT2PI*sigma_D);
-	
+
 	// Metal-rich disk
 	double mu_D_poor = mu_D + 0.14;
 	double sigma_D_poor = 0.2;
 	P_tmp += 0.37 * (1-f_H) * exp(-(FeH-mu_D_poor)*(FeH-mu_D_poor)/(2.*sigma_D_poor*sigma_D_poor)) / (SQRT2PI*sigma_D_poor);
-	
+
 	return log(P_tmp);
 }
 
@@ -209,7 +209,7 @@ double TGalacticModel::p_FeH(double FeH, double R, double Z, int component) cons
 		double mu_D = mu_FeH_disk(Z) - 0.067;
 		const double sigma_D = 0.2;
 		double P_tmp = 0.63 * exp(-(FeH-mu_D)*(FeH-mu_D)/(2.*sigma_D*sigma_D)) / (SQRT2PI*sigma_D);
-		
+
 		// Metal-rich disk
 		const double mu_D_poor = mu_D + 0.14;
 		const double sigma_D_poor = 0.2;
@@ -251,12 +251,12 @@ double TGalacticModel::SFR(double tau, int component) const {
 
 
 /****************************************************************************************************************************
- * 
+ *
  * TGalacticLOSModel
- * 
+ *
  ****************************************************************************************************************************/
 
-TGalacticLOSModel::TGalacticLOSModel(double _l, double _b) 
+TGalacticLOSModel::TGalacticLOSModel(double _l, double _b)
 	: TGalacticModel()
 {
 	init(_l, _b);
@@ -282,12 +282,12 @@ void TGalacticLOSModel::init(double _l, double _b) {
 	sin_l = sin(0.0174532925*l);
 	cos_b = cos(0.0174532925*b);
 	sin_b = sin(0.0174532925*b);
-	
+
 	// Precompute interpolation anchors for log(dN/dDM), f_halo and mu_FeH_disk
 	DM_min = 0.;
 	DM_max = 25.;
 	DM_samples = 10000;
-	
+
 	log_dNdmu_arr = new TLinearInterp(DM_min, DM_max, DM_samples);
 	f_halo_arr = new TLinearInterp(DM_min, DM_max, DM_samples);
 	mu_FeH_disk_arr = new TLinearInterp(DM_min, DM_max, DM_samples);
@@ -311,7 +311,7 @@ void TGalacticLOSModel::DM_to_RZ(double DM, double& R, double& Z) const {
 	double d = pow10(DM/5. + 1.);
 	double X = R0 - cos_l*cos_b*d;
 	double Y = -sin_l*cos_b*d;
-	
+
 	Z = sin_b*d;
 	R = sqrt(X*X + Y*Y);
 }
@@ -319,63 +319,63 @@ void TGalacticLOSModel::DM_to_RZ(double DM, double& R, double& Z) const {
 double TGalacticLOSModel::rho_disk_los(double DM) const {
 	double R, Z;
 	DM_to_RZ(DM, R, Z);
-	
+
 	return rho_disk(R, Z);
 }
 
 double TGalacticLOSModel::rho_halo_los(double DM) const {
 	double R, Z;
 	DM_to_RZ(DM, R, Z);
-	
+
 	return rho_halo(R, Z);
 }
 
 double TGalacticLOSModel::rho_ISM_los(double DM) const {
 	double R, Z;
 	DM_to_RZ(DM, R, Z);
-	
+
 	return rho_ISM(R, Z);
 }
 
 double TGalacticLOSModel::log_dNdmu_full(double DM) const {
 	double R, Z;
 	DM_to_RZ(DM, R, Z);
-	
+
 	double log_rho = log(rho_disk(R,Z) + rho_halo(R,Z));
 	double log_V = 3.*2.30258509/5. * DM;
-	
+
 	return log_rho + log_V;
 }
 
 double TGalacticLOSModel::f_halo_full(double DM) const {
 	double R, Z;
 	DM_to_RZ(DM, R, Z);
-	
+
 	double rho_halo_tmp = rho_halo(R, Z);
 	double rho_disk_tmp = rho_disk(R, Z);
 	double f_h_tmp = rho_halo_tmp / (rho_disk_tmp + rho_halo_tmp);
-	
+
 	return f_h_tmp;
 }
 
 double TGalacticLOSModel::log_p_FeH_fast(double DM, double FeH, double f_H) const {
 	if(f_H < 0.) { f_H = f_halo(DM); }
-	
+
 	// Halo
 	double mu_H = -1.46;
 	double sigma_H = 0.3;
 	double P_tmp = f_H * exp(-(FeH-mu_H)*(FeH-mu_H)/(2.*sigma_H*sigma_H)) / (SQRT2PI*sigma_H);
-	
+
 	// Metal-poor disk
 	double mu_D = mu_FeH_disk_interp(DM) - 0.067;
 	double sigma_D = 0.2;
 	P_tmp += 0.63 * (1-f_H) * exp(-(FeH-mu_D)*(FeH-mu_D)/(2.*sigma_D*sigma_D)) / (SQRT2PI*sigma_D);
-	
+
 	// Metal-rich disk
 	double mu_D_poor = mu_D + 0.14;
 	double sigma_D_poor = 0.2;
 	P_tmp += 0.37 * (1-f_H) * exp(-(FeH-mu_D_poor)*(FeH-mu_D_poor)/(2.*sigma_D_poor*sigma_D_poor)) / (SQRT2PI*sigma_D_poor);
-	
+
 	return log(P_tmp);
 }
 
@@ -403,7 +403,7 @@ double TGalacticLOSModel::p_FeH_fast(double DM, double FeH, int component) const
 		double mu_D = mu_FeH_disk_interp(DM) - 0.067;
 		const double sigma_D = 0.2;
 		double P_tmp = 0.63 * exp(-(FeH-mu_D)*(FeH-mu_D)/(2.*sigma_D*sigma_D)) / (SQRT2PI*sigma_D);
-		
+
 		// Metal-rich disk
 		double mu_D_poor = mu_D + 0.14;
 		const double sigma_D_poor = 0.2;
@@ -460,9 +460,9 @@ void TGalacticLOSModel::get_lb(double &_l, double &_b) const {
 
 
 /****************************************************************************************************************************
- * 
+ *
  * TSED
- * 
+ *
  ****************************************************************************************************************************/
 
 TSED::TSED() {
@@ -542,13 +542,13 @@ TSED& TSED::operator+=(const TSED &rhs) {
 
 
 /****************************************************************************************************************************
- * 
+ *
  * TStellarModel
- * 
+ *
  ****************************************************************************************************************************/
 
 TStellarModel::TStellarModel(std::string lf_fname, std::string seds_fname)
-	: sed_interp(NULL), log_lf_interp(NULL) 
+	: sed_interp(NULL), log_lf_interp(NULL)
 {
 	load_lf(lf_fname);
 	load_seds(seds_fname);
@@ -562,42 +562,42 @@ TStellarModel::~TStellarModel() {
 bool TStellarModel::load_lf(std::string lf_fname) {
 	std::ifstream in(lf_fname.c_str());
 	if(!in) { std::cerr << "Could not read LF from '" << lf_fname << "'\n"; return false; }
-	
+
 	double Mr0;
 	double dMr = -1;
 	log_lf_norm = 0.;
 	std::vector<double> lf;
 	lf.reserve(3000);
-	
+
 	// Determine length of file
 	std::string line;
 	double Mr, Phi;
 	while(std::getline(in, line)) {
 		if(!line.size()) { continue; }		// empty line
 		if(line[0] == '#') { continue; }	// comment
-		
+
 		std::istringstream ss(line);
 		ss >> Mr >> Phi;
-		
+
 		if(dMr == -1) {
 			Mr0 = Mr; dMr = 0;
 		} else if(dMr == 0) {
 			dMr = Mr - Mr0;
 		}
-		
+
 		lf.push_back(log(Phi));
 		log_lf_norm += Phi;
 	}
-	
+
 	double Mr1 = Mr0 + dMr*(lf.size()-1);
 	log_lf_interp = new TLinearInterp(Mr0, Mr1, lf.size());
 	for(unsigned int i=0; i<lf.size(); i++) { (*log_lf_interp)[i] = lf[i]; }
-	
+
 	log_lf_norm *= Mr1 / (double)(lf.size());
 	log_lf_norm = log(log_lf_norm);
-	
+
 	std::cout << "# Loaded Phi(" << Mr0 << " <= Mr <= " <<  Mr1 << ") LF from " << lf_fname << "\n";
-	
+
 	return true;
 }
 
@@ -611,7 +611,7 @@ bool TStellarModel::load_seds(std::string seds_fname) {
 	double FeH_max = neg_inf_replacement;
 	double dMr = inf_replacement;
 	double dFeH = inf_replacement;
-	
+
 	// Do a first pass through the file to get the grid spacing and size
 	std::ifstream in(seds_fname.c_str());
 	if(!in) { std::cerr << "Could not read SEDs from '" << seds_fname << std::endl; return false; }
@@ -619,16 +619,16 @@ bool TStellarModel::load_seds(std::string seds_fname) {
 	while(std::getline(in, line)) {
 		if(!line.size()) { continue; }		// empty line
 		if(line[0] == '#') { continue; }	// comment
-		
+
 		std::istringstream ss(line);
 		ss >> Mr >> FeH;
-		
+
 		// Keep track of values needed to get grid spacing and size
 		if(Mr < Mr_min) { Mr_min = Mr; }
 		if(Mr > Mr_max) { Mr_max = Mr; }
 		if(FeH < FeH_min) { FeH_min = FeH; }
 		if(FeH > FeH_max) { FeH_max = FeH; }
-		
+
 		dMr_tmp = fabs(Mr_last - Mr);
 		dFeH_tmp = fabs(FeH_last - FeH);
 		if((dMr_tmp != 0) && (dMr_tmp < dMr)) { dMr = dMr_tmp; }
@@ -636,16 +636,16 @@ bool TStellarModel::load_seds(std::string seds_fname) {
 		Mr_last = Mr;
 		FeH_last = FeH;
 	}
-	
+
 	unsigned int N_Mr = (unsigned int)(round((Mr_max - Mr_min) / dMr)) + 1;
 	unsigned int N_FeH = (unsigned int)(round((FeH_max - FeH_min) / dFeH)) + 1;
-	
+
 	// Construct the SED interpolation grid
 	sed_interp = new TBilinearInterp<TSED>(Mr_min, Mr_max, N_Mr, FeH_min, FeH_max, N_FeH);
 	unsigned int idx;
 	double colors[NBANDS-1];
 	unsigned int r_index = 1; // TODO: indicate r_index in the template file
-	
+
 	// Now do a second pass to load the SEDs
 	in.clear();
 	in.seekg(0, std::ios_base::beg);
@@ -654,39 +654,39 @@ bool TStellarModel::load_seds(std::string seds_fname) {
 	while(std::getline(in, line)) {
 		if(!line.size()) { continue; }		// empty line
 		if(line[0] == '#') { continue; }	// comment
-		
+
 		std::istringstream ss(line);
 		ss >> Mr >> FeH;
-		
+
 		idx = sed_interp->get_index(Mr, FeH);
-		
+
 		TSED &sed_tmp = (*sed_interp)[idx];
 		//sed_tmp.Mr = Mr;
 		//sed_tmp.FeH = FeH;
 		for(unsigned int i=0; i<NBANDS-1; i++) { ss >> colors[i]; }
-		
+
 		// Transform colors into absolute magnitudes
 		sed_tmp.absmag[r_index] = Mr;
 		for(int i=r_index-1; i>=0; i--) { sed_tmp.absmag[i] = sed_tmp.absmag[i+1] + colors[i]; }
 		for(int i=r_index+1; i<NBANDS; i++) { sed_tmp.absmag[i] = sed_tmp.absmag[i-1] - colors[i-1]; }
-		
+
 		count++;
 	}
 	in.close();
-	
+
 	if(count != N_FeH*N_Mr) {
 		std::cerr << "# Incomplete SED library provided (grid is sparse, i.e. missing some values of (Mr,FeH)). This may cause problems." << std::endl;
 	}
 	std::cout << "# Loaded " << N_FeH*N_Mr << " SEDs from " << seds_fname << std::endl;
-	
+
 	Mr_min_seds = Mr_min;
 	Mr_max_seds = Mr_max;
 	FeH_min_seds = FeH_min;
 	FeH_max_seds = FeH_max;
-	
+
 	std::cout << "# " << Mr_min_seds << " < Mr < " << Mr_max_seds << std::endl;
 	std::cout << "# " << FeH_min_seds << " < FeH < " << FeH_max_seds << std::endl;
-	
+
 	return true;
 }
 
@@ -723,9 +723,9 @@ double TStellarModel::get_log_lf(double Mr) const {
 
 
 /****************************************************************************************************************************
- * 
+ *
  * TStellarAbundance
- * 
+ *
  ****************************************************************************************************************************/
 
 // Defaults are from Chabrier (2003)
@@ -764,12 +764,12 @@ void TStellarAbundance::set_IMF(double _logM_norm, double _logM_c, double _sigma
 	sigma_logM_2 = _sigma_logM * _sigma_logM;
 	x = _x;
 	A_21 = pow(10, x * logM_norm) * exp( -(logM_norm - logM_c)*(logM_norm - logM_c) / (2.*sigma_logM_2) );
-	
+
 	// Determine normalization constant s.t. the IMF integrates to unity
 	IMF_norm = sqrt(PI) / 2. * ( 1. + erf( (logM_norm - logM_c) / (SQRT2 * _sigma_logM) ) );
 	IMF_norm += A_21 * exp( -(x * LN10) * logM_norm );
 	IMF_norm = 1. / IMF_norm;
-	
+
 	//std::cerr << "# IMF(logM = logM_norm-) = " << IMF(logM_norm - 0.0001) << std::endl;
 	//std::cerr << "# IMF(logM = logM_norm+) = " << IMF(logM_norm + 0.0001) << std::endl;
 }
@@ -779,7 +779,7 @@ void TStellarAbundance::set_SFR(double _A_burst, double _tau_burst, double _sigm
 	tau_burst = _tau_burst;
 	sigma_tau_2 = _sigma_tau * _sigma_tau;
 	tau_max = _tau_max;
-	
+
 	// Determine normalization constant s.t. the SFR integrates to unity
 	SFR_norm = 1. + A_burst * sqrt(PI) / 2. * erf((tau_max - tau_burst) / (SQRT2 * _sigma_tau));
 	SFR_norm = 1. / SFR_norm;
@@ -791,18 +791,18 @@ void TStellarAbundance::set_SFR(double _A_burst, double _tau_burst, double _sigm
 
 
 /****************************************************************************************************************************
- * 
+ *
  * TSyntheticStellarModel
- * 
+ *
  ****************************************************************************************************************************/
 
 TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 	H5::H5File file(seds_fname.c_str(), H5F_ACC_RDONLY);
 	//cout << "File opened." << endl;
-	
+
 	H5::DataSet dataset = file.openDataSet("PARSEC PS1 Templates");
 	//cout << "Dataset opened." << endl;
-	
+
 	/*
 	 *  Memory datatype
 	 */
@@ -817,7 +817,7 @@ TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 	mtype.insertMember("M_i", HOFFSET(TSynthSED, M_i), H5::PredType::NATIVE_FLOAT);
 	mtype.insertMember("M_z", HOFFSET(TSynthSED, M_z), H5::PredType::NATIVE_FLOAT);
 	mtype.insertMember("M_y", HOFFSET(TSynthSED, M_y), H5::PredType::NATIVE_FLOAT);
-	
+
 	/*
 	 *  Dataspace
 	 */
@@ -825,17 +825,17 @@ TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 	H5::DataSpace dataspace = dataset.getSpace();
 	dataspace.getSimpleExtentDims(&length);
 	std::cerr << "# # of elements: " << length << std::endl;
-	
+
 	/*
 	 *  Read in data
 	 */
 	TSynthSED *data = new TSynthSED[length];
 	dataset.read(data, mtype);
 	std::cerr << "# Read in " << length << " stellar templates." << std::endl;
-	
+
 	H5::DataSet dim_dataset = file.openDataSet("Dimensions");
 	std::cerr << "# Opened 'Dimensions' dataset." << std::endl;
-	
+
 	/*
 	 *  Memory datatype
 	 */
@@ -849,18 +849,18 @@ TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 	dim_mtype.insertMember("logtau_max", HOFFSET(TGridDim, logtau_max), H5::PredType::NATIVE_FLOAT);
 	dim_mtype.insertMember("logMass_init_min", HOFFSET(TGridDim, logMass_init_min), H5::PredType::NATIVE_FLOAT);
 	dim_mtype.insertMember("logMass_init_max", HOFFSET(TGridDim, logMass_init_max), H5::PredType::NATIVE_FLOAT);
-	
+
 	hsize_t dim_length;
 	H5::DataSpace dim_dataspace = dim_dataset.getSpace();
 	dim_dataspace.getSimpleExtentDims(&dim_length);
 	std::cerr << "# # of elements: " << dim_length << std::endl;
-	
+
 	/*
 	 *  Read in dimensions
 	 */
 	dim_dataset.read(&grid_dim, dim_mtype);
 	std::cerr << "# Read in dimensions." << std::endl;
-	
+
 	/*
 	 *  Construct trilinear interpolator
 	 */
@@ -874,7 +874,7 @@ TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 	empty.absmag[3] = std::numeric_limits<double>::quiet_NaN();
 	empty.absmag[4] = std::numeric_limits<double>::quiet_NaN();
 	sed_interp = new TMultiLinearInterp<TSED>(&min[0], &max[0], &N_points[0], 3, empty);
-	
+
 	std::cerr << "# Constructing interpolating grid over synthetic magnitudes." << std::endl;
 	TSED tmp;
 	bool good_sed;
@@ -883,13 +883,13 @@ TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 		Theta[0] = data[i].logMass_init;
 		Theta[1] = data[i].logtau;
 		Theta[2] = log10(data[i].Z/0.019);
-		
+
 		tmp.absmag[0] = data[i].M_g;
 		tmp.absmag[1] = data[i].M_r;
 		tmp.absmag[2] = data[i].M_i;
 		tmp.absmag[3] = data[i].M_z;
 		tmp.absmag[4] = data[i].M_y;
-		
+
 		good_sed = true;
 		for(size_t k=0; k<5; k++) {
 			if((tmp.absmag[k] < -6.) || (tmp.absmag[k] > 25.)) {
@@ -901,9 +901,9 @@ TSyntheticStellarModel::TSyntheticStellarModel(std::string seds_fname) {
 		}
 		if(good_sed) { sed_interp->set(&Theta[0], tmp); }
 	}
-	
+
 	std::cerr << "# Done constructing stellar library. " << N_filtered << " stellar templates rejected." << std::endl;
-	
+
 	delete[] data;
 }
 
@@ -919,23 +919,23 @@ bool TSyntheticStellarModel::get_sed(double logMass, double logtau, double FeH, 
 	Theta[0] = logMass;
 	Theta[1] = logtau;
 	Theta[2] = FeH;
-	
+
 	return (*sed_interp)(&Theta[0], sed);
 }
 
 
 
 /****************************************************************************************************************************
- * 
+ *
  * TExtinctionModel
- * 
+ *
  ****************************************************************************************************************************/
 
 TExtinctionModel::TExtinctionModel(std::string A_RV_fname) {
 	std::vector<double> Acoeff;
 	std::vector<double> RV;
 	double tmp;
-	
+
 	// Load in A coefficients for each R_V
 	std::ifstream in(A_RV_fname.c_str());
 	if(!in) { std::cerr << "Could not read extinction coefficients from '" << A_RV_fname << std::endl; abort(); }
@@ -945,23 +945,23 @@ TExtinctionModel::TExtinctionModel(std::string A_RV_fname) {
 	while(std::getline(in, line)) {
 		if(!line.size()) { continue; }		// empty line
 		if(line[0] == '#') { continue; }	// comment
-		
+
 		std::istringstream ss(line);
 		ss >> tmp;
 		RV.push_back(tmp);
 		if(tmp < RV_min) { RV_min = tmp; }
 		if(tmp > RV_max) { RV_max = tmp; }
-		
+
 		for(unsigned int i=0; i<NBANDS; i++) {
 			ss >> tmp;
-			if(ss.fail()) { std::cerr << "Not enough bands in line. Expected " << NBANDS << ". Got " << i << " instead." << std::endl; abort(); } 
+			if(ss.fail()) { std::cerr << "Not enough bands in line. Expected " << NBANDS << ". Got " << i << " instead." << std::endl; abort(); }
 			Acoeff.push_back(tmp);
 		}
 	}
-	
+
 	A_spl = new gsl_spline*[NBANDS];
 	acc = new gsl_interp_accel*[NBANDS];
-	
+
 	unsigned int N = RV.size();
 	double Acoeff_i[N];
 	double RV_arr[N];
@@ -993,11 +993,83 @@ bool TExtinctionModel::in_model(double RV) {
 }
 
 
+/****************************************************************************************************************************
+ *
+ * TEBVSmoothing
+ *
+ ****************************************************************************************************************************/
+
+TEBVSmoothing::TEBVSmoothing(double alpha_coeff[2], double beta_coeff[2],
+							 double pct_smoothing_min, double pct_smoothing_max) {
+	_alpha_coeff[0] = alpha_coeff[0];
+	_alpha_coeff[1] = alpha_coeff[1];
+
+	_beta_coeff[0] = beta_coeff[0];
+	_beta_coeff[1] = beta_coeff[1];
+	
+	_pct_smoothing_min = pct_smoothing_min;
+	_pct_smoothing_max = pct_smoothing_max;
+
+	_healpix_scale = 60.0 * 180.0 / (SQRTPI * SQRT3);
+}
+
+TEBVSmoothing::~TEBVSmoothing() {}
+
+double TEBVSmoothing::nside_2_arcmin(unsigned int nside) const {
+	return _healpix_scale / ((double)nside);
+}
+
+// Calculate the percent smoothing (in the E(B-V) direction) to apply to
+// individual stellar probability density surfaces.
+void TEBVSmoothing::calc_pct_smoothing(unsigned int nside,
+                                       double EBV_min, double EBV_max, int n_samples,
+                                       std::vector<double>& sigma_pct) const {
+    double log_scale = log10(nside_2_arcmin(nside));
+
+    //std::cerr << "scale = " << pow(10., log_scale) << "'" << std::endl;
+
+	//std::cerr << "a_coeff = " << _alpha_coeff[0] << ", " << _alpha_coeff[1] << std::endl;
+	//std::cerr << "b_coeff = " << _beta_coeff[0] << ", " << _beta_coeff[1] << std::endl;
+
+	double alpha = pow10(_alpha_coeff[0] * log_scale + _alpha_coeff[1]);
+	double beta = pow10(_beta_coeff[0] * log_scale + _beta_coeff[1]);
+
+	//std::cerr << "alpha = " << alpha << std::endl;
+	//std::cerr << "beta = " << beta << std::endl;
+
+	double dE = (EBV_max - EBV_min) / (double)(n_samples - 1);
+	double sigma_pct_tmp;
+
+	sigma_pct.clear();
+
+	double EBV = EBV_min;
+
+	for(int i=0; i<n_samples; i++, EBV+=dE) {
+		sigma_pct_tmp = alpha * EBV + beta;
+		
+		if(sigma_pct_tmp < _pct_smoothing_min) {
+			sigma_pct_tmp = _pct_smoothing_min;
+		} else if(sigma_pct_tmp > _pct_smoothing_max) {
+			sigma_pct_tmp = _pct_smoothing_max;
+		}
+
+		//std::cerr << i << " (" << EBV << "): " << sigma_pct_tmp << std::endl;
+		
+		sigma_pct.push_back(sigma_pct_tmp);
+	}
+}
+
+double TEBVSmoothing::get_pct_smoothing_min() const { return _pct_smoothing_min; }
+
+double TEBVSmoothing::get_pct_smoothing_max() const { return _pct_smoothing_max; }
+
+
+
 
 /****************************************************************************************************************************
- * 
+ *
  * TLuminosityFunc
- * 
+ *
  ****************************************************************************************************************************/
 
 /*
@@ -1015,27 +1087,27 @@ void TLuminosityFunc::load(const std::string &fn) {
 	{
 		if(!line.size()) { continue; }		// empty line
 		if(line[0] == '#') { continue; }	// comment
-		
+
 		std::istringstream ss(line);
 		ss >> Mr >> Phi;
-		
+
 		if(dMr == -1) {
 			Mr0 = Mr; dMr = 0;
 		} else if(dMr == 0) {
 			dMr = Mr - Mr0;
 		}
-		
+
 		lf.push_back(log(Phi));
 		log_lf_norm += Phi;
 	}
-	
+
 	double Mr1 = Mr0 + dMr*(lf.size()-1);
 	lf_interp = new TLinearInterp(Mr0, Mr1, lf.size());
 	for(unsigned int i=0; i<lf.size(); i++) { (*lf_interp)[i] = lf[i]; }
-	
+
 	log_lf_norm *= Mr1 / (double)(lf.size());
 	log_lf_norm = log(log_lf_norm);
-	
+
 	std::cerr << "# Loaded Phi(" << Mr0 << " <= Mr <= " <<  Mr0 + dMr*(lf.size()-1) << ") LF from " << fn << "\n";
 }
 */

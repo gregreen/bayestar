@@ -24,6 +24,7 @@
 
 import numpy as np
 import scipy, scipy.stats, scipy.special
+from scipy.ndimage.filters import gaussian_filter
 import h5py
 import time
 
@@ -210,6 +211,7 @@ def main():
 	#                    help='Region name.')
 	parser.add_argument('--pixel', '-pix', type=int, nargs=2, required=True,
 	                    help='HEALPix nside and pixel index.')
+	parser.add_argument('--density-plot', '-rho', action='store_true', help='Show density (rather than scatter) plot.')
 	parser.add_argument('--output', '-o', type=str, default=None, help='Plot filename.')
 	parser.add_argument('--show', '-sh', action='store_true', help='Show plot.')
 	
@@ -231,7 +233,7 @@ def main():
 		print 'Pixel not found.'
 		return 0
 	mags, errs, EBV, l, b = ret
-	mags = dereddened_mags(mags, EBV)
+	#mags = dereddened_mags(mags, EBV)
 	colors = -np.diff(mags, axis=1)
 	
 	#print '  name: %s' % (args.name)
@@ -244,7 +246,7 @@ def main():
 	vmin, vmax = None, None
 	
 	if args.bayestar != None:
-                params = read_inferences(args.bayestar, args.pixel)
+		params = read_inferences(args.bayestar, args.pixel)
 		idx = np.isfinite(params['lnZ'])
 		
 		n_rejected = np.sum(params['lnZ'] < np.percentile(params['lnZ'][idx], 95.) - 15.)
@@ -339,10 +341,28 @@ def main():
 				#print params[args.color].shape
 				c = params[args.color][idx_xy]
 			
-			cbar_ret = ax.scatter(color_x[idx_xy], color_y[idx_xy],
-			                      c=c, #cmap=br_cmap,
-			                      vmin=vmin, vmax=vmax,
-			                      s=3., alpha=0.30, edgecolor='none')
+			cbar_ret = None
+			
+			if args.density_plot:
+				xlim = lim[col]
+				ylim = lim[row+1]
+				w = xlim[1] - xlim[0]
+				h = ylim[1] - ylim[0]
+				
+				# Density plot
+				rho, tmp, tmp = np.histogram2d(color_x, color_y,
+				                               range=[xlim, ylim],
+				                               bins=200)
+				rho = gaussian_filter(rho, 1.)
+				img = rho #np.sqrt(rho)
+				
+				ax.imshow(img.T, origin='lower', aspect='auto', interpolation='none',
+				                 extent=[xlim[0], xlim[1], ylim[0], ylim[1]])
+			else:
+				cbar_ret = ax.scatter(color_x[idx_xy], color_y[idx_xy],
+				                      c=c, #cmap=br_cmap,
+				                      vmin=vmin, vmax=vmax,
+				                      s=3., alpha=0.30, edgecolor='none')
 			
 			#idx_rej = lnZ < lnZ_max - Delta_lnZ
 			#idx_tmp = idx_xy & ~idx_rej
@@ -393,16 +413,18 @@ def main():
 	cw = 0.05
 	ch = 2. * h - 0.02
 	
-	if (params != None) and (args.color != None):
+	cax = None
+	
+	if (params != None) and (args.color != None) and (cbar_ret != None):
 		cax = fig.add_axes([cx, cy, cw, ch])
 		norm = mplib.colors.Normalize(vmin=vmax, vmax=vmax)
 		mappable = mplib.cm.ScalarMappable(norm=norm)#cmap=br_cmap, norm=norm)
 		mappable.set_array(np.array([vmin, vmax]))
 		fig.colorbar(cbar_ret, cax=cax)#, ticks=[0., -3., -6., -9., -12., -15.])
-	
-	cax.yaxis.set_label_position('right')
-	cax.yaxis.tick_right()
-	cax.set_ylabel(r'$\mathrm{ln} \left( Z \right)$', rotation='vertical', fontsize=16)
+		
+		cax.yaxis.set_label_position('right')
+		cax.yaxis.tick_right()
+		cax.set_ylabel(r'$\mathrm{ln} \left( Z \right)$', rotation='vertical', fontsize=16)
 	
 	# Information on l.o.s.
 	txt = '$\ell = %.2f^{\circ}$\n' % l

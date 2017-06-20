@@ -966,6 +966,12 @@ void TAffineSampler<TParams, TLogger>::step_affine(bool record_step) {
 		
 		// Update sampler j
 		if(accept[j]) {
+		    if(is_neg_inf_replacement(Y[j].pi)) {
+		        #pragma omp critical (cout)
+		        {
+		        std::cerr << "!!! Accepted -infinity point! (affine step)" << std::endl;
+		        }
+		    }
 			if(record_step) {
 				chain.add_point(X[j].element, X[j].pi, (double)(X[j].weight));
 				
@@ -1027,7 +1033,9 @@ void TAffineSampler<TParams, TLogger>::step_replacement(bool record_step, bool u
 			}
 			
 			// Decide whether to accept or reject
-			if(alpha > 0.) {	// Accept if probability of acceptance is greater than unity
+			if(is_neg_inf_replacement(Y[j].pi)) {
+			    accept[j] = false;
+			} else if(alpha > 0.) {	// Accept if probability of acceptance is greater than unity
 				accept[j] = true;
 			} else {
 				p = gsl_rng_uniform(r);
@@ -1060,6 +1068,13 @@ void TAffineSampler<TParams, TLogger>::step_replacement(bool record_step, bool u
 		
 		// Update sampler j
 		if(accept[j]) {
+		    if(is_neg_inf_replacement(Y[j].pi)) {
+		        #pragma omp critical (cout)
+		        {
+		        std::cerr << "!!! Accepted -infinity point! (replacement step)" << std::endl;
+		        }
+		    }
+		    
 			if(record_step) {
 				chain.add_point(X[j].element, X[j].pi, (double)(X[j].weight));
 				
@@ -1136,6 +1151,13 @@ void TAffineSampler<TParams, TLogger>::step_MH(bool record_step) {
 		
 		// Update sampler j
 		if(accept[j]) {
+		    if(is_neg_inf_replacement(Y[j].pi)) {
+		        #pragma omp critical (cout)
+		        {
+		        std::cerr << "!!! Accepted -infinity point! (MH step)" << std::endl;
+		        }
+		    }
+		    
 			if(record_step) {
 				chain.add_point(X[j].element, X[j].pi, (double)(X[j].weight));
 				

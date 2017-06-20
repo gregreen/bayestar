@@ -633,8 +633,8 @@ void sample_los_extinction(const std::string& out_fname, const std::string& grou
 	//sampler.step_MH(int(N_steps*2./15.), false);
 	sampler.step(2*base_N_steps, false, 0., options.p_replacement);
 	
-	sampler.step_custom_reversible(base_N_steps, switch_step, false);
-	sampler.step_custom_reversible(base_N_steps, mix_step, false);
+	sampler.step_custom_reversible(2*base_N_steps, switch_step, false);
+	//sampler.step_custom_reversible(base_N_steps, mix_step, false);
 	sampler.step_custom_reversible(base_N_steps, move_one_step, false);
 	
 	if(verbosity >= 2) {
@@ -686,22 +686,22 @@ void sample_los_extinction(const std::string& out_fname, const std::string& grou
 		
 		// Round 1 (5/15)
 		sampler.step(2*base_N_steps, true, 0., options.p_replacement);
-		sampler.step_custom_reversible(base_N_steps, switch_step, true);
-		sampler.step_custom_reversible(base_N_steps, mix_step, true);
+		sampler.step_custom_reversible(2*base_N_steps, switch_step, true);
+		//sampler.step_custom_reversible(base_N_steps, mix_step, true);
 		sampler.step_custom_reversible(base_N_steps, move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		// Round 2 (5/15)
 		sampler.step(2*base_N_steps, true, 0., options.p_replacement);
-		sampler.step_custom_reversible(base_N_steps, switch_step, true);
-		sampler.step_custom_reversible(base_N_steps, mix_step, true);
+		sampler.step_custom_reversible(2*base_N_steps, switch_step, true);
+		//sampler.step_custom_reversible(base_N_steps, mix_step, true);
 		sampler.step_custom_reversible(base_N_steps, move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
 		// Round 3 (5/15)
 		sampler.step(2*base_N_steps, true, 0., options.p_replacement);
-		sampler.step_custom_reversible(base_N_steps, switch_step, true);
-		sampler.step_custom_reversible(base_N_steps, mix_step, true);
+		sampler.step_custom_reversible(2*base_N_steps, switch_step, true);
+		//sampler.step_custom_reversible(base_N_steps, mix_step, true);
 		sampler.step_custom_reversible(base_N_steps, move_one_step, true);
 		//sampler.step_MH((1<<attempt)*N_steps*1./12., true);
 		
@@ -1031,24 +1031,49 @@ void gen_rand_los_extinction(double *const logEBV, unsigned int N, gsl_rng *r, T
 
 // Guess upper limit for E(B-V) based on stacked probability surfaces
 double guess_EBV_max(TImgStack &img_stack) {
-	cv::Mat stack, row_avg, col_avg;
+	cv::Mat stack, col_avg;
 	
 	// Stack images
 	img_stack.stack(stack);
 	
 	// Sum across each EBV
 	cv::reduce(stack, col_avg, 1, CV_REDUCE_AVG);
-	double max_sum = *std::max_element(col_avg.begin<double>(), col_avg.end<double>());
-	int max = 1;
-	for(int i = col_avg.rows - 1; i > 0; i--) {
-		if(col_avg.at<float>(i, 0) > 0.001 * max_sum) {
-			max = i;
-			break;
-		}
+	//float max_sum = *std::max_element(col_avg.begin<float>(), col_avg.end<float>());
+	//std::cerr << "max_sum = " << max_sum << std::endl;
+	
+	double tot_weight = 0; //std::accumulate(col_avg.begin<float>(), col_avg.end<float>(), 0);
+	
+	for(int i = 0; i < col_avg.rows; i++) {
+	    tot_weight += col_avg.at<float>(i, 0);
+	    //std::cerr << "col_avg.at<float>(" << i << ", 0) = " << col_avg.at<float>(i, 0) << std::endl;
 	}
 	
+	//std::cerr << "tot_weight = " << tot_weight << std::endl;
+	
+	double partial_sum_weight = 0.;
+	
+	for(int i = 0; i < col_avg.rows; i++) {
+	    partial_sum_weight += col_avg.at<float>(i, 0);
+	    if(partial_sum_weight > 0.90 * tot_weight) {
+	        // Return E(B-V) corresponding to bin index
+	        return (double)i * img_stack.rect->dx[0] + img_stack.rect->min[0];
+	        //std::cerr << "Passed 90% of weight at " << i << std::endl;
+	    }
+	}
+	
+	return (col_avg.rows - 1) * img_stack.rect->dx[0] + img_stack.rect->min[0];
+	
+	//int max = 1;
+	//for(int i = col_avg.rows - 1; i > 0; i--) {
+	//    std::cerr << "  " << i << " : " << col_avg.at<float>(i, 0) << std::endl;
+	//	if(col_avg.at<float>(i, 0) > 0.01 * max_sum) {
+	//		max = i;
+	//		break;
+	//	}
+	//}
+	
 	// Convert bin index to E(B-V)
-	return max * img_stack.rect->dx[0] + img_stack.rect->min[0];
+	//return max * img_stack.rect->dx[0] + img_stack.rect->min[0];
 }
 
 void guess_EBV_profile(TMCMCOptions &options, TLOSMCMCParams &params, int verbosity) {
@@ -1521,7 +1546,9 @@ void TLOSMCMCParams::set_subpixel_mask(std::vector<double>& new_mask) {
 }
 
 // Calculate the mean and std. dev. of log(delta_EBV)
-void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, double EBV_tot, int verbosity) {
+void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model,
+                                          double log_Delta_EBV_floor, double log_Delta_EBV_ceil,
+										  double EBV_tot, int verbosity) {
 	double mu_0 = img_stack->rect->min[1];
 	double mu_1 = img_stack->rect->max[1];
 	assert(mu_1 > mu_0);
@@ -1545,7 +1572,6 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 	
 	// Normalization information
 	double sigma = 1.4;
-	double log_Delta_EBV_floor = -8.;
 	double dEBV_ds = 0.2;		// mag kpc^{-1}
 	
 	// Determine normalization
@@ -1595,7 +1621,11 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model, doub
 		log_Delta_EBV_prior[i] += log_norm;
 		
 		// Floor on log(Delta EBV) prior
-		if(log_Delta_EBV_prior[i] < log_Delta_EBV_floor) { log_Delta_EBV_prior[i] = log_Delta_EBV_floor; }
+		if(log_Delta_EBV_prior[i] < log_Delta_EBV_floor) {
+			log_Delta_EBV_prior[i] = log_Delta_EBV_floor;
+		} else if(log_Delta_EBV_prior[i] > log_Delta_EBV_ceil) {
+			log_Delta_EBV_prior[i] = log_Delta_EBV_ceil;
+		}
 		
 		Delta_EBV_prior[i] = exp(log_Delta_EBV_prior[i]);
 		
@@ -1792,6 +1822,104 @@ void TImgStack::stack(cv::Mat& dest) {
 		dest.setTo(0);
 	}
 }
+
+void TImgStack::smooth(std::vector<double> sigma, double n_sigma) {
+	const int N_rows = rect->N_bins[0];
+	const int N_cols = rect->N_bins[1];
+	
+	assert(sigma.size() == N_rows);
+	assert(n_sigma > 0);
+	
+	// Create copy of each image
+	cv::Mat **img_s = new cv::Mat*[N_images];
+	for(int i=0; i<N_images; i++) {
+		if(img[i] == NULL) {
+			img_s[i] = NULL;
+		} else {
+			img_s[i] = new cv::Mat(img[i]->clone());
+		}
+	}
+	
+	// Source and destination rows for convolution
+	float *src_img_row_up, *src_img_row_down, *dest_img_row;
+	int src_row_idx_up, src_row_idx_down;
+	
+	// Weight applied to each row
+	float *dc = new float[N_rows];
+	float a, c;
+	
+	// Number of times to shift image (= sigma * n_sigma)
+	int m_max;
+	
+	// Loop over destination rows
+	for(int dest_row_idx=0; dest_row_idx<N_rows; dest_row_idx++) {
+		// Determine kernel width (based on sigma at destination)
+		m_max = int(ceil(sigma[dest_row_idx] * n_sigma));
+		if(m_max > N_rows) { m_max = N_rows; }
+		
+		// Determine weight to apply to each source pixel
+		a = -0.5 / (sigma[dest_row_idx]*sigma[dest_row_idx]);
+		c = 1.;
+		
+		for(int m=1; m<m_max; m++) {
+			dc[m] = exp(a * (float)(m*m));
+			c += 2. * dc[m];
+		}
+		
+		a = 1. / c;
+		
+		for(int i=0; i<N_images; i++) {
+			img_s[i]->row(dest_row_idx) *= a;
+		}
+		
+		// Loop over row offsets
+		for(int m=1; m<m_max; m++) {
+			dc[m] *= a;
+			src_row_idx_up = dest_row_idx + m;
+			src_row_idx_down = dest_row_idx - m;
+			
+			if(src_row_idx_up >= N_rows) { src_row_idx_up = N_rows - 1; }
+			if(src_row_idx_down < 0) { src_row_idx_down = 0; }
+			
+			// Loop over images
+			for(int i=0; i<N_images; i++) {
+				if(img[i] != NULL) {
+					dest_img_row = img_s[i]->ptr<float>(dest_row_idx);
+					src_img_row_up = img[i]->ptr<float>(src_row_idx_up);
+					src_img_row_down = img[i]->ptr<float>(src_row_idx_down);
+					
+					// Loop over columns
+					for(int col=0; col<N_cols; col++) {
+						dest_img_row[col] += dc[m] * (src_img_row_up[col] + src_img_row_down[col]);
+					}
+				}
+			}
+		}
+	}
+	
+	// Switch out smoothed images for old images
+	for(int i=0; i<N_images; i++) {
+		if(img[i] != NULL) { delete img[i]; }
+	}
+	delete[] img;
+	
+	img = img_s;
+	
+	// Cleanup
+	delete[] dc;
+}
+
+void shift_image_vertical(cv::Mat& img, int n_pix) {
+	
+}
+
+
+
+/****************************************************************************************************************************
+ * 
+ * TLOSTransform
+ * 
+ ****************************************************************************************************************************/
 
 TLOSTransform::TLOSTransform(unsigned int ndim)
 	: TTransformParamSpace(ndim), _ndim(ndim)

@@ -34,6 +34,7 @@
 #include <cstring>
 #include <sstream>
 #include <math.h>
+#include <numeric>
 #include <time.h>
 
 #include <stdint.h>
@@ -77,6 +78,8 @@ struct TImgStack {
 	void resize(size_t _N_images);
 	void set_rect(TRect &_rect);
 	void stack(cv::Mat &dest);
+	
+	void smooth(std::vector<double> sigma, double n_sigma=5);
 };
 
 struct TLOSMCMCParams {
@@ -113,6 +116,8 @@ struct TLOSMCMCParams {
 	void set_subpixel_mask(std::vector<double>& new_mask);
 	
 	void calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model,
+							  double log_Delta_EBV_floor,
+							  double log_Delta_EBV_ceil,
 	                          double EBV_tot, int verbosity=1);
 	
 	void gen_guess_covariance(double scale_length);

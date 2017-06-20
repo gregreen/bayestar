@@ -34,12 +34,19 @@ def main():
 	parser.add_argument('input', type=str, help='Bayestar output files.')
 	parser.add_argument('--unified', '-u', type=str, default=None,
 	                                     help='Filename for unified output.')
+	parser.add_argument('--stacks', action='store_true',
+	                                     help='Save stacked pdf surfaces.')
+	parser.add_argument('--include', type=str, nargs='+', choices=('cloud', 'piecewise'),
+	                                     default=('cloud', 'piecewise'),
+	                                     help='Which types of line-of-sight information to include')
 	parser.add_argument('--summary', '-s', type=str, default=None,
 	                                     help='Filename for summary output.')
 	parser.add_argument('--bounds', '-b', type=float, nargs=4, default=None,
-	                                     help='Bounds of pixels to plot (l_min, l_max, b_min, b_max).')
+	                                     help='Bounds of pixels to include (l_min, l_max, b_min, b_max).')
 	parser.add_argument('--processes', '-proc', type=int, default=1,
 	                                     help='# of processes to spawn.')
+	parser.add_argument('--max-samples', type=int, default=None,
+	                                     help='Maximum # of samples to load (default: load all samples)')
 	if 'python' in sys.argv[0]:
 		offset = 2
 	else:
@@ -50,12 +57,20 @@ def main():
 	print 'Loading Bayestar output files ...'
 	fnames = glob.glob(args.input)
 	mapper = maptools.LOSMapper(fnames, bounds=args.bounds,
-	                                     processes=args.processes)
+	                                    processes=args.processes,
+	                                    load_stacked_pdfs=args.stacks,
+	                                    max_samples=args.max_samples)
+	
+	save_piecewise = 'piecewise' in args.include
+	save_cloud = 'cloud' in args.include
 	
 	# Save to unified output file
 	if args.unified != None:
 		print 'Saving to unified output file ...'
-		mapper.data.save_unified(args.unified)
+		mapper.data.save_unified(args.unified,
+		                         save_stacks=args.stacks,
+		                         save_cloud=save_cloud,
+		                         save_piecewise=save_piecewise)
 	
 	# Save to summary output file
 	#if args.summary != None:
