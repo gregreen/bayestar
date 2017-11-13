@@ -75,7 +75,7 @@ struct TProgramOpts {
 	bool disk_prior;
 	double log_Delta_EBV_floor;
 	double log_Delta_EBV_ceil;
-	
+
 	bool SFD_prior;
 	bool SFD_subpixel;
 	double subpixel_max;
@@ -135,7 +135,7 @@ struct TProgramOpts {
 		disk_prior = false;
 		log_Delta_EBV_floor = -10.;
 		log_Delta_EBV_ceil = -3.;
-		
+
 		SFD_prior = false;
 		SFD_subpixel = false;
 		subpixel_max = 1.e9;
@@ -206,7 +206,7 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
 		("disk-prior", "Assume that dust density roughly traces stellar disk density.")
 		("log-Delta-EBV-min", po::value<double>(&(opts.log_Delta_EBV_floor)), ("Minimum log(Delta EBV) in l.o.s. reddening prior (default: " + to_string(opts.log_Delta_EBV_floor) + ")").c_str())
 		("log-Delta-EBV-max", po::value<double>(&(opts.log_Delta_EBV_ceil)), ("Maximum log(Delta EBV) in l.o.s. reddening prior (default: " + to_string(opts.log_Delta_EBV_floor) + ")").c_str())
-		
+
 		("SFD-prior", "Use SFD E(B-V) as a prior on the total extinction in each pixel.")
 		("SFD-subpixel", "Use SFD E(B-V) as a subpixel template for the angular variation in reddening.")
 		("subpixel-max", po::value<double>(&(opts.subpixel_max)), ("Maximum subpixel value (above this values, stars will be filtered out). (default: " + to_string(opts.subpixel_max) + ")").c_str())
@@ -538,7 +538,7 @@ int main(int argc, char **argv) {
 			                   stellar_data, img_stack, conv, lnZ, opts.sigma_RV,
 			                   opts.min_EBV, opts.save_surfs, gatherSurfs, opts.verbosity);
 		} else {
-			sample_indiv_emp(opts.output_fname, star_options, los_model, *emplib, ext_model, EBV_smoothing,
+			sample_indiv_emp_pt(opts.output_fname, star_options, los_model, *emplib, ext_model, EBV_smoothing,
 			                 stellar_data, img_stack, conv, lnZ, opts.mean_RV, opts.sigma_RV, opts.min_EBV,
 			                 opts.save_surfs, gatherSurfs, opts.star_priors, opts.verbosity);
 		}

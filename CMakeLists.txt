@@ -38,7 +38,7 @@ ENDIF(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
 set(DATADIR "${CMAKE_SOURCE_DIR}/data/")
 configure_file(
 	"${PROJECT_SOURCE_DIR}/src/bayestar_config.h.in"
-	"${PROJECT_BINARY_DIR}/src/bayestar_config.h"  
+	"${PROJECT_BINARY_DIR}/src/bayestar_config.h"
 	ESCAPE_QUOTES
 )
 include_directories("${PROJECT_BINARY_DIR}/src")
@@ -51,6 +51,12 @@ IF(NOT CMAKE_COMPILER_IS_GNUCXX)
 ELSE(NOT CMAKE_COMPILER_IS_GNUCXX)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native ")
 ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
+
+#
+# Non-compiler-specific flags
+#
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++14 ")
 
 #
 # Profiling
@@ -67,6 +73,10 @@ IF(CMAKE_COMPILER_IS_GNUCXX)
 		MESSAGE( STATUS "Setting flags to use profiling information." )
 	ENDIF(PROFILING_USE)
 ENDIF(CMAKE_COMPILER_IS_GNUCXX)
+
+### HDF5
+find_package(HDF5 REQUIRED COMPONENTS C CXX)
+include_directories(${HDF5_INCLUDE_DIRS})
 
 ### OpenCV
 pkg_check_modules(OPENCV opencv)
@@ -97,6 +107,15 @@ ELSE(NOT CMAKE_COMPILER_IS_GNUCXX)
 ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
 #set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS})
 
+### EIGEN3
+find_package(Eigen3 REQUIRED NO_MODULES)
+include_directories(${EIGEN3_INCLUDE_DIRS})
+MESSAGE( STATUS "EIGEN3_INCLUDE_DIRS: ${EIGEN3_INCLUDE_DIRS}" )
+MESSAGE( STATUS "EIGEN3_LIBRARIES: ${EIGEN3_LIBRARIES}" )
+
+### Sampler
+include_directories(/home/greg/projects/sampler-cpp/src/)
+
 ### Fixed-size types
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_LIMIT_MACROS")
 
@@ -111,9 +130,12 @@ add_executable(bayestar src/main.cpp src/model.cpp src/sampler.cpp
 # Link libraries
 #
 target_link_libraries(bayestar rt)
-target_link_libraries(bayestar hdf5 hdf5_cpp)
+target_link_libraries(bayestar ${HDF5_LIBRARIES} ${HDF5_CXX_LIBRARIES})
+#target_link_libraries(bayestar hdf5 hdf5_cpp)
 target_link_libraries(bayestar ${GSL_LIBRARIES})
 target_link_libraries(bayestar ${Boost_LIBRARIES})
 target_link_libraries(bayestar opencv_core opencv_imgproc)
 #target_link_libraries(bayestar ${OPENCV_LIBRARIES})
 #target_link_libraries(bayestar ${OpenMP_LIBRARIES})
+target_link_libraries(bayestar /home/greg/projects/sampler-cpp/libsampler.a)
+target_link_libraries(bayestar ${EIGEN3_LIBRARIES})

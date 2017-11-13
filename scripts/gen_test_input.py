@@ -2,25 +2,25 @@
 # -*- coding: utf-8 -*-
 #
 #  gen_test_input.py
-#  
+#
 #  Copyright 2012 Greg Green <greg@greg-UX31A>
-#  
+#
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
 #  the Free Software Foundation; either version 2 of the License, or
 #  (at your option) any later version.
-#  
+#
 #  This program is distributed in the hope that it will be useful,
 #  but WITHOUT ANY WARRANTY; without even the implied warranty of
 #  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #  GNU General Public License for more details.
-#  
+#
 #  You should have received a copy of the GNU General Public License
 #  along with this program; if not, write to the Free Software
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
-#  
-#  
+#
+#
 
 import os, sys, argparse
 
@@ -45,7 +45,7 @@ class TSample1D:
 	'''
 	Draw samples from a 1D probability density function.
 	'''
-	
+
 	def __init__(self, f, x_min, x_max, N=100, M=1000):
 		x = np.linspace(x_min, x_max, N)
 		try:
@@ -65,11 +65,11 @@ class TSample1D:
 			P[0] = 0.
 			P[-1] = 1.
 		self.x = interp1d(P, x, kind='linear')
-	
+
 	def __call__(self, N=1):
 		P = np.random.random(N)
 		return self.x(P)
-	
+
 	def get_x(self, P):
 		return self.x(P)
 
@@ -77,19 +77,19 @@ def mock_mags(stellarmodel, mu, Ar, Mr, FeH, mag_limit=(23., 23., 23., 23., 23.)
 	# Apparent magnitudes
 	m = mu + stellarmodel.absmags(Mr, FeH)
 	err = np.empty(m.size, m.dtype)
-	
+
 	# Apply extinction and add in errors
 	bands = ['g','r','i','z','y','J','H','K']
 	Ab = np.array([3.172, 2.271, 1.682, 1.322, 1.087, 0.786, 0.508, 0.320])
 	for b,A,lim in zip(bands,Ab,mag_limit):
 		m[b] += Ar * A / Ab[1]
-		
+
 		err[b] = 0.02 + 0.1 * np.exp(m[b] - lim - 1.5)
 		m[b] += sigma * np.random.normal(size=mu.size)
-		
+
 		idx = (m[b] > lim)
 		m[b][idx] = np.nan
-	
+
 	return m
 
 def observed(mags, mag_lim):
@@ -100,10 +100,10 @@ def err_model(mag, mag_lim, scale=1.):
 	err *= 1. + np.random.normal(loc=0., scale=0.1, size=err.shape)
 	#err = scale * np.sqrt(0.02**2 + err**2)
 	err = scale * np.sqrt(0.01**2 + err**2)
-	
+
 	idx = (err > 0.4)
 	err[idx] = 0.4
-	
+
 	return err
 
 def draw_from_model(l, b, N, EBV_spread=0.02,
@@ -115,92 +115,92 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	         ('Mr', 'f8'), ('FeH', 'f8'),
 	         ('mag', '8f8'), ('err', '8f8')]
 	ret = np.empty(N, dtype=dtype)
-	
+
 	l = np.pi/180. * l
 	b = np.pi/180. * b
 	cos_l, sin_l = np.cos(l), np.sin(l)
 	cos_b, sin_b = np.cos(b), np.sin(b)
-	
+
 	gal_model = TGalacticModel(**model_kwargs)
-	
-	if t_fname == None:
+
+	if t_fname is None:
 		t_fname = os.path.expanduser('~/projects/bayestar/data/PS1_2MASS_colors_new.dat')
-	
+
 	stellar_model = TStellarModel(t_fname)
-	
-	R = np.array([3.172, 2.271, 1.682, 1.322, 1.087, 0.786, 0.508, 0.320])
-	
+
+	R = np.array([3.384, 2.483, 1.838, 1.414, 1.126, 0.650, 0.327, 0.161])
+
 	mu_max = mag_lim[1] - gal_model.Mr_min + 3.
 	mu_min = min(0., mu_max-25.)
 	Mr_max = min(mag_lim[1]+3., gal_model.Mr_max)
-	
+
 	dN_dDM = lambda mu: gal_model.dn_dDM(mu, cos_l, sin_l, cos_b, sin_b)
-	
+
 	# Set up 1D samplers
 	draw_mu = TSample1D(dN_dDM, mu_min, mu_max, 500, 10000)
 	draw_Mr = TSample1D(gal_model.LF, gal_model.Mr_min, Mr_max, 10000, 1)
-	
+
 	idx = np.arange(N)
-	
+
 	keep_sampling = True
-	
+
 	while keep_sampling:
 		size = idx.size
 		print 'Drawing %d...' % size
-		
+
 		# Draw DM and Mr
 		ret['DM'][idx] = draw_mu(size)
 		ret['Mr'][idx] = draw_Mr(size)
-		
+
 		# Draw EBV
 		ret['EBV'][idx] = 0.
 		if EBV_uniform:
 			ret['EBV'][idx] += 2. * np.random.random(size=idx.size)
-		else:	
+		else:
 			if EBV_of_mu != None:
 				ret['EBV'][idx] += EBV_of_mu(ret['DM'][idx]) #+ np.random.normal(scale=EBV_spread, size=size)
 			ret['EBV'][idx] += EBV_spread * np.random.chisquare(1., size)
-		
+
 		x, y, z = gal_model.Cartesian_coords(ret['DM'][idx], cos_l,
 		                                     sin_l, cos_b, sin_b)
-		
+
 		# Determine which component stars belong to
 		f_halo, f_bulge = gal_model.f_halo_bulge(ret['DM'][idx], cos_l,
 		                                         sin_l, cos_b, sin_b)
 		tmp_rand = np.random.random(size)
-		
+
 		halo = (tmp_rand < f_halo)
-		
+
 		bulge = (tmp_rand < f_halo + f_bulge)
 		bulge &= ~halo
-		
+
 		thin = ~halo & ~bulge & (np.random.random(size) < 0.63)
 		thick = ~halo & ~bulge & ~thin
-		
+
 		print '  # of bulge stars: %d' % (np.sum(bulge))
-		
+
 		# Assign metallicities to halo stars
 		while np.any(halo):
 			ret['FeH'][idx[halo]] = np.random.normal(-1.46, 0.3, size=np.sum(halo))
 			halo &= (ret['FeH'][idx] <= -2.7) | (ret['FeH'][idx] >= 0.4)
-		
+
 		# Assign metallicities to thin-disk stars
 		while np.any(thin):
 			ret['FeH'][idx[thin]] = np.random.normal(gal_model.mu_FeH_D(z[thin])-0.067,
 			                                         0.2, size=np.sum(thin))
 			thin &= (ret['FeH'][idx] <= -2.7) | (ret['FeH'][idx] >= 0.4)
-		
+
 		# Assign metallicities to thick-disk stars
 		while np.any(thick):
 			ret['FeH'][idx[thick]] = np.random.normal(gal_model.mu_FeH_D(z[thick])-0.067+0.14,
 			                                          0.2, size=np.sum(thick))
 			thick &= (ret['FeH'][idx] <= -2.7) | (ret['FeH'][idx] >= 0.4)
-		
+
 		# Assign metallicities to bulge stars
 		while np.any(bulge):
 			ret['FeH'][idx[bulge]] = np.random.normal(0., 0.40, size=np.sum(bulge))
 			bulge &= (ret['FeH'][idx] <= -2.7) | (ret['FeH'][idx] >= 0.4)
-		
+
 		# Calculate absolute stellar magnitudes
 		absmags_tmp = stellar_model.absmags(ret['Mr'][idx], ret['FeH'][idx])
 		ret['mag'][idx,0] = absmags_tmp['g']
@@ -211,7 +211,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 		ret['mag'][idx,5] = absmags_tmp['J']
 		ret['mag'][idx,6] = absmags_tmp['H']
 		ret['mag'][idx,7] = absmags_tmp['K']
-		
+
 		# Determine errors and apparent magnitudes
 		for k in xrange(8):
 			ret['mag'][idx,k] += ret['DM'][idx]
@@ -220,93 +220,93 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 			#0.02 + 0.3 * np.exp(ret['mag'][idx][:,k] - mag_lim[k])
 			#idx_tmp = ret['err'][idx,k] > 1.
 			#ret['err'][idx[idx_tmp],k] = 1.
-		
+
 		# Calculate observation probability
 		p_obs = np.empty((size, 8), dtype='f8')
-		
+
 		for k in xrange(8):
 			p_obs[:,k] = 1. / (1. + np.exp( (ret['mag'][idx,k] - mag_lim[k] - 0.16) / 0.20 ))
 			#p_obs[:,k] = 0.5 - 0.5 * erf((ret['mag'][idx,k] - mag_lim[k] + 0.1) / 0.25)
-		
+
 		# Determine which bands stars are observed in
 		obs = (p_obs > np.random.random(size=p_obs.shape))
-		
+
 		# Add in errors to apparent stellar magnitudes
 		ret['mag'][idx] += ret['err'][idx] * np.random.normal(size=(size,8))
-		
+
 		# Re-estimate errors based on magnitudes
 		for k in xrange(5):
 			ret['err'][idx,k] = err_model(ret['mag'][idx,k], mag_lim[k], scale=scale)
-		
+
 		# Remove observations with errors above 0.2 mags
 		obs = obs & (ret['err'][idx] < 0.2)
-		
+
 		for k in xrange(8):
 			ret['mag'][idx[~obs[:,k]],k] = 0.
 			ret['err'][idx[~obs[:,k]],k] = 1.e10
-		
+
 		# Require detection in g and at least n_bands-1 other bands
 		obs = obs[:,0] & (np.sum(obs, axis=1) >= n_bands)
 		#obs = (np.sum(obs, axis=1) >= n_bands)
-		
+
 		idx = idx[~obs]
-		
+
 		if redraw:
 			if idx.size == 0:
 				keep_sampling = False
 		else:
 			keep_sampling = False
-			
+
 			ret = ret[obs]
-	
+
 	#np.set_printoptions(formatter={'float':lambda x: '%.3f' % x})
 	#print ret['err']
-	
+
 	#print np.sum(ret['mag'] < 1.)
-	
+
 	fig = plt.figure()
-	
+
 	for n in xrange(8):
 		# Mag histogram
 		ax = fig.add_subplot(8,2,1+2*n)
-		
+
 		idx = ret['err'][:, n] < 1.e9
 		ax.hist(ret['mag'][idx, n], bins=100)
-		
+
 		m = np.linspace(10., mag_lim[n] + 0.5, 1000)
 		err_curve = err_model(m, mag_lim[n], scale=scale)
-		
+
 		ylim = ax.get_ylim()
 		err_curve *= 0.9 * ylim[1] / np.max(err_curve)
-		
+
 		ax.plot(m, err_curve)
-		
+
 		ax.set_xlim(10., 25.)
-		
+
 		# Error histogram
 		ax = fig.add_subplot(8,2,2+2*n)
 		ax.hist(ret['err'][idx, n], bins=100)
 		ax.set_xlim(0., 0.2)
-		
-	
+
+
 	plt.show()
-	
+
 	return ret
 
 
 def draw_flat(N, Ar=0.5):
 	dtype = [('DM', 'f8'), ('Ar', 'f8'), ('Mr', 'f8'), ('FeH', 'f8')]
 	ret = np.empty(N, dtype=dtype)
-	
+
 	idx = np.ones(N, dtype=np.bool)
 	while np.any(idx):
 		ret['DM'][idx] = np.random.rand(N) * 13.5 + 5.5
 		ret['Ar'][idx] = np.random.rand(N) * 2. * Ar
 		ret['Mr'][idx] = np.random.rand(N) * 20. - 0.8
 		idx = (ret['DM'] + ret['Ar'] + ret['Mr'] > 23.)
-	
+
 	ret['FeH'] = np.random.rand(N) * 2.4 - 2.45
-	
+
 	return ret
 
 
@@ -351,34 +351,34 @@ def main():
 	else:
 		offset = 1
 	args = parser.parse_args(sys.argv[offset:])
-	
+
 	# Parameters for Galactic and stellar models
 	LF_fname = args.luminosity_function
 	t_fname = args.templates
-	
+
 	model_kwargs = {'fh':fh}
-	
+
 	if LF_fname != None:
 		model_kwargs['LF_fname'] = LF_fname
-	
+
 	# Determine number of stars to draw
 	redraw = False
 	N_stars = None
-	
+
 	if args.N == None:
 		if args.radius == None:
 			print 'Either -N or -rad must be specified'
-		
+
 		model = TGalacticModel(**model_kwargs)
 		N_stars = model.tot_num_stars(args.gal_lb[0], args.gal_lb[1], args.radius)
 		N_stars = np.random.poisson(lam=N_stars)
 	else:
 		if args.radius != None:
 			print 'Cannot specify both -N and -rad'
-		
+
 		redraw = True
 		N_stars = args.N
-	
+
 	EBV_of_mu = None
 	if args.clouds != None:
 		mu = np.linspace(-5., 35., 1000)
@@ -391,14 +391,14 @@ def main():
 			Delta_EBV += EBV/np.sqrt(2.*np.pi)/s*np.exp(-(mu-m)*(mu-m)/2./s/s)
 		EBV = np.cumsum(Delta_EBV) * dmu
 		EBV_of_mu = InterpolatedUnivariateSpline(mu, EBV)
-		mu = np.linspace(4., 19., 1000) 
+		mu = np.linspace(4., 19., 1000)
 		EBV = EBV_of_mu(mu)
 		fig = plt.figure()
 		ax = fig.add_subplot(1,1,1)
 		ax.plot(mu, EBV)
 		plt.show()
 		#print Ar
-	
+
 	params = None
 	if args.flat:
 		pass
@@ -412,9 +412,9 @@ def main():
 		                         n_bands=args.n_bands, scale=args.scale_errors,
 		                         model_kwargs=model_kwargs, t_fname=t_fname)
 		print '%d stars observed' % (len(params))
-	
+
 	#params['mag'][:,4] -= 0.05
-	
+
 	# Write Bayestar input file
 	if args.output != None:
 		mag_lim = np.array(args.limiting_mag)
@@ -423,12 +423,12 @@ def main():
 		write_infile(args.output, params['mag'], params['err'], mag_lim,
 		             l=args.gal_lb[0], b=args.gal_lb[1],
 		             access_mode='w')
-		
+
 		# Write true parameter values
 		write_true_params(args.output, params['DM'], params['EBV'],
 		                  params['Mr'], params['FeH'],
 		                  l=args.gal_lb[0], b=args.gal_lb[1])
-	
+
 	header = '''# Format:
 # l  b
 # DM  E(B-V)  Mr  FeH
@@ -439,7 +439,7 @@ def main():
 	#print '%.3f  %.3f' % (args.gal_lb[0], args.gal_lb[1])
 	#for p in params:
 	#	print '%.3f  %.3f  %.3f  %.3f' % (p['DM'], p['EBV'], p['Mr'], p['FeH']), p['mag'], p['err']
-	
+
 	if args.show:
 		model = TGalacticModel(**model_kwargs)
 		l = np.pi/180. * args.gal_lb[0]
@@ -447,11 +447,11 @@ def main():
 		cos_l, sin_l = np.cos(l), np.sin(l)
 		cos_b, sin_b = np.cos(b), np.sin(b)
 		dN_dDM = lambda mu: model.dn_dDM(mu, cos_l, sin_l, cos_b, sin_b)
-		
+
 		mplib.rc('text', usetex=True)
-		
+
 		fig = plt.figure(figsize=(6,4), dpi=300)
-		
+
 		ax = fig.add_subplot(2,2,1)
 		ax.hist(params['DM'], bins=100, normed=True, alpha=0.3)
 		xlim = ax.get_xlim()
@@ -459,7 +459,7 @@ def main():
 		ax.plot(x, dN_dDM(x)/quad(dN_dDM, 1., 25.)[0], 'g-', lw=1.3, alpha=0.5)
 		ax.set_xlim(xlim)
 		ax.set_xlabel(r'$\mu$', fontsize=14)
-		
+
 		ax = fig.add_subplot(2,2,2)
 		ax.hist(params['Mr'], bins=100, normed=True, alpha=0.3)
 		xlim = ax.get_xlim()
@@ -470,11 +470,11 @@ def main():
 		ylim = ax.get_ylim()
 		ax.set_ylim(0., ylim[1])
 		ax.set_xlabel(r'$M_{r}$', fontsize=14)
-		
+
 		ax = fig.add_subplot(2,2,3)
 		ax.hist(params['EBV'], bins=100, normed=True, alpha=0.3)
 		ax.set_xlabel(r'$\mathrm{E} \! \left( B \! - \! V \right)$', fontsize=14)
-		
+
 		ax = fig.add_subplot(2,2,4)
 		ax.hist(params['FeH'], bins=100, normed=True, alpha=0.3)
 		xlim = ax.get_xlim()
@@ -483,13 +483,13 @@ def main():
 		ax.plot(x, y, 'g-', lw=1.3, alpha=0.5)
 		ax.set_xlabel(r'$\left[ \mathrm{Fe} / \mathrm{H} \right]$', fontsize=14)
 		ax.set_xlim(xlim)
-		
+
 		fig.subplots_adjust(hspace=0.40, wspace=0.25,
 		                    bottom=0.13, top=0.95,
 		                    left=0.1, right=0.9)
-		
+
 		# CMD of stars
-		
+
 		fig = plt.figure(figsize=(6,4), dpi=150)
 		ax = fig.add_subplot(1,1,1)
 		idx = ((params['err'][:,0] < 1.e9)
@@ -502,11 +502,10 @@ def main():
 		ax.set_ylabel(r'$m_{r}$', fontsize=14)
 		ylim = ax.get_ylim()
 		ax.set_ylim(ylim[1], ylim[0])
-		
+
 		plt.show()
-	
+
 	return 0
 
 if __name__ == '__main__':
 	main()
-

@@ -14,7 +14,7 @@ TChain::TChain(unsigned int _N, unsigned int _capacity)
 	length = 0;
 	total_weight = 0;
 	set_capacity(_capacity);
-	
+
 	// Initialize min/max coordinates
 	x_min.reserve(N);
 	x_max.reserve(N);
@@ -52,7 +52,7 @@ TChain::TChain(std::string filename, bool reserve_extra)
 
 TChain::~TChain() {}
 
-void TChain::add_point(double* element, double L_i, double w_i) {
+void TChain::add_point(const double *const element, double L_i, double w_i) {
 	stats(element, (unsigned int)w_i);
 	for(unsigned int i=0; i<N; i++) {
 		x.push_back(element[i]);
@@ -72,7 +72,7 @@ void TChain::clear() {
 	stats.clear();
 	total_weight = 0;
 	length = 0;
-	
+
 	// Reset min/max coordinates
 	for(unsigned int i=0; i<N; i++) {
 		x_min[i] = inf_replacement;
@@ -140,7 +140,7 @@ unsigned int TChain::get_index_of_best() const {
 
 double TChain::append(const TChain& chain, bool reweight, bool use_peak, double nsigma_max, double nsigma_peak, double chain_frac, double threshold) {
 	assert(chain.N == N);	// Make sure the two chains have the same dimensionality
-	
+
 	// Weight each chain according to Bayesian evidence, if requested
 	double a1 = 1.;
 	double a2 = 1.;
@@ -148,10 +148,10 @@ double TChain::append(const TChain& chain, bool reweight, bool use_peak, double 
 	if(reweight) {
 		double lnZ1 = chain.get_ln_Z_harmonic(use_peak, nsigma_max, nsigma_peak, chain_frac);
 		double lnZ2 = get_ln_Z_harmonic(use_peak, nsigma_max, nsigma_peak, chain_frac);
-		
+
 		if(lnZ2 > lnZ1) {
 			a2 = exp(lnZ1 - lnZ2) * total_weight / chain.total_weight;
-			/*if(isnan(a2)) {
+			/*if(std::isnan(a2)) {
 				std::cout << std::endl;
 				std::cout << "NaN Error: a2 = " << a2 << std::endl;
 				std::cout << "ln(Z1) = " << lnZ1 << std::endl;
@@ -162,7 +162,7 @@ double TChain::append(const TChain& chain, bool reweight, bool use_peak, double 
 			}*/
 		} else {
 			a1 = exp(lnZ2 - lnZ1) * chain.total_weight / total_weight;
-			/*if(isnan(a1)) {
+			/*if(std::isnan(a1)) {
 				std::cout << std::endl;
 				std::cout << "NaN Error: a1 = " << a1 << std::endl;
 				std::cout << "ln(Z1) = " << lnZ1 << std::endl;
@@ -172,12 +172,12 @@ double TChain::append(const TChain& chain, bool reweight, bool use_peak, double 
 				std::cout << std::endl;
 			}*/
 		}
-		
+
 		lnZ = log(a1/(a1+a2) * exp(lnZ2) + a2/(a1+a2) * exp(lnZ1));
 	}
-	
+
 	if(reweight) { std::cout << "(a1, a2) = " << a1 << ", " << a2 << std::endl; }
-	
+
 	// Append the last chain to this one
 	if(reweight && (a1 < threshold)) {
 		x = chain.x;
@@ -197,7 +197,7 @@ double TChain::append(const TChain& chain, bool reweight, bool use_peak, double 
 		x.insert(x.end(), chain.x.begin(), chain.x.end());
 		L.insert(L.end(), chain.L.begin(), chain.L.end());
 		w.insert(w.end(), chain.w.begin(), chain.w.end());
-		
+
 		if(reweight) {
 			std::vector<double>::iterator w_end = w.end();
 			for(std::vector<double>::iterator it = w.begin(); it != w_end_old; ++it) {
@@ -207,13 +207,13 @@ double TChain::append(const TChain& chain, bool reweight, bool use_peak, double 
 				*it *= a2;
 			}
 		}
-		
+
 		stats *= a1;
 		stats += a2 * chain.stats;
 		length += chain.length;
 		total_weight *= a1;
 		total_weight += a2 * chain.total_weight;
-		
+
 		// Update min/max coordinates
 		for(unsigned int i=0; i<N; i++) {
 			if(chain.x_max[i] > x_max[i]) { x_max[i] = chain.x_max[i]; }
@@ -224,7 +224,7 @@ double TChain::append(const TChain& chain, bool reweight, bool use_peak, double 
 	//for(unsigned int i=0; i<length; i++) {
 	//	stats(get_element(i), 1.e10*w[i]);
 	//}
-	
+
 	return lnZ;
 }
 
@@ -257,7 +257,7 @@ TChain& TChain::operator =(const TChain& rhs) {
 struct TChainSort {
 	unsigned int index;
 	double dist2;
-	
+
 	bool operator<(const TChainSort rhs) const { return dist2 < rhs.dist2; }	// Reversed so that the sort is in ascending order
 };
 
@@ -275,7 +275,7 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 	gsl_matrix* invSigma = gsl_matrix_alloc(N, N);
 	double detSigma;
 	stats.get_cov_matrix(Sigma, invSigma, &detSigma);
-	
+
 	// Determine the center of the prior volume to use
 	double* mu = new double[N];
 	if(use_peak) {	// Use the peak density as the center
@@ -284,13 +284,13 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 	} else {	// Get the mean from the stats class
 		for(unsigned int i=0; i<N; i++) { mu[i] = stats.mean(i); }
 	}
-	
+
 	// Sort elements in chain by distance from center, filtering out values of L which are not finite
 	std::vector<TChainSort> sorted_indices;
 	sorted_indices.reserve(length);
 	unsigned int filt_length = 0;
 	for(unsigned int i=0; i<length; i++) {
-		if(!(isnan(L[i]) || is_inf_replacement(L[i]))) {
+		if(!(std::isnan(L[i]) || is_inf_replacement(L[i]))) {
 			TChainSort tmp_el;
 			tmp_el.index = i;
 			tmp_el.dist2 = metric_dist2(invSigma, get_element(i), mu, N);
@@ -300,7 +300,7 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 	}
 	unsigned int npoints = (unsigned int)(chain_frac * (double)filt_length);
 	std::partial_sort(sorted_indices.begin(), sorted_indices.begin() + npoints, sorted_indices.end());
-	
+
 	// Determine <1/L> inside the prior volume
 	double sum_invL = 0.;
 	double tmp_invL;
@@ -316,7 +316,7 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 		tmp_index = sorted_indices[i].index;
 		tmp_invL = w[tmp_index] / exp(L[tmp_index] - L_0);
 		//std::cout << w[tmp_index] << ", " << L[tmp_index] << std::endl;
-		//if(isnan(tmp_invL)) {
+		//if(std::isnan(tmp_invL)) {
 		//	std::cout << "\t\tL, L_0 = " << L[tmp_index] << ", " << L_0 << std::endl;
 		//}
 		if((tmp_invL + sum_invL > 1.e100) && (i != 0)) {
@@ -325,14 +325,14 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 		}
 		sum_invL += tmp_invL;
 	}
-	
+
 	// Determine the volume normalization (the prior volume)
 	double V = sqrt(detSigma) * 2. * pow(SQRTPI * nsigma, (double)N) / (double)(N) / gsl_sf_gamma((double)(N)/2.);
-	
+
 	// Return an estimate of ln(Z)
 	double lnZ = log(V) - log(sum_invL) + log(total_weight) + L_0;
-	
-	if(isnan(lnZ)) {
+
+	if(std::isnan(lnZ)) {
 		std::cout << std::endl;
 		std::cout << "NaN Error! lnZ = " << lnZ << std::endl;
 		std::cout << "\tsum_invL = e^(" << -L_0 << ") * " << sum_invL << " = " << exp(-L_0) * sum_invL << std::endl;
@@ -358,12 +358,12 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 		for(unsigned int i=0; i<N; i++) { std::cout << " " << mu[i]; }
 		std::cout << std::endl;
 	}
-	
+
 	// Cleanup
 	gsl_matrix_free(Sigma);
 	gsl_matrix_free(invSigma);
 	delete[] mu;
-	
+
 	return lnZ;
 }
 
@@ -380,7 +380,7 @@ void TChain::density_peak(double* const peak, double nsigma) const {
 		width[i] = (x_max[i] - x_min[i]) / (double)(index_width[i]);
 		if(i != 0) { mult[i] = mult[i-1] * index_width[i-1]; }
 	}
-	
+
 	// Bin the chain
 	std::map<uint64_t, double> bins;
 	uint64_t index;
@@ -390,7 +390,7 @@ void TChain::density_peak(double* const peak, double nsigma) const {
 		for(unsigned int k=0; k<N; k++) { index += mult[k] * (uint64_t)floor((x[N*i + k] - x_min[k]) / width[k]); }
 		bins[index] += w[i];
 	}
-	
+
 	// Find the index of the max bin
 	std::map<uint64_t, double>::iterator it_end = bins.end();
 	double w_max = neg_inf_replacement;
@@ -400,7 +400,7 @@ void TChain::density_peak(double* const peak, double nsigma) const {
 			index = it->first;
 		}
 	}
-	
+
 	// Convert the index to a coordinate
 	uint64_t coord_index;
 	for(unsigned int i=0; i<N; i++) {
@@ -408,7 +408,7 @@ void TChain::density_peak(double* const peak, double nsigma) const {
 		index = (index - coord_index) / index_width[i];
 		peak[i] = x_min[i] + ((double)coord_index + 0.5) * width[i];
 	}
-	
+
 	delete[] width;
 	delete[] index_width;
 	delete[] mult;
@@ -421,15 +421,15 @@ void TChain::find_center(double* const center, gsl_matrix *const cov, gsl_matrix
 	assert(cov->size2 == N);
 	assert(inv_cov->size1 == N);
 	assert(inv_cov->size2 == N);*/
-	
+
 	// Choose random point in chain as starting point
 	gsl_rng *r;
 	seed_gsl_rng(&r);
-	
+
 	long unsigned int index_tmp = gsl_rng_uniform_int(r, length);
 	const double *x_tmp = get_element(index_tmp);
 	for(unsigned int i=0; i<N; i++) { center[i] = x_tmp[i]; }
-	
+
 	// Iterate
 	double *sum = new double[N];
 	double weight;
@@ -445,13 +445,13 @@ void TChain::find_center(double* const center, gsl_matrix *const cov, gsl_matrix
 			}
 		}
 		for(unsigned int n=0; n<N; n++) { center[n] = sum[n] / (double)weight; }
-		
+
 		dmax *= 0.9;
 	}
-	
+
 	//for(unsigned int n=0; n<N; n++) { std::cout << " " << center[n]; }
 	//std::cout << std::endl;
-	
+
 	gsl_rng_free(r);
 	delete[] sum;
 }
@@ -469,12 +469,12 @@ bool TChain::save(std::string fname, std::string group_name, size_t index,
 		std::cerr << "! Invalid gzip compression level: " << compression << std::endl;
 		return false;
 	}
-	
+
 	H5::Exception::dontPrint();
-	
+
 	H5::H5File *file = H5Utils::openFile(fname);
 	if(file == NULL) { return false; }
-	
+
 	/*
 	try {
 		file->unlink(group_name);
@@ -482,17 +482,17 @@ bool TChain::save(std::string fname, std::string group_name, size_t index,
 		// pass
 	}
 	*/
-	
+
 	H5::Group *group = H5Utils::openGroup(file, group_name);
 	if(group == NULL) {
 		delete file;
 		return false;
 	}
-	
+
 	/*
 	 *  Attributes
 	 */
-	
+
 	// Datatype
 	H5::CompType att_type(sizeof(TChainAttribute));
 	hid_t tid = H5Tcopy(H5T_C_S1);
@@ -501,47 +501,47 @@ bool TChain::save(std::string fname, std::string group_name, size_t index,
 	//att_type.insertMember("total_weight", HOFFSET(TChainAttribute, total_weight), H5::PredType::NATIVE_FLOAT);
 	//att_type.insertMember("ndim", HOFFSET(TChainAttribute, ndim), H5::PredType::NATIVE_UINT64);
 	//att_type.insertMember("length", HOFFSET(TChainAttribute, length), H5::PredType::NATIVE_UINT64);
-	
+
 	// Dataspace
 	int att_rank = 1;
 	hsize_t att_dim = 1;
 	H5::DataSpace att_space(att_rank, &att_dim);
-	
+
 	// Dataset
 	//H5::Attribute att = group->createAttribute("parameter names", att_type, att_space);
-	
+
 	TChainAttribute att_data;
 	att_data.dim_name = new char[dim_name.size()+1];
 	std::strcpy(att_data.dim_name, dim_name.c_str());
 	//att_data.total_weight = total_weight;
 	//att_data.ndim = N;
 	//att_data.length = length;
-	
+
 	//att.write(att_type, &att_data);
 	delete[] att_data.dim_name;
-	
+
 	//int att_rank = 1;
 	//hsize_t att_dim = 1;
-	
+
 	H5::DataType conv_dtype = H5::PredType::NATIVE_UCHAR;
 	H5::DataSpace conv_dspace(att_rank, &att_dim);
 	//H5::Attribute conv_att = H5Utils::openAttribute(group, "converged", conv_dtype, conv_dspace);
 	//conv_att.write(conv_dtype, &converged);
-	
+
 	H5::DataType lnZ_dtype = H5::PredType::NATIVE_FLOAT;
 	H5::DataSpace lnZ_dspace(att_rank, &att_dim);
 	//H5::Attribute lnZ_att = H5Utils::openAttribute(group, "ln Z", lnZ_dtype, lnZ_dspace);
 	//lnZ_att.write(lnZ_dtype, &lnZ);
-	
+
 	// Creation property list to be used for all three datasets
 	H5::DSetCreatPropList plist;
 	//plist.setDeflate(compression);	// gzip compression level
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
-	
+
 	H5D_layout_t layout = H5D_COMPACT;
 	plist.setLayout(layout);
-	
+
 	/*
 	 *  Choose subsample of points in chain
 	 */
@@ -560,9 +560,9 @@ bool TChain::save(std::string fname, std::string group_name, size_t index,
 			}
 			unrolled_idx += (size_t)(*it);
 		}
-		
+
 		assert(chain_idx == length);
-		
+
 		gsl_rng *r;
 		seed_gsl_rng(&r);
 		subsample_idx = new size_t[tot_weight_tmp];
@@ -570,12 +570,12 @@ bool TChain::save(std::string fname, std::string group_name, size_t index,
 			subsample_idx[i] = el_idx[gsl_rng_uniform_int(r, tot_weight_tmp)];
 		}
 	}
-	
-	
+
+
 	/*
 	 *  Coordinates
 	 */
-	
+
 	// Dataspace
 	hsize_t dim;
 	if(subsample > 0) {
@@ -592,14 +592,14 @@ bool TChain::save(std::string fname, std::string group_name, size_t index,
 	//	plist.setChunk(rank, &chunk);
 	//}
 	H5::DataSpace x_dspace(rank, &(coord_dim[0]));
-	
+
 	// Dataset
 	//std::stringstream x_dset_path;
 	//x_dset_path << group_name << "/chain/coords";
 	std::stringstream coordname;
 	coordname << "coords " << index;
 	H5::DataSet* x_dataset = new H5::DataSet(group->createDataSet(coordname.str(), H5::PredType::NATIVE_FLOAT, x_dspace, plist));
-	
+
 	// Write
 	float *buf = new float[N*dim];
 	if(subsample > 0) {
@@ -614,24 +614,24 @@ bool TChain::save(std::string fname, std::string group_name, size_t index,
 		for(size_t i=0; i<dim; i++) { buf[i] = x[i]; }
 	}
 	x_dataset->write(buf, H5::PredType::NATIVE_FLOAT);
-	
-	
+
+
 	/*
 	 *  Weights
 	 */
-	
+
 	// Dataspace
 	if(subsample <= 0) {
 		dim = w.size();
-		
+
 		rank = 1;
 		H5::DataSpace w_dspace(rank, &dim);
-		
+
 		// Dataset
 		//std::stringstream w_dset_path;
 		//w_dset_path << group_name << "/chain/weights";
 		H5::DataSet* w_dataset = new H5::DataSet(group->createDataSet("weights", H5::PredType::NATIVE_FLOAT, w_dspace, plist));
-		
+
 		// Write
 		if(subsample > 0) {
 			for(size_t i=0; i<subsample; i++) { buf[i] = 1.; }
@@ -640,25 +640,25 @@ bool TChain::save(std::string fname, std::string group_name, size_t index,
 			for(size_t i=0; i<w.size(); i++) { buf[i] = w[i]; }
 		}
 		w_dataset->write(buf, H5::PredType::NATIVE_FLOAT);
-		
+
 		delete w_dataset;
 	}
-	
+
 	/*
 	 *  Probability densities
 	 */
-	
+
 	// Dataspace
 	rank = 1;
 	H5::DataSpace L_dspace(rank, &dim);
-	
+
 	// Dataset
 	//std::stringstream L_dset_path;
 	//L_dset_path << group_name << "/chain/probs";
 	std::stringstream lnpname;
 	lnpname << "ln_p " << index;
 	H5::DataSet* L_dataset = new H5::DataSet(group->createDataSet(lnpname.str(), H5::PredType::NATIVE_FLOAT, L_dspace, plist));
-	
+
 	// Write
 	if(subsample > 0) {
 		for(size_t i=0; i<subsample; i++) { buf[i] = L[subsample_idx[i]]; }
@@ -667,71 +667,71 @@ bool TChain::save(std::string fname, std::string group_name, size_t index,
 		for(size_t i=0; i<L.size(); i++) { buf[i] = L[i]; }
 	}
 	L_dataset->write(buf, H5::PredType::NATIVE_FLOAT);
-	
-	
+
+
 	if(subsample > 0) {
 		delete[] el_idx;
 		delete[] subsample_idx;
 	}
-	
+
 	delete[] buf;
-	
+
 	delete x_dataset;
 	delete L_dataset;
-	
+
 	delete group;
 	delete file;
-	
+
 	return true;
 }
 
 bool TChain::load(std::string filename, bool reserve_extra) {
 	std::fstream in(filename.c_str(), std::ios::in | std::ios::binary);
-	
+
 	if(!in.good()) { return false; }
-	
+
 	in.read(reinterpret_cast<char *>(&N), sizeof(unsigned int));
 	in.read(reinterpret_cast<char *>(&length), sizeof(unsigned int));
 	in.read(reinterpret_cast<char *>(&capacity), sizeof(unsigned int));
 	in.read(reinterpret_cast<char *>(&total_weight), sizeof(double));
-	
+
 	if(!reserve_extra) {
 		capacity = length;
 	}
-	
+
 	x.reserve(N*capacity);
 	L.reserve(capacity);
 	w.reserve(capacity);
-	
+
 	x.resize(length);
 	L.resize(length);
 	w.resize(length);
-	
+
 	in.read(reinterpret_cast<char *>(&(x[0])), N * length * sizeof(double));
 	in.read(reinterpret_cast<char *>(&(L[0])), length * sizeof(double));
 	in.read(reinterpret_cast<char *>(&(w[0])), length * sizeof(double));
-	
+
 	if(in.fail()) {
 		in.close();
 		return false;
 	}
-	
+
 	std::streampos read_offset = in.tellg();
 	in.close();
-	
+
 	bool stats_success = stats.read_binary(filename, read_offset);
-	
+
 	return stats_success;
 }
 
 void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsigned int dim2,
-                       bool norm, double sigma1, double sigma2, double nsigma) const {
+                       bool norm, double sigma1, double sigma2, double nsigma, bool sigma_pix_units) const {
 	assert((dim1 >= 0) && (dim1 < N) && (dim2 >= 0) && (dim2 < N) && (dim1 != dim2));
-	
+
 	mat = cv::Mat::zeros(grid.N_bins[0], grid.N_bins[1], CV_64F);
-	
+
 	//std::cout << grid.N_bins[0] << " " << grid.N_bins[1] << std::endl;
-	
+
 	unsigned int i1, i2;
 	for(size_t i=0; i<length; i++) {
 		if(grid.get_index(x[N*i+dim1], x[N*i+dim2], i1, i2)) {
@@ -739,25 +739,31 @@ void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsig
 			//std::cerr << mat.at<double>(i1, i2) << std::endl;
 		}
 	}
-	
+
 	if(norm) { mat /= total_weight; }
-	
+
 	if((sigma1 >= 0.) && (sigma2 >= 0.)) {
-		double s1 = sigma1 / grid.dx[0];
-		double s2 = sigma2 / grid.dx[1];
-		
+		double s1, s2;
+		if(sigma_pix_units) {	// sigma1 and sigma2 are in units of pixels
+			s1 = sigma1;
+			s2 = sigma2;
+		} else {	// sigma1 and sigma2 are in parameter units
+			s1 = sigma1 / grid.dx[0];
+			s2 = sigma2 / grid.dx[1];
+		}
+
 		//std::cout << std::endl;
 		//std::cout << dim1 << " " << dim2 << std::endl;
 		//std::cout << "dx = " << sigma1 << " / " << grid.dx[0] << " = " << s1 << std::endl;
 		//std::cout << "dy = " << sigma2 << " / " << grid.dx[1] << " = " << s2 << std::endl;
 		//std::cout << std::endl;
-		
+
 		int w1 = 2 * ceil(nsigma*s1) + 1;
 		int w2 = 2 * ceil(nsigma*s2) + 1;
-		
+
 		cv::GaussianBlur(mat, mat, cv::Size(w2,w1), s2, s1, cv::BORDER_REPLICATE);
 	}
-	
+
 	// Convert to float
 	mat.convertTo(mat, CV_32F);
 }
@@ -801,27 +807,27 @@ void TImgWriteBuffer::add(const cv::Mat& img) {
 	if((img.rows != rect_.N_bins[0]) || (img.cols != rect_.N_bins[1])) {
 		throw imgDimException;
 	}
-	
+
 	// Make sure buffer is long enough
 	if(length_ >= nReserved_) {
 		reserve(1.5 * (length_ + 1));
 		std::cout << "reserving for images" << std::endl;
 	}
-	
+
 	float *const imgBuf = &(buf[rect_.N_bins[0] * rect_.N_bins[1] * length_]);
 	for(size_t j=0; j<rect_.N_bins[0]; j++) {
 		for(size_t k=0; k<rect_.N_bins[1]; k++) {
 			imgBuf[rect_.N_bins[1]*j + k] = img.at<float>(j,k);
 		}
 	}
-	
+
 	length_++;
 }
 
 void TImgWriteBuffer::write(const std::string& fname, const std::string& group, const std::string& img) {
 	H5::H5File* h5file = H5Utils::openFile(fname);
 	H5::Group* h5group = H5Utils::openGroup(h5file, group);
-	
+
 	// Dataset properties: optimized for reading/writing entire buffer at once
 	int rank = 3;
 	hsize_t dim[3] = {length_, rect_.N_bins[0], rect_.N_bins[1]};
@@ -837,29 +843,29 @@ void TImgWriteBuffer::write(const std::string& fname, const std::string& group, 
 	plist.setChunk(rank, &(chunk_dim[0]));
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
-	
+
 	H5::DataSet* dataset = new H5::DataSet(h5group->createDataSet(img, H5::PredType::NATIVE_FLOAT, dspace, plist));
 	dataset->write(buf, H5::PredType::NATIVE_FLOAT);
-	
+
 	/*
 	 *  Attributes
 	 */
-	
+
 	hsize_t att_dim = 2;
 	H5::DataSpace att_dspace(1, &att_dim);
-	
+
 	H5::PredType att_dtype = H5::PredType::NATIVE_UINT32;
 	H5::Attribute att_N = dataset->createAttribute("nPix", att_dtype, att_dspace);
 	att_N.write(att_dtype, &(rect_.N_bins));
-	
+
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	H5::Attribute att_min = dataset->createAttribute("min", att_dtype, att_dspace);
 	att_min.write(att_dtype, &(rect_.min));
-	
+
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	H5::Attribute att_max = dataset->createAttribute("max", att_dtype, att_dspace);
 	att_max.write(att_dtype, &(rect_.max));
-	
+
 	delete dataset;
 	delete h5group;
 	delete h5file;
@@ -901,18 +907,18 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ, dou
 		reserve(1.5 * (length_ + 1));
 		std::cout << "reserving" << std::endl;
 	}
-	
+
 	// Store metadata
-	TChainMetadata meta = {converged, lnZ};
+	TChainMetadata meta = {converged, (float)lnZ};
 	metadata.push_back(meta);
-	
+
 	// Choose which points in chain to sample
 	double totalWeight = chain.get_total_weight();
 	for(unsigned int i=0; i<nSamples_; i++) {
 		samplePos[i] = gsl_rng_uniform(r) * totalWeight;
 	}
 	std::sort(samplePos.begin(), samplePos.end());
-	
+
 	// Copy chosen points into buffer
 	unsigned int i = 1;	// Position in chain
 	unsigned int k = 0;	// Position in buffer
@@ -935,7 +941,7 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ, dou
 		}
 	}
 	assert(k == nSamples_);
-	
+
 	// Copy best point into buffer
 	i = chain.get_index_of_best();
 	chainElement = chain.get_element(i);
@@ -943,7 +949,7 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ, dou
 	for(size_t n = 1; n < nDim_; n++) {
 		buf[startIdx + nDim_ + n] = chainElement[n-1];
 	}
-	
+
 	// Copy the Gelman-Rubin diagnostic into the buffer
 	buf[startIdx] = std::numeric_limits<float>::quiet_NaN();
 	if(GR == NULL) {
@@ -957,16 +963,16 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ, dou
 			buf[startIdx + n] = GR[n-1];
 		}
 	}
-	
+
 	//std::cout << "Done." << std::endl;
-	
+
 	length_++;
 }
 
 void TChainWriteBuffer::write(const std::string& fname, const std::string& group, const std::string& chain, const std::string& meta) {
 	H5::H5File* h5file = H5Utils::openFile(fname);
 	H5::Group* h5group = H5Utils::openGroup(h5file, group);
-	
+
 	// Dataset properties: optimized for reading/writing entire buffer at once
 	int rank = 3;
 	hsize_t dim[3] = {length_, nSamples_+2, nDim_};
@@ -976,7 +982,7 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 	plist.setChunk(rank, &(dim[0]));
 	float fillvalue = 0;
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
-	
+
 	H5::DataSet* dataset = NULL;
 	try {
 		dataset = new H5::DataSet(h5group->createDataSet(chain, H5::PredType::NATIVE_FLOAT, dspace, plist));
@@ -985,9 +991,9 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 		std::cerr << "Dataset '" << group << "/" << chain << "' most likely already exists." << std::endl;
 		throw;
 	}
-	
+
 	dataset->write(buf, H5::PredType::NATIVE_FLOAT);
-	
+
 	if(meta == "") {	// Store metadata as attributes
 		bool *converged = new bool[length_];
 		float *lnZ = new float[length_];
@@ -995,7 +1001,7 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 			converged[i] = metadata[i].converged;
 			lnZ[i] = metadata[i].lnZ;
 		}
-		
+
 		// Allow large attributes to be stored in dense storage, versus compact (which has 64 kB limit)
 		//if(length_ > 5) {
 		//	hid_t dID = dataset->getCreatePlist().getId();
@@ -1005,22 +1011,22 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 		//		std::cerr << "Failed to specify dense storage." << std::endl;
 		//	}
 		//}
-		
+
 		H5::DataSpace convSpace(1, &(dim[0]));
 		H5::Attribute convAtt = dataset->createAttribute("converged", H5::PredType::NATIVE_CHAR, convSpace);
 		convAtt.write(H5::PredType::NATIVE_CHAR, reinterpret_cast<char*>(converged));
-		
+
 		H5::DataSpace lnZSpace(1, &(dim[0]));
 		H5::Attribute lnZAtt = dataset->createAttribute("ln(Z)", H5::PredType::NATIVE_FLOAT, lnZSpace);
 		lnZAtt.write(H5::PredType::NATIVE_FLOAT, lnZ);
-		
+
 		delete[] converged;
 		delete[] lnZ;
 	} else {	 	// Store metadata as separate dataset
 		H5::CompType metaType(sizeof(TChainMetadata));
 		metaType.insertMember("converged", HOFFSET(TChainMetadata, converged), H5::PredType::NATIVE_CHAR);
 		metaType.insertMember("ln(Z)", HOFFSET(TChainMetadata, lnZ), H5::PredType::NATIVE_FLOAT);
-		
+
 		rank = 1;
 		H5::DataSpace metaSpace(rank, &(dim[0]));
 		H5::DSetCreatPropList metaProp;
@@ -1028,18 +1034,18 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 		metaProp.setFillValue(metaType, &emptyMetadata);
 		metaProp.setDeflate(3);
 		metaProp.setChunk(rank, &(dim[0]));
-		
+
 		H5::DataSet* metaDataset = new H5::DataSet(h5group->createDataSet(meta, metaType, metaSpace, metaProp));
 		metaDataset->write(metadata.data(), metaType);
-		
+
 		delete metaDataset;
 		metaDataset = NULL;
 	}
-	
+
 	delete dataset;
 	delete h5group;
 	delete h5file;
-	
+
 	//std::cerr << "Cleaned up." << std::endl;
 }
 
@@ -1074,10 +1080,10 @@ bool TRect::get_index(double x1, double x2, unsigned int& i1, unsigned int& i2) 
 	if((x1 < min[0]) || (x1 >= max[0]) || (x2 < min[1]) || (x2 >= max[1])) {
 		return false;
 	}
-	
+
 	i1 = (x1 - min[0]) / dx[0];
 	i2 = (x2 - min[1]) / dx[1];
-	
+
 	return true;
 }
 
@@ -1099,7 +1105,7 @@ TRect& TRect::operator=(const TRect& rhs) {
  *  TGaussianMixture member functions
  */
 
-TGaussianMixture::TGaussianMixture(unsigned int _ndim, unsigned int _nclusters) 
+TGaussianMixture::TGaussianMixture(unsigned int _ndim, unsigned int _nclusters)
 	: ndim(_ndim), nclusters(_nclusters)
 {
 	w = new double[nclusters];
@@ -1157,11 +1163,11 @@ void TGaussianMixture::invert_covariance() {
 
 // Calculate the density of the mixture at a series of N points stored in x.
 // The result is stored in res.
-// 
+//
 // Inputs:
 //     x[N * ndim]  points at which to evaluate the Gaussian density
 //     N            # of points
-// 
+//
 // Output:
 //     res[nclusters * N]    Gaussian density at given points
 //
@@ -1197,11 +1203,11 @@ double TGaussianMixture::density(const double *x) {
 
 void TGaussianMixture::expectation_maximization(const double *x, const double *w_n, unsigned int N, unsigned int iterations) {
 	double *p_kn = new double[nclusters*N];
-	
+
 	// Determine total weight
 	double sum_w = 0.;
 	for(unsigned int n=0; n<N; n++) { sum_w += w_n[n]; }
-	
+
 	// Choose means randomly from given points
 	unsigned int *index = new unsigned int[nclusters];
 	bool repeated_index;
@@ -1217,7 +1223,7 @@ void TGaussianMixture::expectation_maximization(const double *x, const double *w
 		for(unsigned int i=0; i<ndim; i++) { mu[k*ndim + i] = x[index[k]*ndim + i]; }
 	}
 	delete[] index;
-	
+
 	// Assign points to nearest cluster center
 	double sum, tmp, min_dist;
 	unsigned int nearest_cluster;
@@ -1242,8 +1248,8 @@ void TGaussianMixture::expectation_maximization(const double *x, const double *w
 	sum = 0.;
 	for(unsigned int k=0; k<nclusters; k++) { sum += w[k]; }
 	for(unsigned int k=0; k<nclusters; k++) { w[k] /= sum; }
-	
-	
+
+
 	// Iterate
 	for(unsigned int count=0; count<=iterations; count++) {
 		// Assign probability for each point to be in each cluster
@@ -1256,7 +1262,7 @@ void TGaussianMixture::expectation_maximization(const double *x, const double *w
 				for(unsigned int k=0; k<nclusters; k++) { p_kn[n*nclusters + k] /= sum; }
 			}
 		}
-		
+
 		// Determine cluster properties from members
 		if(count != 0) {
 			for(unsigned int k=0; k<nclusters; k++) {	// Strength of Gaussian
@@ -1296,7 +1302,7 @@ void TGaussianMixture::expectation_maximization(const double *x, const double *w
 			}
 		}
 		invert_covariance();
-		
+
 		/*std::cout << "Iteration #" << count << std::endl;
 		std::cout << "=======================================" << std::endl;
 		for(unsigned int k=0; k<nclusters; k++) {
@@ -1323,12 +1329,12 @@ void TGaussianMixture::expectation_maximization(const double *x, const double *w
 		//cov = np.einsum('kn,n,kni,knj->kij', p_kn, w, Delta, Delta)
 		//cov = np.einsum('kij,k->kij', cov, 1./np.sum(p_kn, axis=1))
 	}
-	
+
 	// Find the vector sqrt_cov s.t. sqrt_cov sqrt_cov^T = cov.
 	for(unsigned int k=0; k<nclusters; k++) {
 		sqrt_matrix(cov[k], sqrt_cov[k], esv, eival, eivec, sqrt_eival);
 	}
-	
+
 	// Cleanup
 	delete[] p_kn;
 }
@@ -1379,27 +1385,27 @@ void TGaussianMixture::print() {
 bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string group_name,
                     std::string dset_name, std::string dim1, std::string dim2, int compression) {
 	assert((img.dims == 2) && (img.rows == rect.N_bins[0]) && (img.cols == rect.N_bins[1]));
-	
+
 	if((compression<0) || (compression > 9)) {
 		std::cerr << "! Invalid gzip compression level: " << compression << std::endl;
 		return false;
 	}
-	
+
 	H5::Exception::dontPrint();
-	
+
 	H5::H5File *file = H5Utils::openFile(fname);
 	if(file == NULL) { return false; }
-	
+
 	H5::Group *group = H5Utils::openGroup(file, group_name);
 	if(group == NULL) {
 		delete file;
 		return false;
 	}
-	
+
 	/*
 	 *  Image Data
 	 */
-	
+
 	// Creation property list
 	H5::DSetCreatPropList plist;
 	int rank = 2;
@@ -1409,7 +1415,7 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string gr
 	plist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
 	plist.setChunk(rank, &(dim[0]));
 	H5::DataSpace dspace(rank, &(dim[0]));
-	
+
 	H5::DataSet* dataset;
 	try {
 		dataset = new H5::DataSet(group->createDataSet(dset_name, H5::PredType::NATIVE_FLOAT, dspace, plist));
@@ -1419,7 +1425,7 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string gr
 		delete file;
 		return false;
 	}
-	
+
 	float *buf = new float[rect.N_bins[0]*rect.N_bins[1]];
 	for(size_t j=0; j<rect.N_bins[0]; j++) {
 		for(size_t k=0; k<rect.N_bins[1]; k++) {
@@ -1431,26 +1437,26 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string gr
 		}
 	}
 	dataset->write(buf, H5::PredType::NATIVE_FLOAT);
-	
+
 	/*
 	 *  Attributes
 	 */
-	
+
 	hsize_t att_dim = 2;
 	H5::DataSpace att_dspace(1, &att_dim);
-	
+
 	H5::PredType att_dtype = H5::PredType::NATIVE_UINT32;
 	H5::Attribute att_N = dataset->createAttribute("N_pix", att_dtype, att_dspace);
 	att_N.write(att_dtype, &(rect.N_bins));
-	
+
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	H5::Attribute att_min = dataset->createAttribute("min", att_dtype, att_dspace);
 	att_min.write(att_dtype, &(rect.min));
-	
+
 	att_dtype = H5::PredType::NATIVE_DOUBLE;
 	H5::Attribute att_max = dataset->createAttribute("max", att_dtype, att_dspace);
 	att_max.write(att_dtype, &(rect.max));
-	
+
 	att_dim = 1;
 	H5::StrType vls_type(0, H5T_VARIABLE);
 	H5::DataSpace att_space_str(H5S_SCALAR);
@@ -1458,16 +1464,16 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string gr
 	att_name_1.write(vls_type, dim1);
 	H5::Attribute att_name_2 = dataset->createAttribute("dim_name_2",  vls_type, att_space_str);
 	att_name_2.write(vls_type, dim2);
-	
+
 	file->close();
-	
+
 	delete[] buf;
 	delete dataset;
 	delete group;
 	delete file;
-	
+
 	return true;
-	
+
 }
 
 
@@ -1494,26 +1500,26 @@ void Gelman_Rubin_diagnostic(const std::vector<TChain*>& chains, std::vector<dou
 	const size_t n_chains = chains.size();
 	assert(n_chains > 1);
 	const size_t ndim = chains[0]->get_ndim();
-	
+
 	TStats **stats = new TStats*[n_chains];
-	
+
 	for(size_t n=0; n<n_chains; n++) {
 		TChain *chain = chains[n];
 		assert(chain->get_ndim() == ndim);
-		
+
 		stats[n] = new TStats(ndim);
 		TStats& stat = *(stats[n]);
-		
+
 		size_t n_points = chain->get_length();
-		
+
 		for(size_t i=0; i<n_points; i++) {
 			stat(chain->get_element(i), (unsigned int)(chain->get_w(i)));
 		}
 	}
-	
+
 	R.resize(ndim);
 	Gelman_Rubin_diagnostic(stats, n_chains, R.data(), ndim);
-	
+
 	for(size_t n=0; n<n_chains; n++) {
 		delete stats[n];
 	}
@@ -1523,7 +1529,7 @@ void Gelman_Rubin_diagnostic(const std::vector<TChain*>& chains, std::vector<dou
 
 /*
  * Linear Algebra Functions
- * 
+ *
  */
 
 // Sets inv_A to the inverse of A, and returns the determinant of A. If inv_A is NULL, then
@@ -1532,19 +1538,19 @@ void Gelman_Rubin_diagnostic(const std::vector<TChain*>& chains, std::vector<dou
 double invert_matrix(gsl_matrix* A, gsl_matrix* inv_A, gsl_permutation* p, gsl_matrix* LU) {
 	unsigned int N = A->size1;
 	assert(N == A->size2);
-	
+
 	// Allocate workspaces if none are provided
 	bool del_p = false;
 	bool del_LU = false;
 	if(p == NULL) { p = gsl_permutation_alloc(N); del_p = true; }
 	if(LU == NULL) { LU = gsl_matrix_alloc(N, N); del_LU = true; }
-	
+
 	int s;
 	int status = 1;
 	int count = 0;
 	while(status) {
 		if(count > 5) { std::cerr << "! Error inverting matrix." << std::endl; abort(); }
-		
+
 		// Invert A using LU decomposition
 		gsl_matrix_memcpy(LU, A);
 		if(count != 0) {	// If inversion fails the first time, add small constant to diagonal
@@ -1559,17 +1565,17 @@ double invert_matrix(gsl_matrix* A, gsl_matrix* inv_A, gsl_permutation* p, gsl_m
 			assert(N == inv_A->size2);
 			status = gsl_linalg_LU_invert(LU, p, inv_A);
 		}
-		
+
 		count++;
 	}
-	
+
 	// Get the determinant of A
 	double det_A = gsl_linalg_LU_det(LU, s);
-	
+
 	// Free workspaces if none were provided
 	if(del_p) { gsl_permutation_free(p); }
 	if(del_LU) { gsl_matrix_free(LU); }
-	
+
 	return det_A;
 }
 
@@ -1578,12 +1584,12 @@ double invert_matrix(gsl_matrix* A, gsl_matrix* inv_A, gsl_permutation* p, gsl_m
 void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A, gsl_eigen_symmv_workspace* esv, gsl_vector *eival, gsl_matrix *eivec, gsl_matrix* sqrt_eival) {
 	size_t N = A->size1;
 	assert(A->size2 == N);
-	
+
 	assert(sqrt_eival->size1 == N);
 	assert(sqrt_eival->size2 == N);
-	
+
 	gsl_matrix_set_zero(sqrt_eival);
-	
+
 	if(sqrt_A == NULL) {
 		sqrt_A = A;
 	} else {
@@ -1591,7 +1597,7 @@ void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A, gsl_eigen_symmv_workspace* e
 		assert(sqrt_A->size2 == N);
 		gsl_matrix_memcpy(sqrt_A, A);
 	}
-	
+
 	// Calculate the eigendecomposition of the covariance matrix
 	gsl_eigen_symmv(sqrt_A, eival, eivec, esv);
 	double tmp;
@@ -1608,15 +1614,15 @@ void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A, gsl_eigen_symmv_workspace* e
 // Same as above, but allocates and de-allocates worskspaces internally
 void sqrt_matrix(gsl_matrix* A, gsl_matrix* sqrt_A) {
 	size_t N = A->size1;
-	
+
 	// Allocate workspaces
 	gsl_eigen_symmv_workspace* esv = gsl_eigen_symmv_alloc(N);
 	gsl_vector *eival = gsl_vector_alloc(N);
 	gsl_matrix *eivec = gsl_matrix_alloc(N, N);
 	gsl_matrix* sqrt_eival = gsl_matrix_alloc(N, N);
-	
+
 	sqrt_matrix(A, sqrt_A, esv, eival, eivec, sqrt_eival);
-	
+
 	// Free workspaces
 	gsl_matrix_free(sqrt_eival);
 	gsl_eigen_symmv_free(esv);

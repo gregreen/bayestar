@@ -24,6 +24,7 @@
  */
 
 
+
 #include "sampler.h"
 
 
@@ -138,7 +139,7 @@ double logP_single_star_emp(const double *x, double EBV, double RV,
 	/*
 	 * Don't allow NaN parameters
 	 */
-	if(isnan(x[0]) || isnan(x[1]) || isnan(x[2])) {
+	if(std::isnan(x[0]) || std::isnan(x[1]) || std::isnan(x[2])) {
 		/*#pragma omp critical (cout)
 		{
 		std::cerr << "Encountered NaN parameter value!" << std::endl;
@@ -894,7 +895,7 @@ void sample_indiv_synth(std::string &out_fname, TMCMCOptions &options, TGalactic
 
 		// Save binned p(DM, EBV) surface
 		if(gatherSurfs) {
-			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 0.02, 0.1, 30.);
+			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 1.0, 1.0, 30., true);
 		}
 		if(saveSurfs) { imgBuffer->add(*(img_stack.img[n])); }
 
@@ -1130,7 +1131,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 
 		// Save binned p(DM, EBV) surface
 		if(gatherSurfs) {
-			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 0.0125, 0.1, 30.);
+			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 1.0, 1.0, 30., true)
 		}
 
 		lnZ.push_back(lnZ_tmp);
@@ -1193,6 +1194,274 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	delete[] GR;
 }
 
+// Sample individual star using parallel tempering
+void sample_indiv_emp_pt(
+	std::string &out_fname,
+	TMCMCOptions &options,
+	TGalacticLOSModel& galactic_model,
+    TStellarModel& stellar_model,
+	TExtinctionModel& extinction_model,
+	TEBVSmoothing& EBV_smoothing,
+	TStellarData& stellar_data,
+	TImgStack& img_stack,
+	std::vector<bool> &conv,
+	std::vector<double> &lnZ,
+    double RV_mean, double RV_sigma, double minEBV,
+	const bool saveSurfs, const bool gatherSurfs,
+	const bool use_priors, int verbosity) {
+	// Parameters must be consistent - cannot save surfaces without gathering them
+	assert(!(saveSurfs & (!gatherSurfs)));
+
+	unsigned int N_DM = 20;
+	double DM_min = 4.;
+	double DM_max = 19.;
+	TMCMCParams params(&galactic_model, NULL, &stellar_model, &extinction_model, &stellar_data, N_DM, DM_min, DM_max);
+	params.EBV_floor = minEBV;
+	params.use_priors = use_priors;
+
+	params.RV_mean = RV_mean;
+	if(RV_sigma > 0.) {
+		params.vary_RV = true;
+		params.RV_variance = RV_sigma*RV_sigma;
+	}
+
+	//std::string dim_name[5] = {"E(B-V)", "DM", "Mr", "FeH", "R_V"};
+
+	double min[2] = {minEBV, DM_min};
+	double max[2] = {7., DM_max};
+	unsigned int N_bins[2] = {700, 120};
+	TRect rect(min, max, N_bins);
+
+	if(gatherSurfs) {
+		img_stack.resize(params.N_stars);
+		img_stack.set_rect(rect);
+	}
+	TImgWriteBuffer *imgBuffer = NULL;
+	if(saveSurfs) {
+		imgBuffer = new TImgWriteBuffer(rect, params.N_stars);
+	}
+
+	unsigned int max_attempts = 3;
+	unsigned int N_steps = options.steps;
+	unsigned int N_samplers = options.samplers;
+	unsigned int N_runs = options.N_runs;
+	unsigned int ndim;
+
+	if(params.vary_RV) { ndim = 5; } else { ndim = 4; }
+
+	double *GR = new double[ndim];
+	double GR_threshold = 1.1;
+
+	// Parallel tempering parameters
+	cppsampler::pdensity ln_prior = [](double* x) { return 0.; };
+	cppsampler::pdensity lnL = [&params, ndim](double* x) {
+		double res = logP_indiv_simple_emp(x, ndim, params);
+		// std::cerr << "ln p( ";
+		// for(int k=0; k<ndim; k++) {
+		// 	std::cerr << x[k] << " ";
+		// }
+		// std::cerr << ") = " << res << std::endl;
+		return res;
+	};
+
+	int n_temperatures = 4;
+	double temperature_spacing = 5.;
+
+	// Loop through the stars
+	timespec t_start, t_write, t_end;
+
+	if(verbosity >= 1) {
+		std::cout << std::endl;
+	}
+
+	unsigned int N_nonconv = 0;
+
+	TChainWriteBuffer chainBuffer(ndim, 100, params.N_stars);
+	std::stringstream group_name;
+	group_name << "/" << stellar_data.pix_name;
+
+	for(size_t n=0; n<params.N_stars; n++) {
+		params.idx_star = n;
+
+		clock_gettime(CLOCK_MONOTONIC, &t_start);
+
+		if(verbosity >= 2) {
+			std::cout << "Star #" << n+1 << " of " << params.N_stars << std::endl;
+			std::cout << "====================================" << std::endl;
+
+			std::cout << "mags = ";
+			for(unsigned int i=0; i<NBANDS; i++) {
+				std::cout << std::setprecision(4) << params.data->star[n].m[i] << " ";
+			}
+			std::cout << std::endl;
+			std::cout << "errs = ";
+			for(unsigned int i=0; i<NBANDS; i++) {
+				std::cout << std::setprecision(3) << params.data->star[n].err[i] << " ";
+			}
+			std::cout << std::endl;
+			std::cout << "maglimit = ";
+			for(unsigned int i=0; i<NBANDS; i++) {
+				std::cout << std::setprecision(3) << params.data->star[n].maglimit[i] << " ";
+			}
+			std::cout << std::endl << std::endl;
+		}
+
+		// Set up the parallel tempering sampler
+		cppsampler::PTSampler pt_sampler(lnL, ln_prior, ndim,
+								      n_temperatures, temperature_spacing);
+
+		// Seed the sampler
+		gsl_rng *r;
+		seed_gsl_rng(&r);
+
+		cppsampler::vector_generator rand_state = [ndim, &params, &r]() {
+			cppsampler::shared_vector x0 = std::make_shared<std::vector<double> >(ndim, 0.);
+			gen_rand_state_indiv_emp(x0->data(), ndim, r, params);
+			return x0;
+		};
+
+		pt_sampler.set_state(rand_state);
+
+		gsl_rng_free(r);
+
+		// Burn-in
+		cppsampler::PTTuningParameters tune_params;
+	    tune_params.n_rounds = 10;
+	    tune_params.n_swaps_per_round = 20;
+	    tune_params.n_steps_per_swap = 20;
+		tune_params.step_accept = 0.25;
+
+	    pt_sampler.tune_all(tune_params);
+
+		int n_steps_per_swap = 2;
+		int n_swaps = N_steps / n_steps_per_swap;
+
+		pt_sampler.step_multiple(n_swaps/4, n_steps_per_swap);
+
+		tune_params.n_rounds = 20;
+	    tune_params.n_swaps_per_round = 20;
+	    tune_params.n_steps_per_swap = 20;
+
+		pt_sampler.tune_all(tune_params);
+
+		pt_sampler.step_multiple(n_swaps/4, n_steps_per_swap);
+
+		std::cerr << std::endl
+                  << "MH acceptance: "
+                  << 100. * pt_sampler.get_sampler(0)->accept_frac()
+                  << "%"
+                  << std::endl << std::endl;
+
+		std::cerr << std::endl
+		          << "swap acceptance: "
+		          << 100. * pt_sampler.swap_accept_frac()
+		          << "%"
+		          << std::endl << std::endl;
+
+		std::cerr << "beta = ";
+		for(auto beta : *pt_sampler.get_beta()) {
+			std::cerr << beta << " ";
+		}
+		std::cerr << std::endl;
+
+		pt_sampler.clear_chain();
+
+		// Main sampling phase
+		pt_sampler.step_multiple(n_swaps, n_steps_per_swap);
+
+		std::cerr << std::endl
+                  << "MH acceptance: "
+                  << 100. * pt_sampler.get_sampler(0)->accept_frac()
+                  << "%"
+                  << std::endl << std::endl;
+
+		std::cerr << std::endl
+		          << "swap acceptance: "
+		          << 100. * pt_sampler.swap_accept_frac()
+		          << "%"
+		          << std::endl << std::endl;
+
+		clock_gettime(CLOCK_MONOTONIC, &t_write);
+
+		std::cerr << "done sampling." << std::endl;
+
+		// Copy over chain
+		std::shared_ptr<const cppsampler::Chain> pt_chain = pt_sampler.get_chain(0);
+		TChain chain(ndim, pt_chain->get_length()+1);
+		cppsampler::shared_const_vector chain_el = pt_chain->get_elements();
+		cppsampler::shared_const_vector chain_w = pt_chain->get_weights();
+		cppsampler::shared_const_vector chain_lnp = pt_chain->get_lnL();
+		for(int k=0; k<chain_w->size(); k++) {
+			chain.add_point(
+				chain_el->data()+ndim*k,
+				chain_lnp->at(k),
+				chain_w->at(k)
+			);
+		}
+
+		std::cerr << "done copying chain." << std::endl;
+
+		// Compute evidence
+		// cppsampler::BasicRandGenerator rand_gen;
+		// double lnZ_tmp = rand_gen.uniform();
+		double lnZ_tmp = chain.get_ln_Z_harmonic(true, 10., 0.25, 0.05);
+
+		std::cerr << "calculated lnZ" << std::endl;
+
+		// Save thinned chain
+		bool converged = true; // TODO: calculate convergence and GR diagnostic.
+		chainBuffer.add(chain, converged, lnZ_tmp, GR);
+
+		std::cerr << "added to chain buffer." << std::endl;
+
+		// Save binned p(DM, EBV) surface
+		if(gatherSurfs) {
+			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 1.0, 1.0, 30., true);
+		}
+
+		std::cerr << "calculated image." << std::endl;
+
+		// Save convergence/goodness-of-fit statistics
+		lnZ.push_back(lnZ_tmp);
+		conv.push_back(converged);
+
+		clock_gettime(CLOCK_MONOTONIC, &t_end);
+
+		// Report timing
+		if(verbosity >= 2) {
+			std::cout << "# Number of steps: " << N_steps << std::endl;
+			std::cout << "# ln Z: " << lnZ.back() << std::endl;
+			std::cout << "# Time elapsed: " << std::setprecision(2) << (t_end.tv_sec - t_start.tv_sec) + 1.e-9*(t_end.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+			std::cout << "# Sample time: " << std::setprecision(2) << (t_write.tv_sec - t_start.tv_sec) + 1.e-9*(t_write.tv_nsec - t_start.tv_nsec) << " s" << std::endl;
+			std::cout << "# Write time: " << std::setprecision(2) << (t_end.tv_sec - t_write.tv_sec) + 1.e-9*(t_end.tv_nsec - t_write.tv_nsec) << " s" << std::endl << std::endl;
+		}
+	}
+
+	// Smooth the individual stellar surfaces along E(B-V) axis, with
+	// kernel that varies with E(B-V).
+	if(EBV_smoothing.get_pct_smoothing_max() > 0.) {
+		std::cerr << "Smoothing images along reddening axis." << std::endl;
+		std::vector<double> sigma_pix;
+		EBV_smoothing.calc_pct_smoothing(stellar_data.nside, min[0], max[0], N_bins[0], sigma_pix);
+		for(int i=0; i<sigma_pix.size(); i++) { sigma_pix[i] *= (double)i; }
+		img_stack.smooth(sigma_pix);
+	}
+
+	if(saveSurfs) {
+		for(int n=0; n<params.N_stars; n++) {
+			imgBuffer->add(*(img_stack.img[n]));
+		}
+	}
+
+	chainBuffer.write(out_fname, group_name.str(), "stellar chains");
+	if(saveSurfs) { imgBuffer->write(out_fname, group_name.str(), "stellar pdfs"); }
+
+	std::cerr << "cleaning up." << std::endl;
+
+	if(imgBuffer != NULL) { delete imgBuffer; }
+	delete[] GR;
+}
+
 
 /*************************************************************************
  *
@@ -1231,4 +1500,3 @@ void rand_gaussian_vector(double*const x, double mu, double sigma, size_t N, gsl
 void rand_gaussian_vector(double*const x, double* mu, double* sigma, size_t N, gsl_rng* r) {
 	for(size_t i=0; i<N; i++) { x[i] = mu[i] + gsl_ran_gaussian_ziggurat(r, sigma[i]); }
 }
-
