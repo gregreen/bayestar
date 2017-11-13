@@ -1,26 +1,26 @@
 /*
  * chain.h
- * 
+ *
  * Defines class representing a Markov Chain, for use in MCMC routines.
- * 
+ *
  * This file is part of bayestar.
  * Copyright 2012 Gregory Green
- * 
+ *
  * Bayestar is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
  * MA 02110-1301, USA.
- * 
+ *
  */
 
 #ifndef _CHAIN_H__
@@ -81,7 +81,7 @@ struct TGaussianMixture {
 	gsl_matrix **inv_cov;
 	gsl_matrix **sqrt_cov;
 	double *det_cov;
-	
+
 	// Workspaces
 	gsl_permutation *p;
 	gsl_matrix *LU;
@@ -90,24 +90,24 @@ struct TGaussianMixture {
 	gsl_matrix *eivec;
 	gsl_matrix *sqrt_eival;
 	gsl_rng *r;
-	
+
 	// Constructor / Destructor
 	TGaussianMixture(unsigned int _ndim, unsigned int _nclusters);
 	~TGaussianMixture();
-	
+
 	// Accessors
 	gsl_matrix* get_cov(unsigned int k);
 	double get_w(unsigned int k);
 	double* get_mu(unsigned int k);
 	void draw(double *x);
 	void print();
-	
+
 	// Mutators
 	void invert_covariance();
-	
+
 	void density(const double *x, unsigned int N, double *res);
 	double density(const double *x);
-	
+
 	void expectation_maximization(const double *x, const double *w, unsigned int N, unsigned int iterations=10);
 };
 
@@ -118,13 +118,13 @@ public:
 	uint32_t N_bins[2];
 	double min[2];
 	double max[2];
-	
+
 	TRect(double _min[2], double _max[2], uint32_t _N_bins[2]);
 	TRect(const TRect& rect);
 	~TRect();
-	
+
 	bool get_index(double x1, double x2, unsigned int &i1, unsigned int &i2) const;
-	
+
 	TRect& operator =(const TRect& rhs);
 };
 
@@ -140,10 +140,10 @@ private:
 	std::vector<double> w;			// Weight of each point in chain
 	double total_weight;			// Sum of the weights
 	unsigned int N, length, capacity;	// # of dimensions, length and capacity of chain
-	
+
 	std::vector<double> x_min;
 	std::vector<double> x_max;
-	
+
 	struct TChainAttribute {
 		char *dim_name;
 		float total_weight;
@@ -152,19 +152,19 @@ private:
 
 public:
 	TStats stats;				// Keeps track of statistics of chain
-	
+
 	TChain(unsigned int _N, unsigned int _capacity);
 	TChain(const TChain& c);
 	TChain(std::string filename, bool reserve_extra=false);	// Construct the chain from a file
 	~TChain();
-	
+
 	// Mutators
-	void add_point(double* element, double L_i, double w_i);		// Add a point to the end of the chain
+	void add_point(const double *const element, double L_i, double w_i);		// Add a point to the end of the chain
 	void clear();								// Remove all the points from the chain
 	void set_capacity(unsigned int _capacity);				// Set the capacity of the vectors used in the chain
 	double append(const TChain& chain, bool reweight=false, bool use_peak=true, double nsigma_max=1.,
 	              double nsigma_peak=0.1, double chain_frac=0.05, double threshold=1.e-5);	// Append a second chain to this one
-	
+
 	// Accessors
 	unsigned int get_capacity() const;			// Return the capacity of the vectors used in the chain
 	unsigned int get_length() const;			// Return the number of unique points in the chain
@@ -175,35 +175,36 @@ public:
 	double get_L(unsigned int i) const;			// Return the likelihood of the i-th point
 	double get_w(unsigned int i) const;			// Return the weight of the i-th point
 	unsigned int get_ndim() const;
-	
+
 	// Computations on chain
-	
+
 	// Estimate the Bayesian Evidence of the posterior using the bounded Harmonic Mean Approximation
 	double get_ln_Z_harmonic(bool use_peak=true, double nsigma_max=1.,
 	                         double nsigma_peak=0.1, double chain_frac=0.1) const;
-	
+
 	// Estimate coordinates with peak density by binning
 	void density_peak(double* const peak, double nsigma) const;
-	
+
 	// Find a point in space with high density by picking a random point, drawing an ellipsoid,
 	// taking the mean coordinate within the ellipsoid, and then iterating
 	void find_center(double* const center, gsl_matrix *const cov, gsl_matrix *const inv_cov,
 	                 double* det_cov, double dmax=1., unsigned int iterations=5) const;
-	
+
 	void fit_gaussian_mixture(TGaussianMixture *gm, unsigned int iterations=10);
-	
+
 	// Return an image, optionally with smoothing
 	void get_image(cv::Mat &mat, const TRect &grid,
 	               unsigned int dim1, unsigned int dim2, bool norm=true,
-	               double sigma1=-1., double sigma2=-1., double nsigma=5.) const;
-	
+	               double sigma1=-1., double sigma2=-1., double nsigma=5.,
+				   bool sigma_pix_units=false) const;
+
 	// File IO
 	// Save the chain to an HDF5 file
 	bool save(std::string fname, std::string group_name, size_t index,
 	          std::string dim_name, int compression=1, int subsample=-1,
 	          bool converged=true, float lnZ=std::numeric_limits<float>::quiet_NaN()) const;
 	bool load(std::string filename, bool reserve_extra=false);	// Load the chain from file
-	
+
 	// Operators
 	const double* operator [](unsigned int i);	// Calls get_element
 	void operator +=(const TChain& rhs);		// Calls append
@@ -219,31 +220,31 @@ class TChainWriteBuffer {
 public:
 	TChainWriteBuffer(unsigned int nDim, unsigned int nSamples, unsigned int nReserved = 10);
 	~TChainWriteBuffer();
-	
+
 	void add(const TChain &chain,
 	         bool converged = true,
 	         double lnZ = std::numeric_limits<double>::quiet_NaN(),
 		 double * GR = NULL
 	        );
-	
+
 	void reserve(unsigned int nReserved);
-	
+
 	void write(const std::string& fname, const std::string& group,
 	           const std::string& chain, const std::string& meta="");
-	
+
 private:
 	float *buf;
 	unsigned int nDim_, nSamples_, nReserved_, length_;
 	gsl_rng *r;
 	std::vector<double> samplePos;
-	
+
 	struct TChainMetadata {
 		bool converged;
 		float lnZ;
 	};
-	
+
 	std::vector<TChainMetadata> metadata;
-	
+
 };
 
 /*************************************************************************
@@ -254,13 +255,13 @@ class TImgWriteBuffer {
 public:
 	TImgWriteBuffer(const TRect& rect, unsigned int nReserved = 10);
 	~TImgWriteBuffer();
-	
+
 	void add(const cv::Mat& img);
-	
+
 	void reserve(unsigned int nReserved);
-	
+
 	void write(const std::string& fname, const std::string& group, const std::string& img);
-	
+
 private:
 	float *buf;
 	unsigned int nReserved_, length_;
@@ -278,10 +279,10 @@ class TTransformParamSpace {
 public:
 	TTransformParamSpace(unsigned int ndim);
 	virtual ~TTransformParamSpace();
-	
+
 	virtual void transform(const double *const x, double *const y);
 	void operator()(const double *const x, double *const y);
-	
+
 private:
 	unsigned int _ndim;
 };
