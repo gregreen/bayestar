@@ -687,6 +687,9 @@ bool TStellarModel::load_seds(std::string seds_fname) {
 	FeH_min_seds = FeH_min;
 	FeH_max_seds = FeH_max;
 
+	N_Mr_seds = N_Mr;
+	N_FeH_seds = N_FeH;
+
 	std::cout << "# " << Mr_min_seds << " < Mr < " << Mr_max_seds << std::endl;
 	std::cout << "# " << FeH_min_seds << " < FeH < " << FeH_max_seds << std::endl;
 
@@ -713,6 +716,32 @@ bool TStellarModel::get_sed(double Mr, double FeH, TSED& sed) const {
 	}
 	sed = (*sed_interp)(Mr, FeH);
 	return true;
+}
+
+// Access by grid index, and set FeH and Mr to their values at that index
+bool TStellarModel::get_sed(unsigned int Mr_idx, unsigned int FeH_idx,
+			 TSED& sed, double& FeH, double& Mr) const {
+	if((Mr_idx >= N_Mr_seds) || (FeH_idx >= N_FeH_seds)) {
+		std::cerr << " ! Mr_idx = " << Mr_idx
+				  << " , N_Mr_seds = " << N_Mr_seds << std::endl;
+  		std::cerr << " ! FeH_idx = " << FeH_idx
+  				  << " , N_FeH_seds = " << N_FeH_seds << std::endl;
+		return false;
+	}
+
+	unsigned int flat_idx = sed_interp->get_flat_index(Mr_idx, FeH_idx);
+	sed = (*sed_interp)[flat_idx];
+	sed_interp->get_xy(Mr_idx, FeH_idx, Mr, FeH);
+
+	return true;
+}
+
+unsigned int TStellarModel::get_N_FeH() const {
+	return N_FeH_seds;
+}
+
+unsigned int TStellarModel::get_N_Mr() const {
+	return N_Mr_seds;
 }
 
 bool TStellarModel::in_model(double Mr, double FeH) {

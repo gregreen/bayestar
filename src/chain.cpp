@@ -777,6 +777,7 @@ void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsig
 TImgWriteBuffer::TImgWriteBuffer(const TRect& rect, unsigned int nReserved)
 	: rect_(rect), buf(NULL), nReserved_(0), length_(0)
 {
+	std::cerr << "rect_.N_bins" << rect_.N_bins[0] << " " << rect_.N_bins[1] << std::endl;
 	reserve(nReserved);
 }
 
@@ -805,6 +806,11 @@ class ImageDimensionException: public std::exception {
 void TImgWriteBuffer::add(const cv::Mat& img) {
 	// Make sure the image is of the correct dimensions
 	if((img.rows != rect_.N_bins[0]) || (img.cols != rect_.N_bins[1])) {
+		std::cerr << "Image dimensions:  (" << img.rows << ", "
+										    << img.cols << ")" << std::endl;
+		std::cerr << "Buffer dimensions: (" << rect_.N_bins[0] << ", "
+										    << rect_.N_bins[1] << ")" << std::endl;
+
 		throw imgDimException;
 	}
 

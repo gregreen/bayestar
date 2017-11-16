@@ -33,6 +33,7 @@
 #include "data.h"
 #include "sampler.h"
 #include "los_sampler.h"
+#include "star_exact.h"
 #include "bayestar_config.h"
 
 using namespace std;
@@ -531,6 +532,10 @@ int main(int argc, char **argv) {
 		vector<double> lnZ;
 
 		bool gatherSurfs = (opts.N_regions || opts.N_clouds || opts.save_surfs);
+
+		// Grid evaluation of stellar models
+		grid_eval_stars(los_model, ext_model, *emplib, stellar_data, img_stack,
+						opts.save_surfs, opts.output_fname, opts.mean_RV);
 
 		// Sample individual stars
 		if(opts.synthetic) {

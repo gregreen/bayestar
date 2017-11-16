@@ -1,27 +1,27 @@
 /*
  * los_sampler.h
- * 
+ *
  * Samples from posterior distribution of line-of-sight extinction
  * model, given a set of stellar posterior densities in DM, E(B-V).
- * 
+ *
  * This file is part of bayestar.
  * Copyright 2012 Gregory Green
- * 
+ *
  * Bayestar is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
  * MA 02110-1301, USA.
- * 
+ *
  */
 
 #ifndef _LOS_SAMPLER_H__
@@ -56,7 +56,7 @@ struct TMCMCOptions {
 	unsigned int samplers;
 	double p_replacement;
 	unsigned int N_runs;
-	
+
 	TMCMCOptions(unsigned int _steps, unsigned int _samplers,
 	             double _p_replacement, unsigned int _N_runs)
 		: steps(_steps), samplers(_samplers),
@@ -67,18 +67,20 @@ struct TMCMCOptions {
 struct TImgStack {
 	cv::Mat **img;
 	TRect *rect;
-	
+
 	size_t N_images;
-	
+
 	TImgStack(size_t _N_images);
 	TImgStack(size_t _N_images, TRect &_rect);
 	~TImgStack();
-	
+
 	void cull(const std::vector<bool> &keep);
 	void resize(size_t _N_images);
 	void set_rect(TRect &_rect);
 	void stack(cv::Mat &dest);
-	
+
+	bool initialize_to_zero(unsigned int img_idx);
+
 	void smooth(std::vector<double> sigma, double n_sigma=5);
 };
 
@@ -86,45 +88,45 @@ struct TLOSMCMCParams {
 	TImgStack *img_stack;
 	std::vector<double> p0_over_Z, ln_p0_over_Z, inv_p0_over_Z;
 	double p0, lnp0;
-	
+
 	double *line_int;
 	float *Delta_EBV;
 	unsigned int N_runs;
 	unsigned int N_threads;
 	unsigned int N_regions;
-	
+
 	double EBV_max;
 	double EBV_guess_max;
 	std::vector<double> EBV_prof_guess;
 	gsl_matrix *guess_cov, *guess_sqrt_cov;
-	
+
 	std::vector<double> subpixel;
 	double subpixel_min, subpixel_max;
-	
+
 	double *Delta_EBV_prior;
 	double *log_Delta_EBV_prior;
 	double *sigma_log_Delta_EBV;
 	double alpha_skew;
-	
+
 	TLOSMCMCParams(TImgStack* _img_stack, const std::vector<double>& _lnZ, double _p0,
 		       unsigned int _N_runs, unsigned int _N_threads, unsigned int _N_regions,
 	               double _EBV_max=-1.);
 	~TLOSMCMCParams();
-	
+
 	void set_p0(double _p0);
 	void set_subpixel_mask(TStellarData& data);
 	void set_subpixel_mask(std::vector<double>& new_mask);
-	
+
 	void calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model,
 							  double log_Delta_EBV_floor,
 							  double log_Delta_EBV_ceil,
 	                          double EBV_tot, int verbosity=1);
-	
+
 	void gen_guess_covariance(double scale_length);
-	
+
 	double* get_line_int(unsigned int thread_num);
 	float* get_Delta_EBV(unsigned int thread_num);
-	
+
 };
 
 // Transform from log(DeltaEBV) to cumulative EBV for piecewise-linear l.o.s. fit
@@ -134,7 +136,7 @@ private:
 public:
 	TLOSTransform(unsigned int ndim);
 	virtual ~TLOSTransform();
-	
+
 	virtual void transform(const double *const x, double *const y);
 };
 
@@ -143,11 +145,11 @@ class TLOSCloudTransform : public TTransformParamSpace {
 private:
 	size_t _ndim;
 	size_t n_clouds;
-	
+
 public:
 	TLOSCloudTransform(unsigned int ndim);
 	virtual ~TLOSCloudTransform();
-	
+
 	virtual void transform(const double *const x, double *const y);
 };
 
