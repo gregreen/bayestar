@@ -1770,7 +1770,7 @@ void TImgStack::resize(size_t _N_images) {
 		}
 		delete[] img;
 	}
-	if(rect != NULL) { delete rect; }
+	// if(rect != NULL) { delete rect; }
 
 	N_images = _N_images;
 	img = new cv::Mat*[N_images];
@@ -1805,11 +1805,10 @@ void TImgStack::cull(const std::vector<bool> &keep) {
 }
 
 void TImgStack::set_rect(TRect& _rect) {
-	if(rect == NULL) {
-		rect = new TRect(_rect);
-	} else {
-		*rect = _rect;
+	if(rect != NULL) {
+		delete rect;
 	}
+	rect = new TRect(_rect);
 }
 
 void TImgStack::stack(cv::Mat& dest) {
@@ -1829,7 +1828,8 @@ bool TImgStack::initialize_to_zero(unsigned int img_idx) {
 	if(img[img_idx] == NULL) {
 		img[img_idx] = new cv::Mat;
 	}
-	*(img[img_idx]) = cv::Mat::zeros(rect->N_bins[0], rect->N_bins[1], CV_64F);
+	*(img[img_idx]) = cv::Mat::zeros(rect->N_bins[0], rect->N_bins[1], CV_32F);
+	return true;
 }
 
 
