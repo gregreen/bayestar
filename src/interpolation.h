@@ -212,8 +212,8 @@ T& TBilinearInterp<T>::operator[](unsigned int index) {
 template<class T>
 void TBilinearInterp<T>::get_xy(unsigned int i, unsigned int j, double &x, double &y) const {
 	assert((i < Nx) && (j < Ny));
-	x = dx*(double)i - x_min;
-	y = dy*(double)j - y_min;
+	x = dx*(double)i + x_min;
+	y = dy*(double)j + y_min;
 }
 
 template<class T>
