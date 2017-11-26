@@ -438,6 +438,7 @@ double TGalacticLOSModel::log_prior_emp(double DM, double Mr, double FeH) const 
 	double f_H = f_halo(DM);
 	double p = (1. - f_H) * p_FeH_fast(DM, FeH, 0);
 	p += f_H * p_FeH_fast(DM, FeH, 1);
+	// return log(p);
 	return log_dNdmu(DM) + log(p);// + lnp_Mr(Mr);
 }
 
@@ -720,7 +721,7 @@ bool TStellarModel::get_sed(double Mr, double FeH, TSED& sed) const {
 
 // Access by grid index, and set FeH and Mr to their values at that index
 bool TStellarModel::get_sed(unsigned int Mr_idx, unsigned int FeH_idx,
-			 TSED& sed, double& FeH, double& Mr) const {
+						    TSED& sed, double& Mr, double& FeH) const {
 	if((Mr_idx >= N_Mr_seds) || (FeH_idx >= N_FeH_seds)) {
 		std::cerr << " ! Mr_idx = " << Mr_idx
 				  << " , N_Mr_seds = " << N_Mr_seds << std::endl;

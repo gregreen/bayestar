@@ -87,7 +87,7 @@ public:
 
 	// Access by grid index
 	bool get_sed(unsigned int Mr_idx, unsigned int FeH_idx,
-				 TSED& sed, double& FeH, double& Mr) const;
+				 TSED& sed, double& Mr, double& FeH) const;
 	unsigned int get_N_FeH() const;
 	unsigned int get_N_Mr() const;
 
