@@ -246,7 +246,7 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
                      TRect& grid, cv::Mat& img,
                      double n_sigma, int min_width,
                      double add_diagonal=-1.,
-                     int subsample=4) {
+                     int subsample=5) {
     // Add extra smoothing along each axis
     if(add_diagonal > 0.) {
         double diag[2] = {
@@ -272,7 +272,7 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
     }
 
     // Determine sigma along each axis
-    double det = inv_cov_00 * inv_cov_11 - inv_cov_01 * inv_cov_01;// + 1.e-5;
+    double det = inv_cov_00 * inv_cov_11 - inv_cov_01 * inv_cov_01 + 1.e-5;
     double sigma[2] = {
         sqrt(inv_cov_11 / det),// + diag[0]*diag[0]),
         sqrt(inv_cov_00 / det) // + diag[1]*diag[1])
@@ -292,7 +292,17 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
     // std::cerr << "initializing img" << std::endl;
     int w = 2 * width[0] + 1;
     int h = 2 * width[1] + 1;
-    cv::Mat img_sub = cv::Mat::zeros(subsample*w, subsample*h, CV_32F);
+
+    // Size of sub-sampled image
+    int w_sub = subsample * w;
+    int h_sub = subsample * h;
+
+    // Center of sub-sampled image
+    double w0 = 0.5 * (double)(w_sub - 1);
+    double h0 = 0.5 * (double)(h_sub - 1);
+
+    // Create zeroed sub-sampled image
+    cv::Mat img_sub = cv::Mat::zeros(w_sub, h_sub, CV_32F);
 
     std::cerr << std::endl
               << "inv_cov_?? : "
@@ -303,21 +313,23 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
 
     // Evaluate filter at each point
     // std::cerr << "evaluating image" << std::endl;
+    // double sum = 0;
     double dx, dy;
     double cxx, cxy, cyy;
-    for(int i=0; i<subsample*w; i++) {
-        dx = (i - subsample*width[0]) * grid.dx[0] / (double)subsample;
+    for(int i=0; i<w_sub; i++) {
+        dx = ((double)i - w0) * grid.dx[0] / (double)subsample;
         cxx = inv_cov_00 * dx*dx;
 
         for(int j=0; j<subsample*h; j++) {
-            dy = (j - subsample*width[1]) * grid.dx[1] / (double)subsample;
+            dy = ((double)j - h0) * grid.dx[1] / (double)subsample;
             cxy = inv_cov_01 * dx*dy;
             cyy = inv_cov_11 * dy*dy;
 
             // std::cerr << " (" << i << ", " << j << ")" << std::endl;
             // std::cerr << " width = (" << 2*width[0]+1 << ", " << 2*width[1]+1 << ")" << std::endl;
-
-            img_sub.at<float>(i, j) += exp(-0.5 * (cxx + 2*cxy + cyy));
+            double weight = exp(-0.5 * (cxx + 2*cxy + cyy));
+            img_sub.at<float>(i, j) += weight;
+            // sum += weight;
         }
     }
     // std::cerr << "done creating filter" << std::endl;
@@ -327,6 +339,7 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
     cv::resize(img_sub, img_down, cv::Size(h, w), 0, 0, cv::INTER_AREA);
 
     img = img_down;
+    img /= img.at<float>(width[0], width[1]);
 
     std::cerr << "size = " << img_sub.rows << ", " << img_sub.cols << std::endl;
     std::cerr << "size = " << img_down.rows << ", " << img_down.cols << std::endl;
@@ -566,12 +579,12 @@ void integrate_ML_solution(TStellarModel& stellar_model,
     // img_stack.img[img_idx]->at<double>(0, 0) = 1.;
     // (*img_stack.img[img_idx])(0,0) = 1.;
 
-    cv::Mat filter_test;
-    gaussian_filter(inv_cov_11, inv_cov_01, inv_cov_00,
-                    *(img_stack.rect), filter_test, 10, 2, -1);
-    std::cerr << std::endl << "filter_test:" << std::endl;
-    print_matrix(filter_test, std::cerr, 15, 12);
-    std::cerr << std::endl;
+    // cv::Mat filter_test;
+    // gaussian_filter(inv_cov_11, inv_cov_01, inv_cov_00,
+    //                 *(img_stack.rect), filter_test, 7, 2, 0.5);
+    // std::cerr << std::endl << "filter_test:" << std::endl;
+    // print_matrix(filter_test, std::cerr, 15, 12);
+    // std::cerr << std::endl;
 
     // Smooth PDF with covariance of the ML solution
     cv::Mat cov_img;
