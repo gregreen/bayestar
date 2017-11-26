@@ -7,6 +7,8 @@
 #include <limits>
 #include <algorithm>
 #include <memory>
+#include <cstdlib>
+
 #include <Eigen/Dense>
 
 #include "model.h"
@@ -35,7 +37,19 @@ std::shared_ptr<LinearFitParams> star_max_likelihood(
     double RV=3.1);
 
 
+void star_covariance(TStellarData::TMagnitudes& mags_obs,
+                     TExtinctionModel& ext_model,
+                     double& inv_cov_00, double& inv_cov_01, double& inv_cov_11,
+                     double RV=3.1);
+
+void star_max_likelihood(TSED& mags_model, TStellarData::TMagnitudes& mags_obs,
+                         TExtinctionModel& ext_model,
+                         double inv_cov_00, double inv_cov_01, double inv_cov_11,
+                         double& mu, double& E, double& chi2,
+                         double RV=3.1);
+
 void integrate_ML_solution(TStellarModel& stellar_model,
+                           TGalacticLOSModel& los_model,
                            TStellarData::TMagnitudes& mags_obs,
                            TExtinctionModel& ext_model,
                            TImgStack& img_stack,

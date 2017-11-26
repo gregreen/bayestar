@@ -544,8 +544,8 @@ int main(int argc, char **argv) {
 			                   opts.min_EBV, opts.save_surfs, gatherSurfs, opts.verbosity);
 		} else {
 			sample_indiv_emp_pt(opts.output_fname, star_options, los_model, *emplib, ext_model, EBV_smoothing,
-			                 stellar_data, img_stack, conv, lnZ, opts.mean_RV, opts.sigma_RV, opts.min_EBV,
-			                 opts.save_surfs, gatherSurfs, opts.star_priors, opts.verbosity);
+			                    stellar_data, img_stack, conv, lnZ, opts.mean_RV, opts.sigma_RV, opts.min_EBV,
+			                    opts.save_surfs, gatherSurfs, opts.star_priors, opts.verbosity);
 		}
 
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);
