@@ -389,8 +389,6 @@ double integrate_ML_solution(TStellarModel& stellar_model,
                     inv_cov_00, inv_cov_01, inv_cov_11,
                     RV);
 
-    unsigned int img_idx0, img_idx1;
-
     if (!img_stack.initialize_to_zero(img_idx)) {
         std::cerr << "Failed to initialize image to zero!" << std::endl;
     }
@@ -516,12 +514,23 @@ double integrate_ML_solution(TStellarModel& stellar_model,
     assert( chi2_ML.size() == mu_ML.size() );
     assert( prior_ML.size() == mu_ML.size() );
 
+    unsigned int img_idx0, img_idx1;
+    double a0, a1;
+
     for(int k=0; k<mu_ML.size(); k++) {
         // Add single point to image at ML solution location (E, mu)
-        bool in_bounds = img_stack.rect->get_index(E_ML.at(k), mu_ML.at(k), img_idx0, img_idx1);
+        bool in_bounds = img_stack.rect->get_interpolant(
+            E_ML.at(k), mu_ML.at(k),
+            img_idx0, img_idx1,
+            a0, a1
+        );
+
+        // bool in_bounds = img_stack.rect->get_index(E_ML.at(k), mu_ML.at(k), img_idx0, img_idx1);
+
         if(in_bounds) {
             double log_p = -0.5 * (chi2_ML.at(k) - chi2_min)
                            + prior_ML.at(k) - prior_max;
+            double p = exp(log_p);
             // if(std::isnan(log_p)) {
             //     std::cerr << "NaN: (" << E_ML.at(arr_idx) << ", "
             //                           << mu_ML.at(arr_idx) << ", "
@@ -539,7 +548,15 @@ double integrate_ML_solution(TStellarModel& stellar_model,
             //               << exp(log_p) << std::endl;
             // }
             // std::cerr << log_p << std::endl;
-            img_stack.img[img_idx]->at<float>(img_idx0, img_idx1) += exp(log_p);
+
+            // img_stack.img[img_idx]->at<float>(img_idx0, img_idx1) += exp(log_p);
+
+
+            // Interpolate between bins
+            img_stack.img[img_idx]->at<float>(img_idx0, img_idx1) += (1-a0) * (1-a1) * p;
+            img_stack.img[img_idx]->at<float>(img_idx0+1, img_idx1) += a0 * (1-a1) * p;
+            img_stack.img[img_idx]->at<float>(img_idx0, img_idx1+1) += (1-a0) * a1 * p;
+            img_stack.img[img_idx]->at<float>(img_idx0+1, img_idx1+1) += a0 * a1 * p;
         }
     }
 
@@ -622,16 +639,16 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
     auto t_start = std::chrono::steady_clock::now();
 
     // Set up image stack for stellar PDFs
-    double min[2] = {0., 4.};   // (E, DM)
-	double max[2] = {7., 19.};  // (E, DM)
-	unsigned int N_bins[2] = {700, 120};
+    double min[2] = {-0.2,  3.75};   // (E, DM)
+	double max[2] = { 7.2, 19.25};  // (E, DM)
+	unsigned int N_bins[2] = {740, 124};
 	TRect rect(min, max, N_bins);
     img_stack.set_rect(rect);
 
     // Loop over all stars and evaluate PDFs on grid in (mu, E)
     int n_stars = stellar_data.star.size();
     chi2.clear();
-    
+
     for(int i=0; i<n_stars; i++) {
         double chi2_min = integrate_ML_solution(
             stellar_model, los_model,
@@ -641,6 +658,9 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
         chi2.push_back(chi2_min);
     }
 
+    // Crop to correct (E, DM) range
+    img_stack.crop(0., 7., 4., 19.);
+
     // Save the PDFs to disk
     auto t_write = std::chrono::steady_clock::now();
 
@@ -648,7 +668,7 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
         std::stringstream group_name;
         group_name << "/" << stellar_data.pix_name;
 
-        TImgWriteBuffer img_buffer(rect, n_stars);
+        TImgWriteBuffer img_buffer(*(img_stack.rect), n_stars);
 
 		for(int n=0; n<n_stars; n++) {
             std::cerr << "image[" << n << "].shape = ("

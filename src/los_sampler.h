@@ -74,10 +74,12 @@ struct TImgStack {
 	TImgStack(size_t _N_images, TRect &_rect);
 	~TImgStack();
 
-	void cull(const std::vector<bool> &keep);
+	void cull(const std::vector<bool>& keep);
+	void crop(double x_min, double x_max, double y_min, double y_max);
+
 	void resize(size_t _N_images);
-	void set_rect(TRect &_rect);
-	void stack(cv::Mat &dest);
+	void set_rect(TRect& _rect);
+	void stack(cv::Mat& dest);
 
 	bool initialize_to_zero(unsigned int img_idx);
 

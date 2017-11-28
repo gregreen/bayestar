@@ -1804,6 +1804,62 @@ void TImgStack::cull(const std::vector<bool> &keep) {
 	N_images = N_tmp;
 }
 
+void TImgStack::crop(double x_min, double x_max, double y_min, double y_max) {
+	assert(x_min < x_max);
+	assert(y_min < y_max);
+
+	uint32_t x0, x1, y0, y1;
+
+	if(x_min <= rect->min[0]) {
+		x0 = 0;
+	} else {
+		x0 = (int)floor((x_min - rect->min[0]) / rect->dx[0]);
+	}
+
+	if(x_max >= rect->max[0]) {
+		x1 = rect->N_bins[0];
+	} else {
+		x1 = rect->N_bins[0] - (int)floor((rect->max[0] - x_max) / rect->dx[0]);
+	}
+
+	if(y_min <= rect->min[1]) {
+		y0 = 0;
+	} else {
+		y0 = (int)floor((y_min - rect->min[1]) / rect->dx[1]);
+	}
+
+	if(y_max >= rect->max[1]) {
+		y1 = rect->N_bins[1];
+	} else {
+		y1 = rect->N_bins[1] - (int)floor((rect->max[1] - y_max) / rect->dx[1]);
+	}
+
+	std::cerr << "Cropping to (" << x0 << ", " << x1 << "), "
+			              << "(" << y0 << ", " << y1 << ")" << std::endl;
+
+	assert(x1 > x0);
+	assert(y1 > y0);
+
+	cv::Rect crop_region(y0, x0, y1-y0, x1-x0);
+
+	for(int i=0; i<N_images; i++) {
+		*(img[i]) = (*(img[i]))(crop_region);
+	}
+
+	double xmin_new = rect->min[0] + x0 * rect->dx[0];
+	double xmax_new = rect->min[0] + x1 * rect->dx[0];
+
+	double ymin_new = rect->min[1] + y0 * rect->dx[1];
+	double ymax_new = rect->min[1] + y1 * rect->dx[1];
+
+	rect->min[0] = xmin_new;
+	rect->min[1] = ymin_new;
+	rect->max[0] = xmax_new;
+	rect->max[1] = ymax_new;
+	rect->N_bins[0] = x1 - x0;
+	rect->N_bins[1] = y1 - y0;
+}
+
 void TImgStack::set_rect(TRect& _rect) {
 	if(rect != NULL) {
 		delete rect;
