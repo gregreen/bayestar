@@ -258,18 +258,27 @@ def main():
 	EBV_max = None
 
 	dset = '%s/stellar chains' % group
-	chain = hdf5io.TChain(fname, dset)
-	lnZ = chain.get_lnZ()[:]
-	lnZ_max = np.percentile(lnZ[np.isfinite(lnZ)], 95.)
-	lnZ_idx = np.ones(lnZ.shape).astype(np.bool) #(lnZ > lnZ_max - 30.)
-	#print np.sum(lnZ_idx), np.sum(~lnZ_idx)
+	try:
+		chain = hdf5io.TChain(fname, dset)
+		lnZ = chain.get_lnZ()[:]
+		lnZ_max = np.percentile(lnZ[np.isfinite(lnZ)], 95.)
+		lnZ_idx = np.ones(lnZ.shape).astype(np.bool) #(lnZ > lnZ_max - 30.)
+		#print np.sum(lnZ_idx), np.sum(~lnZ_idx)
+	except KeyError:
+		chain = None
+		lnZ_max = 0.
+		lnZ_idx = None
 
 	# Load stellar pdfs
 	try:
 		dset = '%s/stellar pdfs' % group
 		pdf = hdf5io.TProbSurf(fname, dset)
 		x_min, x_max = pdf.x_min, pdf.x_max
-		pdf_stack = np.sum(pdf.get_p()[lnZ_idx], axis=0)
+		if lnZ_idx is None:
+			pdf_stack = np.sum(pdf.get_p(), axis=0)
+			lnZ = np.zeros(pdf.nImages, dtype='f8')
+		else:
+			pdf_stack = np.sum(pdf.get_p()[lnZ_idx], axis=0)
 
 		pdf_indiv = pdf.get_p()
 
@@ -377,7 +386,7 @@ def main():
 
 		img = f_stretch(pdf_indiv[i].T)
 		img[~np.isfinite(img)] = np.min(img[np.isfinite(img)])
-		
+
 		ax.imshow(img, extent=bounds, origin='lower',
 				  aspect='auto', cmap='Blues', interpolation='nearest')
 
