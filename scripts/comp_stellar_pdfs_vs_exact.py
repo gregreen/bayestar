@@ -80,7 +80,7 @@ def bayestar_exact_diff(dset_exact, dset_bayestar, idx, ax):
 
 def plot_pdf_comparison(fname_exact, fname_bayestar, out_fname):
     xlim = (4., 19.)
-    ylim = (1., 3.0)
+    ylim = (0., 2.5)
 
     n_rows = 4
 
@@ -138,11 +138,14 @@ def plot_pdf_comparison(fname_exact, fname_bayestar, out_fname):
 
 
 def main():
-    fname_exact = os.path.join(output_dir, 'test-l0-b0-real-out.h5')
+    l, b = 45, 45
+    name = 'test-l{:d}-b{:d}'.format(l, b)
+
+    fname_exact = os.path.join(output_dir, '{}-out.h5'.format(name))
     # fname_bayestar = os.path.join(output_dir, 'test-l0-b0-real-1M-err0-nomaglim.h5')
-    fname_bayestar = os.path.join(output_dir, 'tmp.h5')
+    fname_bayestar = os.path.join(output_dir, '{}.h5'.format(name))
     # out_fname = os.path.join(plot_dir, 'test-l0-b0-real-1M-err0-nomaglim-comparison-{:d}.png')
-    out_fname = os.path.join(plot_dir, 'tmp-comparison-{:d}.png')
+    out_fname = os.path.join(plot_dir, 'comp-{}-{{:d}}.png'.format(name))
 
     plot_pdf_comparison(fname_exact, fname_bayestar, out_fname)
 
