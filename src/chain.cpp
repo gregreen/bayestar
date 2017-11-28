@@ -1088,6 +1088,7 @@ TRect::TRect(const TRect& rect) {
 
 TRect::~TRect() { }
 
+
 bool TRect::get_index(double x1, double x2, unsigned int& i1, unsigned int& i2) const {
 	if((x1 < min[0]) || (x1 >= max[0]) || (x2 < min[1]) || (x2 >= max[1])) {
 		return false;
@@ -1098,6 +1099,44 @@ bool TRect::get_index(double x1, double x2, unsigned int& i1, unsigned int& i2) 
 
 	return true;
 }
+
+
+bool TRect::get_index(double x1, double x2, double& i1, double& i2) const {
+	if((x1 < min[0]) || (x1 >= max[0]) || (x2 < min[1]) || (x2 >= max[1])) {
+		return false;
+	}
+
+	i1 = (x1 - min[0]) / dx[0];
+	i2 = (x2 - min[1]) / dx[1];
+
+	return true;
+}
+
+
+bool TRect::get_interpolant(double x1, double x2,
+					 unsigned int& i1, unsigned int& i2,
+					 double& a1, double& a2) const {
+	// (x1, x2) must lie between centers of image pixels
+	// (cannot be on outer rim).
+	if((x1 < min[0] + 0.5*dx[0]) || (x1 >= max[0] - 0.5*dx[0]) ||
+	   (x2 < min[1] + 0.5*dx[1]) || (x2 >= max[1] - 0.5*dx[1])) {
+		return false;
+	}
+
+	// Get lower pixel center
+	double i1_float = (x1 - min[0]) / dx[0] - 0.5;
+	double i2_float = (x2 - min[1]) / dx[1] - 0.5;
+
+	i1 = floor(i1_float);
+	i2 = floor(i2_float);
+
+	// Get interpolating weights
+	a1 = i1_float - i1;
+	a2 = i2_float - i2;
+
+	return true;
+}
+
 
 TRect& TRect::operator=(const TRect& rhs) {
 	if(&rhs != this) {

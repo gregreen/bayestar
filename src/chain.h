@@ -123,7 +123,14 @@ public:
 	TRect(const TRect& rect);
 	~TRect();
 
-	bool get_index(double x1, double x2, unsigned int &i1, unsigned int &i2) const;
+	bool get_index(double x1, double x2,
+				   unsigned int &i1, unsigned int &i2) const;
+	bool get_index(double x1, double x2,
+				   double& i1, double& i2) const;
+
+	bool get_interpolant(double x1, double x2,
+					     unsigned int& i1, unsigned int& i2,
+						 double& a1, double& a2) const;
 
 	TRect& operator =(const TRect& rhs);
 };
