@@ -777,7 +777,9 @@ void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsig
 TImgWriteBuffer::TImgWriteBuffer(const TRect& rect, unsigned int nReserved)
 	: rect_(rect), buf(NULL), nReserved_(0), length_(0)
 {
+	std::cerr << "rect_.N_bins = (" << rect_.N_bins[0] << ", " << rect_.N_bins[1] << ")" << std::endl;
 	reserve(nReserved);
+	std::cerr << "Reserved memory for TImgWriteBuffer." << std::endl;
 }
 
 
@@ -786,14 +788,19 @@ TImgWriteBuffer::~TImgWriteBuffer() {
 }
 
 void TImgWriteBuffer::reserve(unsigned int nReserved) {
-	assert(nReserved > nReserved_);
+	assert(nReserved >= nReserved_);
 	float *buf_new = new float[rect_.N_bins[0] * rect_.N_bins[1] * nReserved];
 	if(buf != NULL) {
+		std::cerr << "Reserving: memcpy() ..." << std::endl;
 		memcpy(buf_new, buf, sizeof(float) * rect_.N_bins[0] * rect_.N_bins[1] * length_);
+		std::cerr << "Reserving: memcpy() complete." << std::endl
+				  << "Reserving: delete[] buf ..." << std::endl;
 		delete[] buf;
+		std::cerr << "Reserving: Deleted buf." << std::endl;
 	}
 	buf = buf_new;
 	nReserved_ = nReserved;
+	std::cerr << "Done reserving ..." << std::endl;
 }
 
 class ImageDimensionException: public std::exception {
@@ -805,6 +812,11 @@ class ImageDimensionException: public std::exception {
 void TImgWriteBuffer::add(const cv::Mat& img) {
 	// Make sure the image is of the correct dimensions
 	if((img.rows != rect_.N_bins[0]) || (img.cols != rect_.N_bins[1])) {
+		std::cerr << "Image dimensions:  (" << img.rows << ", "
+										    << img.cols << ")" << std::endl;
+		std::cerr << "Buffer dimensions: (" << rect_.N_bins[0] << ", "
+										    << rect_.N_bins[1] << ")" << std::endl;
+
 		throw imgDimException;
 	}
 

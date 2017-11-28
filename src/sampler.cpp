@@ -1131,7 +1131,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 
 		// Save binned p(DM, EBV) surface
 		if(gatherSurfs) {
-			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 1.0, 1.0, 30., true)
+			chain.get_image(*(img_stack.img[n]), rect, 0, 1, true, 1.0, 1.0, 30., true);
 		}
 
 		lnZ.push_back(lnZ_tmp);

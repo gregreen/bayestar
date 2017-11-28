@@ -63,8 +63,12 @@
 
 // Wrapper for parameters needed by the sampler
 struct TMCMCParams {
-	TMCMCParams(TGalacticLOSModel* _gal_model, TSyntheticStellarModel* _synth_stellar_model, TStellarModel* _emp_stellar_model, TExtinctionModel* _ext_model,
-                    TStellarData* _data, unsigned int _N_DM, double _DM_min, double _DM_max);
+	TMCMCParams(TGalacticLOSModel* _gal_model,
+				TSyntheticStellarModel* _synth_stellar_model,
+				TStellarModel* _emp_stellar_model,
+				TExtinctionModel* _ext_model,
+                TStellarData* _data,
+				unsigned int _N_DM, double _DM_min, double _DM_max);
 	~TMCMCParams();
 
 	// Model

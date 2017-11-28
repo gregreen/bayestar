@@ -1,28 +1,28 @@
 /*
  * interpolation.h
- * 
+ *
  * Classes which implement linear, bilinear and multilinear
  * interpolation on arbitrary objects. The objects must have
  * addition and scalar multiplication defined on them.
- * 
+ *
  * This file is part of bayestar.
  * Copyright 2012 Gregory Green
- * 
+ *
  * Bayestar is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
  * MA 02110-1301, USA.
- * 
+ *
  */
 
 #ifndef __INTERPOLATION_H_
@@ -43,20 +43,20 @@ class TLinearInterp {
 	double *f_x;
 	double x_min, x_max, dx, inv_dx;
 	unsigned int N;
-	
+
 public:
 	typedef double (*func1d_t)(double x);
-	
+
 	TLinearInterp(double _x_min, double _x_max, unsigned int _N);
 	TLinearInterp(func1d_t func, double _x_min, double _x_max, unsigned int _N);
 	~TLinearInterp();
-	
+
 	double operator()(double x) const;
 	double& operator[](unsigned int index);
-	
+
 	double get_x(unsigned int index) const;
 	double dfdx(double x) const;
-	
+
 	void fill(func1d_t func);
 };
 
@@ -72,21 +72,22 @@ class TBilinearInterp {
 	double y_min, y_max, dy, inv_dy;
 	double dxdy, inv_dxdy;
 	unsigned int Nx, Ny;
-	
+
 public:
 	typedef T (*func2d_t)(double x, double y);
 	typedef T* (*func2d_ptr_t)(double x, double y);
-	
+
 	TBilinearInterp(double _x_min, double _x_max, unsigned int Nx, double _y_min, double _y_max, unsigned int Ny);
 	TBilinearInterp(func2d_t func, double _x_min, double _x_max, unsigned int Nx, double _y_min, double _y_max, unsigned int Ny);
 	TBilinearInterp(func2d_ptr_t func, double _x_min, double _x_max, unsigned int Nx, double _y_min, double _y_max, unsigned int Ny);
 	~TBilinearInterp();
-	
+
 	T operator()(double x, double y) const;
 	T& operator[](unsigned int index);
 	unsigned int get_index(double x, double y) const;
+	unsigned int get_flat_index(unsigned int i, unsigned int j) const;
 	void get_xy(unsigned int i, unsigned int j, double &x, double &y) const;
-	
+
 	void fill(func2d_t func);
 	void fill(func2d_ptr_t func);
 };
@@ -147,7 +148,7 @@ unsigned int TBilinearInterp<T>::get_index(double x, double y) const {
 template<class T>
 T TBilinearInterp<T>::operator()(double x, double y) const {
 	double idx = floor((x-x_min)*inv_dx);
-	
+
 	// DEBUG:
 	if((idx < 0) || (idx >= Nx)) {
 		#pragma omp critical
@@ -161,16 +162,16 @@ T TBilinearInterp<T>::operator()(double x, double y) const {
                         std::cerr << "inv_dy = " << inv_dy << std::endl;
 		}
 	}
-	
+
 	//#pragma omp critical
 	//{
 	//	std::cout << "0 <= " << idx << " < " << Nx << std::endl;
 	//}
-	
+
 	assert((idx >= 0) && (idx < Nx));
-	
+
 	double idy = floor((y-y_min)*inv_dy);
-	
+
 	// DEBUG:
 	if((idy < 0) || (idy >= Ny)) {
 		#pragma omp critical
@@ -184,14 +185,14 @@ T TBilinearInterp<T>::operator()(double x, double y) const {
 			std::cerr << "inv_dy = " << inv_dy << std::endl;
 		}
 	}
-	
+
 	//#pragma	omp critical
         //{
         //        std::cout << "0 <= " << idy << " < " << Nx << std::endl;
         //}
-	
+
 	assert((idy >= 0) && (idy < Ny));
-	
+
 	double Delta_x = x - x_min - dx*idx;
 	double Delta_y = y - y_min - dy*idy;
 	unsigned int N00 = (unsigned int)idx + Nx*(unsigned int)idy;
@@ -211,8 +212,8 @@ T& TBilinearInterp<T>::operator[](unsigned int index) {
 template<class T>
 void TBilinearInterp<T>::get_xy(unsigned int i, unsigned int j, double &x, double &y) const {
 	assert((i < Nx) && (j < Ny));
-	x = dx*(double)i - x_min;
-	y = dy*(double)j - y_min;
+	x = dx*(double)i + x_min;
+	y = dy*(double)j + y_min;
 }
 
 template<class T>
@@ -237,6 +238,11 @@ void TBilinearInterp<T>::fill(func2d_ptr_t func) {
 	}
 }
 
+template<class T>
+unsigned int TBilinearInterp<T>::get_flat_index(unsigned int i, unsigned int j) const {
+	return i + Nx*j;
+}
+
 
 
 // N-Dimensional (multilinear) interpolation ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -247,36 +253,36 @@ class TMultiLinearInterp {
 	double *min, *max, *inv_dx;
 	unsigned int *N;
 	unsigned int length;
-	
+
 	unsigned int ndim;
 	unsigned int *coeff;
-	
+
 	std::vector<bool> filled;
 	T empty;
-	
+
 	double *lower;
 	unsigned int *Delta_idx;
 	unsigned int N_Delta;
-	
+
 public:
 	typedef T (*func_t)(double *x);
 	typedef T* (*func_ptr_t)(double *x);
-	
+
 	TMultiLinearInterp(const double* _min, const double* _max, const unsigned int* _N, unsigned int _ndim, T& _empty);
 	~TMultiLinearInterp();
-	
+
 	T operator()(const double *x);
 	bool operator()(const double *x, T &res);
-	
+
 	void set(const double *x, T &fx);
-	
+
 	bool fill(const double *x, T *fx);
 	bool fill(typename std::vector<T>::iterator begin, typename std::vector<T>::iterator end);
 	void fill(func_t func);
 	void fill(func_ptr_t func);
-	
+
 	void get_filled(std::vector<bool> &ret);
-	
+
 private:
 	int get_index(const double *x) const;
 	int get_lower(const double *x) const;
@@ -302,13 +308,13 @@ TMultiLinearInterp<T>::TMultiLinearInterp(const double *_min, const double *_max
 		coeff[i] = length;
 		length *= N[i];
 	}
-	
+
 	f = new T[length];
 	filled.resize(length);
 	std::fill(filled.begin(), filled.end(), false);
-	
+
 	lower = new double[ndim];
-	
+
 	// Compute Deltas (difference in index from lower corner) to corners of box
 	N_Delta = (1 << ndim);
 	Delta_idx = new unsigned int[N_Delta];
@@ -389,10 +395,10 @@ template<class T>
 T TMultiLinearInterp<T>::operator()(const double* x) {
 	int idx = set_index_arr(x);
 	if(idx < 0) { return empty; }
-	
+
 	T sum;
 	T term;
-	
+
 	unsigned int i_max = (1 << ndim);
 	for(unsigned int i=0; i<i_max; i++) {
 		term = f[idx + Delta_idx[i]];
@@ -408,7 +414,7 @@ T TMultiLinearInterp<T>::operator()(const double* x) {
 		}
 		if(i == 0){ sum = term; } else { sum += term; }
 	}
-	
+
 	return sum;
 }
 
@@ -419,9 +425,9 @@ bool TMultiLinearInterp<T>::operator()(const double* x, T& res) {
 		//res = empty;
 		return false;
 	}
-	
+
 	T term;
-	
+
 	unsigned int i_max = (1 << ndim);
 	for(unsigned int i=0; i<i_max; i++) {
 		term = f[idx + Delta_idx[i]];
@@ -438,7 +444,7 @@ bool TMultiLinearInterp<T>::operator()(const double* x, T& res) {
 		}
 		if(i == 0){ res = term; } else { res += term; }
 	}
-	
+
 	return true;
 }
 

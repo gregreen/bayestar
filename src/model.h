@@ -79,10 +79,19 @@ public:
 	TStellarModel(std::string lf_fname, std::string seds_fname);
 	~TStellarModel();
 
+	// Access by parameter value
 	bool get_sed(const double* x, TSED& sed) const;
 	bool get_sed(double Mr, double FeH, TSED& sed) const;
 	TSED get_sed(double Mr, double FeH);
 	bool in_model(double Mr, double FeH);
+
+	// Access by grid index
+	bool get_sed(unsigned int Mr_idx, unsigned int FeH_idx,
+				 TSED& sed, double& Mr, double& FeH) const;
+	unsigned int get_N_FeH() const;
+	unsigned int get_N_Mr() const;
+
+	// Luminosity function
 	double get_log_lf(double Mr) const;
 
 private:
