@@ -125,7 +125,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_LIMIT_MACROS")
 add_executable(bayestar src/main.cpp src/model.cpp src/sampler.cpp
                         src/interpolation.cpp src/stats.cpp src/chain.cpp
                         src/data.cpp src/binner.cpp src/los_sampler.cpp
-												src/h5utils.cpp src/star_exact.cpp)
+												src/h5utils.cpp src/star_exact.cpp
+												src/program_opts.cpp)
 
 #
 # Link libraries

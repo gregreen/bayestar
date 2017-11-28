@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <memory>
 #include <cstdlib>
+#include <chrono>
 
 #include <Eigen/Dense>
 
@@ -48,18 +49,19 @@ void star_max_likelihood(TSED& mags_model, TStellarData::TMagnitudes& mags_obs,
                          double& mu, double& E, double& chi2,
                          double RV=3.1);
 
-void integrate_ML_solution(TStellarModel& stellar_model,
-                           TGalacticLOSModel& los_model,
-                           TStellarData::TMagnitudes& mags_obs,
-                           TExtinctionModel& ext_model,
-                           TImgStack& img_stack,
-                           unsigned int img_idx,
-                           double RV);
+double integrate_ML_solution(TStellarModel& stellar_model,
+                             TGalacticLOSModel& los_model,
+                             TStellarData::TMagnitudes& mags_obs,
+                             TExtinctionModel& ext_model,
+                             TImgStack& img_stack,
+                             unsigned int img_idx,
+                             double RV);
 
 
 void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
                      TStellarModel& stellar_model, TStellarData& stellar_data,
-                     TImgStack& img_stack, bool save_surfs, std::string out_fname,
+                     TImgStack& img_stack, std::vector<double>& chi2,
+                     bool save_surfs, std::string out_fname,
                      double RV);
 
 

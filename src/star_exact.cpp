@@ -254,7 +254,7 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
             add_diagonal*grid.dx[1]
         };
 
-        std::cerr << "diagonal = (" << diag[0] << ", " << diag[1] << ")" << std::endl;
+        // std::cerr << "diagonal = (" << diag[0] << ", " << diag[1] << ")" << std::endl;
 
         double det = inv_cov_00 * inv_cov_11 - inv_cov_01 * inv_cov_01;
         double cov_00 = inv_cov_11 / det;
@@ -304,12 +304,12 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
     // Create zeroed sub-sampled image
     cv::Mat img_sub = cv::Mat::zeros(w_sub, h_sub, CV_32F);
 
-    std::cerr << std::endl
-              << "inv_cov_?? : "
-              << inv_cov_00 << " "
-              << inv_cov_01 << " "
-              << inv_cov_11 << std::endl
-              << std::endl;
+    // std::cerr << std::endl
+    //           << "inv_cov_?? : "
+    //           << inv_cov_00 << " "
+    //           << inv_cov_01 << " "
+    //           << inv_cov_11 << std::endl
+    //           << std::endl;
 
     // Evaluate filter at each point
     // std::cerr << "evaluating image" << std::endl;
@@ -341,8 +341,8 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
     img = img_down;
     img /= img.at<float>(width[0], width[1]);
 
-    std::cerr << "size = " << img_sub.rows << ", " << img_sub.cols << std::endl;
-    std::cerr << "size = " << img_down.rows << ", " << img_down.cols << std::endl;
+    // std::cerr << "size = " << img_sub.rows << ", " << img_sub.cols << std::endl;
+    // std::cerr << "size = " << img_down.rows << ", " << img_down.cols << std::endl;
 }
 
 
@@ -366,21 +366,21 @@ void add_fit_to_image(cv::Mat& img, TRect& grid, LinearFitParams& fit,
 }
 
 
-void integrate_ML_solution(TStellarModel& stellar_model,
-                           TGalacticLOSModel& los_model,
-                           TStellarData::TMagnitudes& mags_obs,
-                           TExtinctionModel& ext_model,
-                           TImgStack& img_stack,
-                           unsigned int img_idx,
-                           double RV) {
+double integrate_ML_solution(TStellarModel& stellar_model,
+                             TGalacticLOSModel& los_model,
+                             TStellarData::TMagnitudes& mags_obs,
+                             TExtinctionModel& ext_model,
+                             TImgStack& img_stack,
+                             unsigned int img_idx,
+                             double RV) {
     //
     TSED sed;
     unsigned int N_Mr = stellar_model.get_N_Mr();
     unsigned int N_FeH = stellar_model.get_N_FeH();
     double Mr, FeH;
 
-    std::cerr << "N_Mr = " << N_Mr << std::endl;
-    std::cerr << "N_FeH = " << N_FeH << std::endl;
+    // std::cerr << "N_Mr = " << N_Mr << std::endl;
+    // std::cerr << "N_FeH = " << N_FeH << std::endl;
 
     // Calculate covariance of ML solution for (mu, E)
     double inv_cov_00, inv_cov_01, inv_cov_11;
@@ -428,32 +428,32 @@ void integrate_ML_solution(TStellarModel& stellar_model,
 
             // Check that the max-likelihood solution really is at a local
             // minimum in chi2
-            double eps = 1.e-2;
-            for(int dmu=-1; dmu<2; dmu++) {
-                for(int dE=-1; dE<2; dE++) {
-                    if((dmu == 0) && (dE == 0)) { continue; }
-
-                    double mu_test = mu + (double)dmu*eps;
-                    double E_test = E + (double)dE*eps;
-
-                    double chi2_tmp = calc_star_chi2(
-                        mags_obs, ext_model, sed,
-                        mu_test, E_test, RV
-                    );
-
-                    if(chi2_tmp < chi2) {
-                        std::cerr << std::endl
-                                  << "Not a trough in chi^2!" << std::endl
-                                  << "  chi^2(" << mu_test << ", " << E_test << ")"
-                                  << " = " << chi2_tmp << std::endl
-                                  << "  chi^2(" << mu << ", " << E << ")"
-                                  << " = " << chi2 << std::endl << std::endl;
-                        std::exit(1);
-                    } else {
-                        // std::cerr << " chi^2 : " << chi2_tmp << " > " << chi2 << std::endl;
-                    }
-                }
-            }
+            // double eps = 1.e-2;
+            // for(int dmu=-1; dmu<2; dmu++) {
+            //     for(int dE=-1; dE<2; dE++) {
+            //         if((dmu == 0) && (dE == 0)) { continue; }
+            //
+            //         double mu_test = mu + (double)dmu*eps;
+            //         double E_test = E + (double)dE*eps;
+            //
+            //         double chi2_tmp = calc_star_chi2(
+            //             mags_obs, ext_model, sed,
+            //             mu_test, E_test, RV
+            //         );
+            //
+            //         if(chi2_tmp < chi2) {
+            //             std::cerr << std::endl
+            //                       << "Not a trough in chi^2!" << std::endl
+            //                       << "  chi^2(" << mu_test << ", " << E_test << ")"
+            //                       << " = " << chi2_tmp << std::endl
+            //                       << "  chi^2(" << mu << ", " << E << ")"
+            //                       << " = " << chi2 << std::endl << std::endl;
+            //             std::exit(1);
+            //         } else {
+            //             // std::cerr << " chi^2 : " << chi2_tmp << " > " << chi2 << std::endl;
+            //         }
+            //     }
+            // }
 
             // std::shared_ptr<LinearFitParams> ML = star_max_likelihood(sed, mags_obs, ext_model, RV);
             // if((Mr_idx == 0) && (FeH_idx == 0)) {
@@ -468,17 +468,17 @@ void integrate_ML_solution(TStellarModel& stellar_model,
             //     std::cerr << "    " << ML->inv_cov(1, 0) << "  " << ML->inv_cov(1, 1) << std::endl;
             //     std::cerr << std::endl;
             // }
-            if((Mr_idx == 0) && (FeH_idx == 0)) {
-                double det = inv_cov_00 * inv_cov_11 - inv_cov_01 * inv_cov_01;
-                std::cerr << "  (E, mu) = (" << E << ", " << mu << ")" << std::endl;
-                std::cerr << "  chi^2 = " << chi2 << std::endl;
-                std::cerr << "  sigma = (" << sqrt(inv_cov_00 / det)
-                          << ", " << sqrt(inv_cov_11 / det) << ")" << std::endl;
-                std::cerr << "  Sigma^-1:" << std::endl;
-                std::cerr << "    " << inv_cov_11 << "  " << inv_cov_01 << std::endl;
-                std::cerr << "    " << inv_cov_01 << "  " << inv_cov_00 << std::endl;
-                std::cerr << std::endl;
-            }
+            // if((Mr_idx == 0) && (FeH_idx == 0)) {
+            //     double det = inv_cov_00 * inv_cov_11 - inv_cov_01 * inv_cov_01;
+            //     std::cerr << "  (E, mu) = (" << E << ", " << mu << ")" << std::endl;
+            //     std::cerr << "  chi^2 = " << chi2 << std::endl;
+            //     std::cerr << "  sigma = (" << sqrt(inv_cov_00 / det)
+            //               << ", " << sqrt(inv_cov_11 / det) << ")" << std::endl;
+            //     std::cerr << "  Sigma^-1:" << std::endl;
+            //     std::cerr << "    " << inv_cov_11 << "  " << inv_cov_01 << std::endl;
+            //     std::cerr << "    " << inv_cov_01 << "  " << inv_cov_00 << std::endl;
+            //     std::cerr << std::endl;
+            // }
 
             double prior = los_model.log_prior_emp(mu, Mr, FeH)
                          + stellar_model.get_log_lf(Mr);
@@ -581,7 +581,7 @@ void integrate_ML_solution(TStellarModel& stellar_model,
 
     // cv::Mat filter_test;
     // gaussian_filter(inv_cov_11, inv_cov_01, inv_cov_00,
-    //                 *(img_stack.rect), filter_test, 7, 2, 0.5);
+    //                 *(img_stack.rect), filter_test, 5, 2, 0.5);
     // std::cerr << std::endl << "filter_test:" << std::endl;
     // print_matrix(filter_test, std::cerr, 15, 12);
     // std::cerr << std::endl;
@@ -590,19 +590,37 @@ void integrate_ML_solution(TStellarModel& stellar_model,
     cv::Mat cov_img;
     double expand = 1.;// / (10.*10.);
     gaussian_filter(expand*inv_cov_11, expand*inv_cov_01, expand*inv_cov_00,
-                    *(img_stack.rect), cov_img, 5, 2, 0.5);
+                    *(img_stack.rect), cov_img, 5, 2, 1.0);
 
     cv::Mat filtered_img = cv::Mat::zeros(img_stack.rect->N_bins[0], img_stack.rect->N_bins[1], CV_32F);
     cv::filter2D(*img_stack.img[img_idx], filtered_img, CV_32F, cov_img);
     *img_stack.img[img_idx] = filtered_img;
 
     std::cerr << "Done with grid evaluation." << std::endl;
+
+    // Return mininum chi^2 / passband
+    int n_passbands = 0;
+    for(int i=0; i<NBANDS; i++) {
+        if(std::isnan(mags_obs.err[i]) || std::isinf(mags_obs.err[i]) || (mags_obs.err[i] > 1.e9)) {
+            continue;
+        }
+        n_passbands++;
+    }
+
+    std::cerr << "# of passbands: " << n_passbands << std::endl;
+    std::cerr << "chi^2 / passband: " << chi2_min / n_passbands << std::endl;
+
+    return chi2_min / n_passbands;
 }
 
 void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
                      TStellarModel& stellar_model, TStellarData& stellar_data,
-                     TImgStack& img_stack, bool save_surfs, std::string out_fname,
+                     TImgStack& img_stack, std::vector<double>& chi2,
+                     bool save_surfs, std::string out_fname,
                      double RV) {
+    // Timing
+    auto t_start = std::chrono::steady_clock::now();
+
     // Set up image stack for stellar PDFs
     double min[2] = {0., 4.};   // (E, DM)
 	double max[2] = {7., 19.};  // (E, DM)
@@ -612,15 +630,21 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
 
     // Loop over all stars and evaluate PDFs on grid in (mu, E)
     int n_stars = stellar_data.star.size();
-
+    chi2.clear();
+    
     for(int i=0; i<n_stars; i++) {
-        integrate_ML_solution(stellar_model, los_model,
-                              stellar_data[i], ext_model,
-                              img_stack, i, RV);
+        double chi2_min = integrate_ML_solution(
+            stellar_model, los_model,
+            stellar_data[i], ext_model,
+            img_stack, i, RV
+        );
+        chi2.push_back(chi2_min);
     }
 
     // Save the PDFs to disk
-    if(true) {//save_surfs) {
+    auto t_write = std::chrono::steady_clock::now();
+
+    if(save_surfs) {
         std::stringstream group_name;
         group_name << "/" << stellar_data.pix_name;
 
@@ -636,5 +660,19 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
         img_buffer.write(out_fname, group_name.str(), "stellar pdfs");
 	}
 
-    std::cerr << "Done with grid evaluation for all stars." << std::endl;
+    auto t_end = std::chrono::steady_clock::now();
+
+    std::chrono::duration<double, std::milli> dt_sample = t_write - t_start;
+    std::chrono::duration<double, std::milli> dt_write = t_end - t_write;
+    std::chrono::duration<double, std::milli> dt_total = t_end - t_start;
+
+    std::cerr << "Done with grid evaluation for all stars."
+              << std::endl << std::endl;
+    std::cerr << "Time elapsed / star:" << std::endl
+              << "  * sample: " << dt_sample.count() / n_stars << " ms"
+              << std::endl
+              << "  *  write: " << dt_write.count() / n_stars << " ms"
+              << std::endl
+              << "  *  total: " << dt_total.count() / n_stars << " ms"
+              << std::endl << std::endl;
 }
