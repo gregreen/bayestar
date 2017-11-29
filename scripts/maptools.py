@@ -136,8 +136,15 @@ def load_output_file_raw(f, bounds=None,
             samples_tmp, lnp_tmp, GR_tmp = unpack_dset(item['los'],
                                                        max_samples=max_samples)
             
-            DM_min = float(item['los'].attrs['DM_min'])
-            DM_max = float(item['los'].attrs['DM_max'])
+            try:
+                DM_min = float(item['los'].attrs['DM_min'])
+                DM_max = float(item['los'].attrs['DM_max'])
+            except KeyError as e:
+                print 'file: {}'.format(f)
+                print 'pixel: {}'.format(name)
+                DM_min, DM_max = 4., 19.
+                print '\n  --> Missing DM_min/max in pixel {} in {}\n'.format(name, f)
+                #raise e
             
             los_EBV.append(samples_tmp)
             los_lnp.append(lnp_tmp)
@@ -876,15 +883,22 @@ class LOSData:
         
         #print 'Expanding from %d to %d pixels.' % (np.sum(self.los_mask[0]), self.los_mask[0].size)
         #print self.los_EBV[0].shape
-        
+        '''
         for arr, idx in arr_list:
             s_new = [n_pix] + [a for a in arr[0].shape[1:]]
+            
+            print 's_new = {}'.format(s_new)
+            print 'idx.shape = {}'.format(idx.shape)
+            print 'arr[0].shape = {}'.format(arr[0].shape)
+            
             tmp = np.empty(s_new, dtype='f8')
             tmp[:] = np.nan
+            print 'tmp[idx].shape = {}'.format(tmp[idx].shape)
+            print 'np.sum(idx) = {}'.format(np.sum(idx))
             tmp[idx] = arr[0]
             
             arr[0] = tmp
-        
+        '''
         #print self.los_EBV[0].shape
     
     def require(self, require='piecewise'):
@@ -942,7 +956,7 @@ class LOSData:
         data['n_stars'][:] = self.n_stars[0][:]
         
         dset = f.create_dataset('locations', shape=shape, dtype=dtype,
-                                             compression='gzip', compression_opts=9,
+                                             compression='gzip', compression_opts=3,
                                              chunks=True)
         dset[:] = data[:]
         
@@ -952,7 +966,7 @@ class LOSData:
             shape = (n_pix, n_samples+1, 2*n_clouds+1)
             
             dset = f.create_dataset('cloud', shape=shape, dtype='f4',
-                                             compression='gzip', compression_opts=9,
+                                             compression='gzip', compression_opts=3,
                                              chunks=True)
             
             dset[:, 1:, 1:n_clouds+1] = self.cloud_mu[0][:]
@@ -966,7 +980,7 @@ class LOSData:
             shape = (n_pix, n_samples+1, n_slices+1)
             
             dset = f.create_dataset('piecewise', shape=shape, dtype='f4',
-                                                 compression='gzip', compression_opts=9,
+                                                 compression='gzip', compression_opts=3,
                                                  chunks=True)
             
             dset[:, 1:, 1:] = self.los_EBV[0][:]
@@ -981,7 +995,7 @@ class LOSData:
             shape = self.star_stack[0].shape
             
             dset = f.create_dataset('stacked_pdfs', shape=shape, dtype='f4',
-                                                    compression='gzip', compression_opts=9,
+                                                    compression='gzip', compression_opts=3,
                                                     chunks=True)
             
             dset[:] = self.star_stack[0][:].astype('f4')

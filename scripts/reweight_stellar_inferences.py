@@ -73,8 +73,8 @@ def load_los(out_dset):
     los_lnp = tmp[2:, 0]
     los_GR = tmp[0, 1:]
     
-    DM_anchors = np.linspace(out_dset.attrs['DM_min'],
-                             out_dset.attrs['DM_max'],
+    DM_anchors = np.linspace(out_dset.attrs.get('DM_min', 4.),
+                             out_dset.attrs.get('DM_max', 19.),
                              los_EBV.shape[1])
     
     return los_EBV, los_lnp, los_GR, DM_anchors
@@ -128,8 +128,14 @@ def reweight_samples(stellar_data, los_data): #, n_sigma_warn=1.):
     # Calculate E(DM) for each stellar sample / los sample combination
     shape = stellar_chain.shape[:2]
     DM = stellar_chain[:,:,1].flatten()
+    if not np.all(np.isfinite(DM)):
+        print DM[~np.isfinite(DM)]
     low_idx = np.digitize(DM, DM_anchors) - 1
-    mask_idx = (DM < DM_anchors[0]) | (DM >= DM_anchors[-1])
+    mask_too_low = (DM <= DM_anchors[0])
+    mask_too_high = (DM >= DM_anchors[-1]) | (low_idx == len(DM_anchors) - 1)
+    mask_nonsense = ~np.isfinite(DM)
+    mask_idx = mask_too_low | mask_too_high | mask_nonsense
+    #mask_idx = (DM < DM_anchors[0]) | (DM >= DM_anchors[-1])
     low_idx[mask_idx] = -1
     #low_idx.shape = shape
     #DM.shape = shape
@@ -146,7 +152,9 @@ def reweight_samples(stellar_data, los_data): #, n_sigma_warn=1.):
     # Interpolated E(DM), with shape (star, stellar sample, los sample)
     EBV = np.einsum('j,kj->jk', 1.-a, los_EBV[:, low_idx])
     EBV += np.einsum('j,kj->jk', a, los_EBV[:, low_idx+1])
-    EBV[mask_idx,:] = 1000. #-100.
+    EBV[mask_too_low,:] = los_EBV[:, 0]
+    EBV[mask_too_high,:] = los_EBV[:, -1]
+    EBV[mask_nonsense,:] = 1000. #-100.
     EBV.shape = (shape[0], shape[1], EBV.shape[1])
     
     
@@ -321,7 +329,7 @@ def reweight_pixels(in_fname, out_fname, write_buffer):
 
 
 class ReweightedWriteBuffer:
-    def __init__(self, fname, write_threshold=20):
+    def __init__(self, fname, write_threshold=20, compression=3):
         self.f = h5py.File(fname, 'w')
         
         self.loc_data = collections.deque([])
@@ -329,6 +337,7 @@ class ReweightedWriteBuffer:
         self.hp_pos = collections.deque([])
         
         self.write_threshold = write_threshold
+        self.compression = compression
     
     def __del__(self):
         self._cleanup()
@@ -382,7 +391,7 @@ class ReweightedWriteBuffer:
                                              data=loc_data,
                                              chunks=True,
                                              compression='gzip',
-                                             compression_opts=9)
+                                             compression_opts=self.compression)
                 dset.attrs['nside'] = nside
                 dset.attrs['healpix_index'] = hp_idx
                 
@@ -390,7 +399,7 @@ class ReweightedWriteBuffer:
                                              data=sample_data,
                                              chunks=True,
                                              compression='gzip',
-                                             compression_opts=9)
+                                             compression_opts=self.compression)
                 dset.attrs['nside'] = nside
                 dset.attrs['healpix_index'] = hp_idx
                 
@@ -460,8 +469,8 @@ def main():
                                      description='Assign new weights to individual-star Markov Chains,\n'
                                                  'based on line-of-sight inference.',
                                      add_help=True)
-    parser.add_argument('--input', '-i', type=str, help='Bayestar input files (can include wildcards).')
-    parser.add_argument('--output', '-o', type=str, help='Bayestar output files (can include wildcards).')
+    parser.add_argument('--input', '-i', type=str, nargs='+', help='Bayestar input files (can include wildcards).')
+    parser.add_argument('--output', '-o', type=str, nargs='+', help='Bayestar output files (can include wildcards).')
     parser.add_argument('--reweighted', '-rw', type=str, help='Filename to which to write reweighted stellar data.')
     parser.add_argument('--procs', '-p', type=int, help='# of processes to use.')
     
@@ -471,12 +480,20 @@ def main():
         offset = 1
     args = parser.parse_args(sys.argv[offset:])
     
-    in_fnames = sorted(glob.glob(args.input))
-    out_fnames = sorted(glob.glob(args.output))
+    def glob_and_sort(fname_pattern):
+        fnames = []
+        for fn in fname_pattern:
+            fnames += glob.glob(os.path.expanduser(fn))
+        return sorted(fnames)
+    
+    in_fnames = glob_and_sort(args.input)
+    out_fnames = glob_and_sort(args.output)
     
     if len(in_fnames) != len(out_fnames):
         print 'Input filenames do not match output filenames.'
         return 0
+    
+    print 'Putting {:d} files on queue...'.format(len(in_fnames))
     
     rw_fname_base = args.reweighted
     

@@ -30,6 +30,7 @@ import scipy.optimize as opt
 from scipy.ndimage.filters import gaussian_filter
 
 import matplotlib as mplib
+mplib.use('Agg')
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import ImageGrid
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
@@ -336,8 +337,8 @@ def main():
 	
 	ax = fig.add_subplot(1,1,1)
 	
-	ax.set_xlabel(r'$\mu$', fontsize=16)
-	ax.set_ylabel(r'$\mathrm{E} \left( B - V \right)$', fontsize=16)
+	ax.set_xlabel(r'$\mu \ \left( \mathrm{mag} \right)$', fontsize=16)
+	ax.set_ylabel(r'$\mathrm{E} \left( B - V \right) \ \left( \mathrm{mag} \right)$', fontsize=16)
 	ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
 	ax.xaxis.set_minor_locator(AutoMinorLocator())
 	ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
@@ -347,7 +348,8 @@ def main():
 	bounds = [x_min[0], x_max[0], x_min[1], x_max[1]]
 	if args.show_pdfs:
 		ax.imshow(np.sqrt(pdf_stack.T), extent=bounds, origin='lower',
-		             aspect='auto', cmap='Blues', interpolation='nearest')
+		             aspect='auto', cmap='Blues', interpolation='nearest',
+		             rasterized=True)
 	
 	# Mini-plots of individual stellar pdfs
 	ax_indiv = []
@@ -364,7 +366,8 @@ def main():
 			
 			if args.show_pdfs:
 				ax_tmp.imshow(np.sqrt(pdf_indiv[i].T), extent=bounds, origin='lower',
-				              aspect='auto', cmap='Blues', interpolation='nearest')
+				              aspect='auto', cmap='Blues', interpolation='nearest',
+				              rasterized=True)
 				
 				#levels = find_contour_levels(pdf_indiv[i], [50., 95.])
 				
@@ -426,10 +429,11 @@ def main():
 		
 		ax.plot(mu_all, EBV_all, 'k--', lw=2, alpha=0.5)
 	
+	ax.set_xlim(DM_lim)
 	
 	# Save/show plot
 	if args.output != None:
-		fig.savefig(args.output, dpi=300)
+		fig.savefig(args.output, dpi=300, bbox_inches='tight', transparent=True)
 	if args.show:
 		plt.show()
 	

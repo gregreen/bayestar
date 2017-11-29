@@ -603,7 +603,7 @@ def main():
     parser.add_argument('--dpi', '-dpi', type=float, default=200,
                                          help='Dots per inch for figure.')
     parser.add_argument('--projection', '-proj', type=str, default='Cartesian',
-                                         choices=('Cartesian', 'Mollweide', 'Hammer', 'Eckert IV', 'Gnomonic'),
+                                         choices=('Cartesian', 'Mollweide', 'Hammer', 'Eckert IV', 'Gnomonic', 'Stereographic'),
                                          help='Map projection to use.')
     parser.add_argument('--center-lb', '-cent', type=float, nargs=2, default=(0., 0.),
                                          help='Center map on (l, b).')
@@ -664,6 +664,8 @@ def main():
         proj = hputils.EckertIV_projection()
     elif args.projection == 'Gnomonic':
         proj = hputils.Gnomonic_projection()
+    elif args.projection == 'Stereographic':
+        proj = hputils.Stereographic_projection()
     else:
         raise ValueError("Unrecognized projection: '%s'" % args.proj)
     
@@ -777,7 +779,7 @@ def main():
     kwargs = {
         'show': args.show,
         'meridian_style': args.meridian_style,
-        'parallel_styel': args.parallel_style,
+        'parallel_style': args.parallel_style,
         'grat_fontsize': args.grat_fontsize
     }
     remove_nones(kwargs)

@@ -287,6 +287,8 @@ class TCompletion:
         pct_complete = np.array(self.progress[1])
         rate = 24. * np.diff(pct_complete) / np.diff(t_status)
         w = np.exp(-0.5 * (t_status[-1] - t_status[:-1])**2. / t_smooth**2.)
+        # Don't count negative progress (e.g., when files are cleared and re-submitted).
+        w[rate < 0.] = 0.
         
         rate = np.sum(rate * w) / np.sum(w)
         t_remaining = (100. - pct_complete[-1]) / rate
@@ -365,6 +367,13 @@ class TCompletion:
                 print 'Failed to open %s. Skipping.' % (self.outfiles[i])
                 continue
             
+            # Clear progress of all pixels in file
+            idx = (self.infile_idx == i)
+            self.has_indiv[idx] = 0
+            self.has_cloud[idx] = 0
+            self.has_los[idx] = 0
+            
+            # Read in progress of each pixel in file
             for name, pixel in f.iteritems():
                 _, nside, hp_idx = name.replace('-', ' ').split()
                 name_tmp = '%d-%d' % (int(nside), int(hp_idx))
