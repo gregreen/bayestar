@@ -1729,6 +1729,153 @@ float* TLOSMCMCParams::get_Delta_EBV(unsigned int thread_num) {
 
 /****************************************************************************************************************************
  *
+ * TDiscreteLosMcmcParams
+ *
+ ****************************************************************************************************************************/
+
+TDiscreteLosMcmcParams::TDiscreteLosMcmcParams(TImgStack *_img_stack, unsigned int _N_runs, unsigned int _N_threads)
+    : img_stack(_img_stack), N_runs(_N_runs), N_threads(_N_threads)
+{
+    line_int = new float[img_stack->N_images * N_threads];
+	E_pix_idx = new int16_t[img_stack->rect->N_bins[0] * N_threads];
+
+	y_zero_idx = -img_stack->rect->min[1] / img_stack->rect->dx[1];
+}
+
+TDiscreteLosMcmcParams::~TDiscreteLosMcmcParams() {
+    if(line_int != NULL) { delete[] line_int; }
+    if(E_pix_idx != NULL) { delete[] E_pix_idx; }
+}
+
+float* TDiscreteLosMcmcParams::get_line_int(unsigned int thread_num) {
+	assert(thread_num < N_threads);
+	return line_int + img_stack->N_images * thread_num;
+}
+
+int16_t* TDiscreteLosMcmcParams::get_E_pix_idx(unsigned int thread_num) {
+	assert(thread_num < N_threads);
+	return E_pix_idx + img_stack->rect->N_bins[0] * thread_num;
+}
+
+void TDiscreteLosMcmcParams::los_integral_discrete(const int16_t *const y_idx,
+                                                   float *const line_int_ret) {
+    // Temporary variables
+    cv::Mat *img;
+
+    // For each image
+	for(int k = 0; k < img_stack->N_images; k++) {
+		line_int_ret[k] = 0.;
+		img = img_stack->img[k];
+
+		// For each pixel
+		for(int j = 0; j < img_stack->rect->N_bins[0]; j++) {
+		    line_int_ret[k] += img->at<float>(y_idx[j], j);
+		}
+	}
+}
+
+void TDiscreteLosMcmcParams::los_integral_diff_step(const int16_t x_idx, const int16_t y_idx_old,
+                                                    const int16_t y_idx_new, float *const delta_line_int_ret) {
+    // For each image
+	for(int k = 0; k < img_stack->N_images; k++) {
+	    delta_line_int_ret[k] = img_stack->img[k]->at<float>(y_idx_new, x_idx)
+	                          - img_stack->img[k]->at<float>(y_idx_old, x_idx);
+	}
+}
+
+void TDiscreteLosMcmcParams::los_integral_diff_swap(const int16_t x0_idx, const int16_t *const y_idx,
+                                                    float *const delta_line_int_ret) {
+    int16_t dy;
+
+    // For each image
+	for(int k = 0; k < img_stack->N_images; k++) {
+	    dy = y_idx[x0_idx+1] - y_idx[x0_idx];
+	    delta_line_int_ret[k] = img_stack->img[k]->at<float>(y_idx[x0_idx-1]+dy, x0_idx)
+	                          - img_stack->img[k]->at<float>(y_idx[x0_idx], x0_idx);
+	}
+}
+
+
+void TDiscreteLosMcmcParams::guess_EBV_profile_discrete(int16_t *const y_idx_ret, gsl_rng *r) {
+    double EBV_max_guess = guess_EBV_max(*img_stack) * (0.8 + 0.4 * gsl_rng_uniform(r));
+
+    double *y = new double[img_stack->rect->N_bins[0]];
+    y[0] = gsl_ran_chisq(r, 1);
+
+    for(int i = 1; i < img_stack->rect->N_bins[0]; i++) {
+        y[i] = y[i-1] + gsl_ran_chisq(r, 1);
+    }
+
+    double y_scale = (EBV_max_guess / y[img_stack->rect->N_bins[0] - 1]) / img_stack->rect->dx[1];
+
+    for(int i = 0; i < img_stack->rect->N_bins[0]; i++) {
+        y_idx_ret[i] = (int16_t)ceil(y[i] * y_scale + y_zero_idx);
+
+        if(y_idx_ret[i] >= img_stack->rect->N_bins[1]) {
+            y_idx_ret[i] = (int16_t)(img_stack->rect->N_bins[1] - 1);
+        }
+    }
+
+    delete[] y;
+}
+
+
+void sample_los_extinction_discrete(const std::string& out_fname, const std::string& group_name,
+                           TMCMCOptions &options, TDiscreteLosMcmcParams &params,
+                           int verbosity) {
+    // Random number generator
+    gsl_rng *r;
+	seed_gsl_rng(&r);
+
+	int n_x = params.img_stack->rect->N_bins[0];    // # of distance pixels
+	int n_y = params.img_stack->rect->N_bins[1];    // # of reddening pixels
+	int n_stars = params.img_stack->N_images;       // # of stars
+
+    // Temporary variables
+	double dlog_p;
+	float *line_int = new float[n_stars];
+	float *delta_line_int = new float[n_stars];
+
+    // Guess reddening profile
+    int16_t *y_idx = new int16_t[n_x];
+    params.guess_EBV_profile_discrete(y_idx, r);
+
+    // Calculate initial line integral for each star
+    params.los_integral_discrete(y_idx, line_int);
+
+    int n_steps = 0.5 * (options.steps * n_x);
+
+    for(int i = 0; i < n_steps; i++) {
+        // Try to take a step up or down in one pixel
+        int x_idx = gsl_rng_uniform_int(r, n_x);
+        int dy = 2*gsl_rng_uniform_int(r, 2) - 1;
+
+        int y_idx_new = y_idx[x_idx] + dy;
+
+        if((y_idx_new >= 0) && (y_idx_new < n_y)) {
+            params.los_integral_diff_step(x_idx, y_idx[x_idx], y_idx_new, delta_line_int);
+            double alpha = 0.0;
+            for(int k = 0; k < n_stars; k++) {
+                alpha += log(1.0 + delta_line_int[k] / line_int[k]);
+            }
+
+            if(alpha > gsl_rng_uniform(r)) {
+                // ACCEPT
+            }
+        } else {
+            // REJECT
+        }
+    }
+
+    delete[] y_idx;
+    delete[] line_int;
+    delete[] delta_line_int;
+    gsl_rng_free(r);
+}
+
+
+/****************************************************************************************************************************
+ *
  * TImgStack
  *
  ****************************************************************************************************************************/
