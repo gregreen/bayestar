@@ -37,6 +37,8 @@ TProgramOpts::TProgramOpts() {
     pct_smoothing_min = 0.;
     pct_smoothing_max = -1.;
 
+	discrete_los = true; // TODO: On by default?
+
     N_regions = 30;
     los_steps = 4000;
     los_samplers = 2;

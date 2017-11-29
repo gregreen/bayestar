@@ -65,6 +65,8 @@ int main(int argc, char **argv) {
 	TMCMCOptions cloud_options(opts.cloud_steps, opts.cloud_samplers, opts.cloud_p_replacement, opts.N_runs);
 	TMCMCOptions los_options(opts.los_steps, opts.los_samplers, opts.los_p_replacement, opts.N_runs);
 
+	TMCMCOptions discrete_los_options(100000, 1, opts.los_p_replacement, opts.N_runs);    // TODO: Create commandline options for this
+
 
 	/*
 	 *  Construct models
@@ -306,8 +308,8 @@ int main(int argc, char **argv) {
 		if(gatherSurfs) { img_stack.cull(keep); }
 
 		// Fit line-of-sight extinction profile
-		if((n_filtered < n_stars)
-				&& ((opts.N_clouds != 0) || (opts.N_regions != 0))) {
+		if(((opts.N_clouds != 0) || (opts.N_regions != 0) || opts.discrete_los)
+				&& (n_filtered < n_stars)) {
 			//
 			cout << "# of stars filtered: "
 				 << n_filtered << " of " << n_stars;
@@ -323,11 +325,25 @@ int main(int argc, char **argv) {
 					EBV_max = stellar_data.EBV;
 				}
 			}
+
 			TLOSMCMCParams params(&img_stack, lnZ_filtered, p0, opts.N_runs, opts.N_threads, opts.N_regions, EBV_max);
 			if(opts.SFD_subpixel) { params.set_subpixel_mask(subpixel); }
 
 			if(opts.test_mode) {
 				test_extinction_profiles(params);
+			}
+
+			if(opts.discrete_los) {
+				cout << "Sampling line of sight discretely ..." << endl;
+	            TDiscreteLosMcmcParams discrete_los_params(&img_stack, 1, 1);
+	            sample_los_extinction_discrete(
+	                opts.output_fname,
+	                *it,
+	                discrete_los_options,
+	                discrete_los_params,
+	                opts.verbosity
+	            );
+	            cout << "Done with discrete sampling." << endl;
 			}
 
 			if(opts.N_clouds != 0) {
