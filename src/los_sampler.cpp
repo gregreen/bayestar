@@ -1747,7 +1747,7 @@ TDiscreteLosMcmcParams::TDiscreteLosMcmcParams(TImgStack *_img_stack, unsigned i
 
 	// Priors
 	mu_log_dE = -8.;
-	sigma_log_dE = 1.0;
+	sigma_log_dE = 10.0;
 	mu_log_dy = mu_log_dE - log(img_stack->rect->dx[0]);
 	inv_sigma_log_dy = 1. / sigma_log_dE;
 	inv_sigma_dy_neg = 1. / 0.1;
@@ -1918,9 +1918,18 @@ void TDiscreteLosMcmcParams::guess_EBV_profile_discrete(int16_t *const y_idx_ret
 }
 
 
-void discrete_los_ascii_art(int n_x, int n_y, int16_t *y_idx, int img_y, int max_y, std::iostream& out) {
+void discrete_los_ascii_art(int n_x, int n_y, int16_t *y_idx,
+						    int img_y, int max_y,
+							double x_min, double x_max,
+							std::iostream& out) {
+	// Padding for labels
+	int pad_x = 8;
+	int pad_y = 4;
+
     // Empty image
-    int n_pix = (n_x + 1) * img_y;
+	int row_width = n_x + pad_x + 1;
+	int n_rows = img_y + pad_y;
+    int n_pix = row_width * n_rows;
     char *ascii_img = new char[n_pix];
 
     for(int k = 0; k < n_pix; k++) {
@@ -1929,7 +1938,8 @@ void discrete_los_ascii_art(int n_x, int n_y, int16_t *y_idx, int img_y, int max
 
     //std::cerr << "# of pixels: " << n_pix << std::endl;
 
-    // Scaling of y-axis
+    // Scaling of x- and y-axes
+	double x_scale = (x_max - x_min) / (double)n_x;
     double y_scale = (double)(img_y-1) / (double)(max_y-1);
 
     // Fill in each column
@@ -1938,15 +1948,60 @@ void discrete_los_ascii_art(int n_x, int n_y, int16_t *y_idx, int img_y, int max
     for(int k = 0; k < n_x; k++) {
         if(y_idx[k] < max_y) {
             row = img_y - int((double)(y_idx[k]) * y_scale) - 1;
-            idx = (n_x+1) * row  + k;
+            idx = row_width * row + k;
             ascii_img[idx] = '*';
         }
         //std::cerr << "(col, row) = (" << k << ", " << row << ") --> " << idx << std::endl;
     }
 
-    // Add endlines to rows
-    for(int k = 0; k < img_y; k++) {
-        idx = (n_x+1) * (k+1) - 1;
+	// Add in y labels
+	for(int k = 0; k < img_y; k++) {
+		idx = row_width * k + n_x + 1;
+		ascii_img[idx] = '|';
+	}
+
+	for(int k=img_y-1; k>=0; k-=10) {
+		idx = row_width * k  + n_x + 2;
+		ascii_img[idx] = '-';
+
+		const char* fmt = "%4.2f";
+		double y_label = (img_y - 1 - k) * y_scale;
+		int label_len = std::snprintf(nullptr, 0, fmt, y_label);
+		std::vector<char> buf(label_len + 1);
+		std::snprintf(&buf[0], buf.size(), fmt, y_label);
+
+		idx += 2;
+		for(int j=0; j<4; j++) {
+			ascii_img[idx + j] = buf[j];
+		}
+	}
+
+	// Add in x labels
+	for(int k=0; k<n_x+2; k++) {
+		row = img_y;
+		idx = row_width * row + k;
+		ascii_img[idx] = '-';
+	}
+
+	for(int k=10; k<n_x; k+=20) {
+		idx = row_width * (img_y+1) + k;
+		ascii_img[idx] = '|';
+
+		const char* fmt = "%4.1f";
+		double x_label = x_min + k * x_scale;
+		int label_len = std::snprintf(nullptr, 0, fmt, x_label);
+		std::vector<char> buf(label_len + 1);
+		std::snprintf(&buf[0], buf.size(), fmt, x_label);
+
+		idx += row_width - 2;
+		for(int j=0; j<4; j++) {
+			ascii_img[idx + j] = buf[j];
+		}
+	}
+
+	// Add endlines to rows
+	for(int k = 0; k < n_rows; k++) {
+        idx = row_width * (k+1) - 1;
         //std::cerr << "Adding endline " << k << ") --> " << idx << std::endl;
         ascii_img[idx] = '\n';
     }
@@ -2003,6 +2058,15 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
     // Chain
     TChain chain(n_x, 2*n_steps+5);
 
+	std::cerr << std::endl
+		      << "##################################" << std::endl
+			  << "n_x = " << n_x << std::endl
+			  << "n_y = " << n_y << std::endl
+			  << "n_stars = " << n_stars << std::endl
+			  << "n_steps = " << n_steps << std::endl
+			  << "##################################" << std::endl
+			  << std::endl;
+
     int w = 0;
 
     // Softening parameter
@@ -2010,8 +2074,8 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
     float p_badstar = 0.0001;
     float epsilon = p_badstar / (float)n_y;
 
-    double sigma_dy_neg = 2.;
-    double sigma_dy_neg_target = 0.1;
+    double sigma_dy_neg = 1.e-5;
+    double sigma_dy_neg_target = 1.e-10;
     double tau_decay = (double)n_steps / 5.;
 
     for(int i = 0; i < n_steps; i++) {
@@ -2045,7 +2109,7 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
             std::stringstream status_msg;
 
             if(i % 10000 == 0) {
-                discrete_los_ascii_art(n_x, n_y, y_idx, 29, 700, status_msg);
+                discrete_los_ascii_art(n_x, n_y, y_idx, 29, 700, 4., 19., status_msg);
                 status_msg << "Step Proposal:" << "\n"
                            << "   x: " << x_idx << "\n"
                            << "  y0: " << y_idx[x_idx] << "\n"
@@ -2059,7 +2123,7 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
                 status_msg << "   * ACCEPTED with weight " << w;
 
                 // Add old point to chain
-                chain.add_point(y_idx_dbl, log_p, (double)w);
+                // chain.add_point(y_idx_dbl, log_p, (double)w);
 
                 // Update state to proposal
                 y_idx[x_idx] = y_idx_new;
@@ -2107,7 +2171,7 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
             std::stringstream status_msg_swap;
 
             if(i % 10000 == 0) {
-                //discrete_los_ascii_art(n_x, n_y, y_idx, 29, 700, status_msg_swap);
+                //discrete_los_ascii_art(n_x, n_y, y_idx, 29, 700, 4., 19., status_msg_swap);
                 status_msg_swap << "Swap Proposal:" << "\n"
                                 << "   x: " << x_idx << "\n"
                                 << "  --> dlogp, dlogL, dlogPr = (" << alpha << ", " << dlogL << ", " << dlogPr << ")" << "\n"
@@ -2119,7 +2183,7 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
                 status_msg_swap << "   * ACCEPTED with weight " << w;
 
                 // Add old point to chain
-                chain.add_point(y_idx_dbl, log_p, (double)w);
+                // chain.add_point(y_idx_dbl, log_p, (double)w);
 
                 // Update state to proposal
                 y_idx[x_idx] = y_idx_new;
@@ -2151,7 +2215,7 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
 
     chain_write_buffer.add(chain);
     chain_write_buffer.write(out_fname, group_name, "discrete-los");
-	
+
     delete[] y_idx;
     delete[] y_idx_dbl;
     delete[] line_int;

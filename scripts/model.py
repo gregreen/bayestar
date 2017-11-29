@@ -62,7 +62,7 @@ class TGalacticModel:
         self.rho_0 = 1. #rho_0
         self.H_mu, self.Delta_mu, self.mu_FeH_inf = H_mu, Delta_mu, mu_FeH_inf
         self.fh_outer = self.fh * (self.Rbr/self.R0)**(self.nh-self.nh_outer)
-        self.L_epsilon = L_epsilon
+        self.L_epsilon = L_ep
 
         # Bulge (Robin et al. 2003, i.e. Besancon)
         self.R_c = 2540.
