@@ -1757,32 +1757,62 @@ int16_t* TDiscreteLosMcmcParams::get_E_pix_idx(unsigned int thread_num) {
 	return E_pix_idx + img_stack->rect->N_bins[0] * thread_num;
 }
 
+
+// Calculates the line integrals for a model in which each distance bin has a
+// (possibly) different, constant reddening.
+//
+// Reddening is discretized, so that it is described by an integer, called the
+// y-value or -index. The distance is called the x-value or -index.
+//
+// Inputs:
+//   y_idx : Pointer to array containing the y-value in each distance bin.
+//   line_int_ret : Pointer to array that will store the line integrals.
+//
 void TDiscreteLosMcmcParams::los_integral_discrete(const int16_t *const y_idx,
                                                    float *const line_int_ret) {
-    // Temporary variables
-    cv::Mat *img;
-
     // For each image
 	for(int k = 0; k < img_stack->N_images; k++) {
 		line_int_ret[k] = 0.;
-		img = img_stack->img[k];
 
 		// For each pixel
 		for(int j = 0; j < img_stack->rect->N_bins[0]; j++) {
-		    line_int_ret[k] += img->at<float>(y_idx[j], j);
+		    line_int_ret[k] += img_stack->img[k]->at<float>(y_idx[j], j);
 		}
+
+		line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
 	}
 }
 
+
+// Calculates the change to the line integrals for a step that changes the
+// value of E in one distance bin.
+//
+// Inputs:
+//   x_idx : Index of distance bin to change.
+//   y_idx_old : Old y-value of the given distance bin.
+//   y_idx_new : New y-value of the given distance bin.
+//   delta_line_int_ret : Pointer to array that will store updated line integrals.
+//
 void TDiscreteLosMcmcParams::los_integral_diff_step(const int16_t x_idx, const int16_t y_idx_old,
                                                     const int16_t y_idx_new, float *const delta_line_int_ret) {
     // For each image
 	for(int k = 0; k < img_stack->N_images; k++) {
 	    delta_line_int_ret[k] = img_stack->img[k]->at<float>(y_idx_new, x_idx)
 	                          - img_stack->img[k]->at<float>(y_idx_old, x_idx);
+
+  		delta_line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
 	}
 }
 
+
+// Calculates the change to the line integrals for a step that swaps the
+// values of E in two neighboring distance bins.
+//
+// Inputs:
+//   x0_idx : Index of left distance bin. Will be swapped with bin to the right.
+//   y_idx  : y-values in all the distance bins.
+//   delta_line_int_ret : Pointer to array that will store updated line integrals.
+//
 void TDiscreteLosMcmcParams::los_integral_diff_swap(const int16_t x0_idx, const int16_t *const y_idx,
                                                     float *const delta_line_int_ret) {
     int16_t dy;
@@ -1792,6 +1822,8 @@ void TDiscreteLosMcmcParams::los_integral_diff_swap(const int16_t x0_idx, const 
 	    dy = y_idx[x0_idx+1] - y_idx[x0_idx];
 	    delta_line_int_ret[k] = img_stack->img[k]->at<float>(y_idx[x0_idx-1]+dy, x0_idx)
 	                          - img_stack->img[k]->at<float>(y_idx[x0_idx], x0_idx);
+		
+		delta_line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
 	}
 }
 
