@@ -1796,7 +1796,7 @@ void TDiscreteLosMcmcParams::los_integral_discrete(const int16_t *const y_idx,
 		    line_int_ret[k] += img_stack->img[k]->at<float>(y_idx[j], j);
 		}
 
-		line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
+		// line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
 	}
 }
 
@@ -1817,7 +1817,7 @@ void TDiscreteLosMcmcParams::los_integral_diff_step(const int16_t x_idx, const i
 	    delta_line_int_ret[k] = img_stack->img[k]->at<float>(y_idx_new, x_idx)
 	                          - img_stack->img[k]->at<float>(y_idx_old, x_idx);
 
-  		delta_line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
+  // 		delta_line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
 	}
 }
 
@@ -1851,7 +1851,10 @@ float TDiscreteLosMcmcParams::log_prior_diff_step(const int16_t x_idx,
     if(x_idx != 0) {
         dy_old -= y_idx_los_old[x_idx-1];
         dy_new -= y_idx_los_old[x_idx-1];
-    }
+    } else {
+		dy_old -= y_zero_idx;
+		dy_new -= y_zero_idx;
+	}
 
     float dlog_prior = log_dy_prior(x_idx, dy_new) - log_dy_prior(x_idx, dy_old);
 
@@ -1885,7 +1888,7 @@ void TDiscreteLosMcmcParams::los_integral_diff_swap(const int16_t x0_idx, const 
 	    delta_line_int_ret[k] = img_stack->img[k]->at<float>(y_idx[x0_idx-1]+dy, x0_idx)
 	                          - img_stack->img[k]->at<float>(y_idx[x0_idx], x0_idx);
 
-		delta_line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
+		// delta_line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
 	}
 }
 
@@ -1919,7 +1922,7 @@ void TDiscreteLosMcmcParams::guess_EBV_profile_discrete(int16_t *const y_idx_ret
 
 
 void discrete_los_ascii_art(int n_x, int n_y, int16_t *y_idx,
-						    int img_y, int max_y,
+						    int img_y, int max_y, double dy,
 							double x_min, double x_max,
 							std::iostream& out) {
 	// Padding for labels
@@ -1960,12 +1963,12 @@ void discrete_los_ascii_art(int n_x, int n_y, int16_t *y_idx,
 		ascii_img[idx] = '|';
 	}
 
-	for(int k=img_y-1; k>=0; k-=10) {
+	for(int k=img_y-1; k>=0; k-=5) {
 		idx = row_width * k  + n_x + 2;
 		ascii_img[idx] = '-';
 
 		const char* fmt = "%4.2f";
-		double y_label = (img_y - 1 - k) * y_scale;
+		double y_label = (img_y - 1 - k) * dy / y_scale;
 		int label_len = std::snprintf(nullptr, 0, fmt, y_label);
 		std::vector<char> buf(label_len + 1);
 		std::snprintf(&buf[0], buf.size(), fmt, y_label);
@@ -2041,6 +2044,8 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
 	float *line_int = new float[n_stars];
 	float *delta_line_int = new float[n_stars];
 
+	float *line_int_test = new float[n_stars];
+
     // Guess reddening profile
     int16_t *y_idx = new int16_t[n_x];
     double *y_idx_dbl = new double[n_x];
@@ -2109,7 +2114,11 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
             std::stringstream status_msg;
 
             if(i % 10000 == 0) {
-                discrete_los_ascii_art(n_x, n_y, y_idx, 29, 700, 4., 19., status_msg);
+                discrete_los_ascii_art(
+					n_x, n_y, y_idx,
+					30, 700, params.img_stack->rect->dx[0],
+					4., 19.,
+					status_msg);
                 status_msg << "Step Proposal:" << "\n"
                            << "   x: " << x_idx << "\n"
                            << "  y0: " << y_idx[x_idx] << "\n"
@@ -2118,9 +2127,9 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
                            << "  --> log(p, L, Pr) = (" << log_p << ", " << logL << ", " << logPr << ")" << "\n";
             }
 
-            if(exp(alpha) > gsl_rng_uniform(r)) {
+            if((alpha > 1) || (exp(alpha) > gsl_rng_uniform(r))) {
                 // ACCEPT
-                status_msg << "   * ACCEPTED with weight " << w;
+                status_msg << "   * ACCEPTED with weight " << w << std::endl;
 
                 // Add old point to chain
                 // chain.add_point(y_idx_dbl, log_p, (double)w);
@@ -2136,9 +2145,20 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
                     line_int[k] += delta_line_int[k];
                 }
 
+				params.los_integral_discrete(y_idx, line_int_test);
+				// status_msg << "   * residual line integral:" << std::endl;
+				// for(int k=0; k<n_stars; k++) {
+				// 	status_msg << "       "
+				// 			   << line_int[k] - line_int_test[k]
+				// 			   << " ("
+				// 			   << (line_int[k] - line_int_test[k]) / (line_int_test[k])
+				// 			   << ")"
+				// 			   << std::endl;
+				// }
+
                 w = 0;
             } else {
-                status_msg << "   * rejected";
+                status_msg << "   * rejected" << std::endl;
             }
 
             if(i % 10000 == 0) {
@@ -2146,7 +2166,7 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
             }
         }
 
-        // Try to swap differential reddening btw/ two neighboring distnace bins
+        // Try to swap differential reddening btw/ two neighboring distance bins
         w += 1;
         x_idx = gsl_rng_uniform_int(r, n_x-2) + 1; // Random distance bin: [1, nx-2]
 
@@ -2178,9 +2198,9 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
                                 << "  --> log(p, L, Pr) = (" << log_p << ", " << logL << ", " << logPr << ")" << "\n";
             }
 
-            if(exp(alpha) > gsl_rng_uniform(r)) {
+            if((alpha > 1) || (exp(alpha) > gsl_rng_uniform(r))) {
                 // ACCEPT
-                status_msg_swap << "   * ACCEPTED with weight " << w;
+                status_msg_swap << "   * ACCEPTED with weight " << w << std::endl;
 
                 // Add old point to chain
                 // chain.add_point(y_idx_dbl, log_p, (double)w);
@@ -2198,7 +2218,7 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
 
                 w = 0;
             } else {
-                status_msg_swap << "   * rejected";
+                status_msg_swap << "   * rejected" << std::endl;
             }
 
             if(i % 10000 == 0) {
@@ -2220,6 +2240,7 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
     delete[] y_idx_dbl;
     delete[] line_int;
     delete[] delta_line_int;
+	delete[] line_int_test;
     gsl_rng_free(r);
 }
 
