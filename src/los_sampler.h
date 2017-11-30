@@ -147,7 +147,7 @@ struct TDiscreteLosMcmcParams {
 	float mu_log_dE, sigma_log_dE;
 	float mu_log_dy, inv_sigma_log_dy;
 	float inv_sigma_dy_neg;
-	
+
 	TDiscreteLosMcmcParams(TImgStack *_img_stack, unsigned int _N_runs, unsigned int _N_threads);
 	~TDiscreteLosMcmcParams();
 
@@ -165,6 +165,20 @@ struct TDiscreteLosMcmcParams {
     float log_dy_prior(const int16_t x_idx, const int16_t dy);
     float log_prior_diff_step(const int16_t x_idx, const int16_t *const y_idx_los_old,
                               const int16_t y_idx_new);
+
+	bool shift_step_valid(
+		const int16_t x_idx,
+		const int16_t dy,
+		const int16_t *const y_idx_old);
+	void los_integral_diff_shift(
+		const int16_t x_idx,
+		const int16_t dy,
+		const int16_t *const y_idx_old,
+		float *const delta_line_int_ret);
+	float log_prior_diff_shift(
+		const int16_t x_idx,
+		const int16_t dy,
+	    const int16_t *const y_idx_los_old);
 
     void guess_EBV_profile_discrete(int16_t *const y_idx_ret, gsl_rng *r);
 };

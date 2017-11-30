@@ -1791,7 +1791,7 @@ void TDiscreteLosMcmcParams::los_integral_discrete(const int16_t *const y_idx,
 	for(int k = 0; k < img_stack->N_images; k++) {
 		line_int_ret[k] = 0.;
 
-		// For each pixel
+		// For each distance
 		for(int j = 0; j < n_dists; j++) {
 		    line_int_ret[k] += img_stack->img[k]->at<float>(y_idx[j], j);
 		}
@@ -1890,6 +1890,72 @@ void TDiscreteLosMcmcParams::los_integral_diff_swap(const int16_t x0_idx, const 
 
 		// delta_line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
 	}
+}
+
+
+bool TDiscreteLosMcmcParams::shift_step_valid(
+		const int16_t x_idx,
+		const int16_t dy,
+		const int16_t *const y_idx_old) {
+	// Determine whether shift causes y to go above maximum or below zero
+	for(int j=x_idx; j<n_dists; j++) {
+		if((y_idx_old[j]+dy < 0) || (y_idx_old[j]+dy >= n_E)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+void TDiscreteLosMcmcParams::los_integral_diff_shift(
+		const int16_t x_idx,
+		const int16_t dy,
+		const int16_t *const y_idx_old,
+		float *const delta_line_int_ret) {
+	// Determine whether shift causes y to go above maximum or below zero
+	// for(int j=x_idx; j<n_dists; j++) {
+	// 	if((y_idx_old[j]+dy < 0) || (y_idx_old[j]+dy >= n_E)) {
+	// 		// Set line integrals to -infinity
+	// 		for(int k=0; k < img_stack->N_images; k++) {
+	// 			delta_line_int_ret[k] = -std::numeric_limits<float>::infinity();
+	// 		}
+	// 		// Bail out before calculating line integrals, which will try
+	// 		// to access out-of-bounds memory.
+	// 		return;
+	// 	}
+	// }
+
+	// Determine difference in line integral
+
+	// For each image
+	for(int k=0; k < img_stack->N_images; k++) {
+		delta_line_int_ret[k] = 0;
+
+		// For each distance
+		for(int j=x_idx; j<n_dists; j++) {
+			delta_line_int_ret[k] +=
+				  img_stack->img[k]->at<float>(y_idx_old[j]+dy, j)
+				- img_stack->img[k]->at<float>(y_idx_old[j], j);
+		}
+	}
+}
+
+
+float TDiscreteLosMcmcParams::log_prior_diff_shift(
+		const int16_t x_idx,
+		const int16_t dy,
+	    const int16_t *const y_idx_los_old) {
+    // Prior only changes at x-index of shift
+    int16_t dy_old = y_idx_los_old[x_idx];
+
+    if(x_idx != 0) {
+        dy_old -= y_idx_los_old[x_idx-1];
+    } else {
+		dy_old -= y_zero_idx;
+	}
+
+    float dlog_prior = log_dy_prior(x_idx, dy_old+dy) - log_dy_prior(x_idx, dy_old);
+
+    return dlog_prior;
 }
 
 
@@ -2025,9 +2091,10 @@ void discrete_los_ascii_art(int n_x, int n_y, int16_t *y_idx,
 }
 
 
-void sample_los_extinction_discrete(const std::string& out_fname, const std::string& group_name,
-                           TMCMCOptions &options, TDiscreteLosMcmcParams &params,
-                           int verbosity) {
+void sample_los_extinction_discrete(
+		const std::string& out_fname, const std::string& group_name,
+        TMCMCOptions &options, TDiscreteLosMcmcParams &params,
+        int verbosity) {
     // Random number generator
     gsl_rng *r;
 	seed_gsl_rng(&r);
@@ -2116,7 +2183,7 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
             if(i % 10000 == 0) {
                 discrete_los_ascii_art(
 					n_x, n_y, y_idx,
-					30, 700, params.img_stack->rect->dx[0],
+					25, 700, params.img_stack->rect->dx[0],
 					4., 19.,
 					status_msg);
                 status_msg << "Step Proposal:" << "\n"
@@ -2145,7 +2212,7 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
                     line_int[k] += delta_line_int[k];
                 }
 
-				params.los_integral_discrete(y_idx, line_int_test);
+				// params.los_integral_discrete(y_idx, line_int_test);
 				// status_msg << "   * residual line integral:" << std::endl;
 				// for(int k=0; k<n_stars; k++) {
 				// 	status_msg << "       "
@@ -2223,6 +2290,85 @@ void sample_los_extinction_discrete(const std::string& out_fname, const std::str
 
             if(i % 10000 == 0) {
                 std::cerr << status_msg_swap.str() << std::endl;
+            }
+        }
+
+		// Try to take a shift step up or down in one pixel
+        w += 1;
+        x_idx = gsl_rng_uniform_int(r, n_x);    // Random distance bin: [0, nx-1]
+        dy = 2 * gsl_rng_uniform_int(r, 2) - 1; // Step up or down one unit
+
+        dlogL = 0;
+        // double dlogPr, alpha;
+
+        if(params.shift_step_valid(x_idx, dy, y_idx)) {
+            // Calculate difference in line integrals
+            params.los_integral_diff_shift(x_idx, dy, y_idx, delta_line_int);
+
+            // Change in likelihood
+            for(int k = 0; k < n_stars; k++) {
+                dlogL += log(1.0 + delta_line_int[k] / (line_int[k]+epsilon));
+            }
+
+            // Change in prior
+            // TODO: Write more sensible priors
+            dlogPr = params.log_prior_diff_shift(x_idx, dy, y_idx);
+            alpha = dlogL + dlogPr;
+
+            std::stringstream status_msg;
+
+            if(i % 10000 == 0) {
+                status_msg << "Shift Proposal:" << "\n"
+                           << "   x: " << x_idx << "\n"
+                           << "  dy: " << dy << "\n"
+                           << "  --> dlogp, dlogL, dlogPr = ("
+						   		<< alpha << ", "
+								<< dlogL << ", "
+								<< dlogPr << ")" << "\n"
+                           << "  --> log(p, L, Pr) = ("
+						   		<< log_p << ", "
+								<< logL << ", "
+								<< logPr << ")" << "\n";
+            }
+
+            if((alpha > 1) || (exp(alpha) > gsl_rng_uniform(r))) {
+                // ACCEPT
+                status_msg << "   * ACCEPTED with weight " << w << std::endl;
+
+                // Add old point to chain
+                // chain.add_point(y_idx_dbl, log_p, (double)w);
+
+                // Update state to proposal
+				for(int j=x_idx; j<params.n_dists; j++) {
+					y_idx[j] += dy;
+					y_idx_dbl[j] = (double)(y_idx[j]);
+				}
+                log_p += alpha;
+                logL += dlogL;
+                logPr += dlogPr;
+
+                for(int k = 0; k < n_stars; k++) {
+                    line_int[k] += delta_line_int[k];
+                }
+
+				// params.los_integral_discrete(y_idx, line_int_test);
+				// status_msg << "   * residual line integral:" << std::endl;
+				// for(int k=0; k<n_stars; k++) {
+				// 	status_msg << "       "
+				// 			   << line_int[k] - line_int_test[k]
+				// 			   << " ("
+				// 			   << (line_int[k] - line_int_test[k]) / (line_int_test[k])
+				// 			   << ")"
+				// 			   << std::endl;
+				// }
+
+                w = 0;
+            } else {
+                status_msg << "   * rejected" << std::endl;
+            }
+
+            if(i % 10000 == 0) {
+                std::cerr << status_msg.str() << std::endl;
             }
         }
     }
