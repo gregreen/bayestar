@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
 	TMCMCOptions cloud_options(opts.cloud_steps, opts.cloud_samplers, opts.cloud_p_replacement, opts.N_runs);
 	TMCMCOptions los_options(opts.los_steps, opts.los_samplers, opts.los_p_replacement, opts.N_runs);
 
-	TMCMCOptions discrete_los_options(100000, 1, opts.los_p_replacement, opts.N_runs);    // TODO: Create commandline options for this
+	TMCMCOptions discrete_los_options(opts.discrete_steps, 1, 0., opts.N_runs);    // TODO: Create commandline options for this
 
 
 	/*

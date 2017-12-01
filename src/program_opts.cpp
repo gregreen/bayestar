@@ -37,7 +37,8 @@ TProgramOpts::TProgramOpts() {
     pct_smoothing_min = 0.;
     pct_smoothing_max = -1.;
 
-	discrete_los = true; // TODO: On by default?
+	discrete_los = false;
+	discrete_steps = 10000;
 
     N_regions = 30;
     los_steps = 4000;
@@ -144,6 +145,14 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
             po::value<double>(&(opts.pct_smoothing_max)),
             ("Maximum smoothing percent of per-star surfaces (default: " +
                     to_string(opts.pct_smoothing_max) + ")").c_str())
+
+		("discrete-los",
+			"Use the discrete line-of-sight model.")
+		("discrete-steps",
+            po::value<unsigned int>(&(opts.discrete_steps)),
+            ("# of steps to take for the discrete l.o.s. sampler "
+                "(default: " +
+                to_string(opts.discrete_steps) + ")").c_str())
 
 		("regions",
             po::value<unsigned int>(&(opts.N_regions)),
@@ -443,6 +452,7 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
 	if(vm.count("SFD-subpixel")) { opts.SFD_subpixel = true; }
 	if(vm.count("clobber")) { opts.clobber = true; }
 	if(vm.count("test-los")) { opts.test_mode = true; }
+	if(vm.count("discrete-los")) { opts.discrete_los = true; }
 
 	// Read percent smoothing coefficients
 	if(!vm["pct-smoothing-coeffs"].empty()) {
