@@ -246,7 +246,7 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
                      TRect& grid, cv::Mat& img,
                      double n_sigma, int min_width,
                      double add_diagonal=-1.,
-                     int subsample=5) {
+                     int subsample=5, int verbosity=0) {
     // Add extra smoothing along each axis
     if(add_diagonal > 0.) {
         double diag[2] = {
@@ -278,7 +278,6 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
         sqrt(inv_cov_00 / det) // + diag[1]*diag[1])
     };
 
-    std::cerr << "sigma -> (" << sigma[0] << ", " << sigma[1] << ")" << std::endl;
 
     // Determine dimensions of filter
     int width[2];
@@ -287,7 +286,10 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
         width[i] = std::max(min_width, (int)(ceil(n_sigma * sigma[i] / grid.dx[i])));
     }
 
-    std::cerr << "width = (" << width[0] << ", " << width[1] << ")" << std::endl;
+    if(verbosity >= 2) {
+        std::cerr << "sigma -> (" << sigma[0] << ", " << sigma[1] << ")" << std::endl;
+        std::cerr << "width = (" << width[0] << ", " << width[1] << ")" << std::endl;
+    }
 
     // std::cerr << "initializing img" << std::endl;
     int w = 2 * width[0] + 1;
@@ -346,24 +348,24 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
 }
 
 
-void add_fit_to_image(cv::Mat& img, TRect& grid, LinearFitParams& fit,
-                      double weight, double n_sigma, int min_width) {
-      // Determine sigma along each axis
-    //   double det = p->inv_cov(0,0) * p->inv_cov(1,1) - p->inv_cov(0,1) * p->inv_cov(1,0);// + 1.e-5;
-    //   double sigma[2] = {
-    //       sqrt(p->inv_cov(1,1) / det),
-    //       sqrt(p->inv_cov(0,0) / det)
-    //   };
-      //
-    //   // Determine dimensions of filter
-    //   int width[2];
-      //
-    //   for(unsigned int i=0; i<2; i++) {
-    //       width[i] = std::max(min_width, (int)(ceil(sigma[i] / grid.dx[i])));
-    //   }
-      //
-    //   // TODO: Finish this
-}
+// void add_fit_to_image(cv::Mat& img, TRect& grid, LinearFitParams& fit,
+//                       double weight, double n_sigma, int min_width) {
+//       // Determine sigma along each axis
+//     //   double det = p->inv_cov(0,0) * p->inv_cov(1,1) - p->inv_cov(0,1) * p->inv_cov(1,0);// + 1.e-5;
+//     //   double sigma[2] = {
+//     //       sqrt(p->inv_cov(1,1) / det),
+//     //       sqrt(p->inv_cov(0,0) / det)
+//     //   };
+//       //
+//     //   // Determine dimensions of filter
+//     //   int width[2];
+//       //
+//     //   for(unsigned int i=0; i<2; i++) {
+//     //       width[i] = std::max(min_width, (int)(ceil(sigma[i] / grid.dx[i])));
+//     //   }
+//       //
+//     //   // TODO: Finish this
+// }
 
 
 double integrate_ML_solution(TStellarModel& stellar_model,
@@ -372,7 +374,7 @@ double integrate_ML_solution(TStellarModel& stellar_model,
                              TExtinctionModel& ext_model,
                              TImgStack& img_stack,
                              unsigned int img_idx,
-                             double RV) {
+                             double RV, int verbosity) {
     //
     TSED sed;
     unsigned int N_Mr = stellar_model.get_N_Mr();
@@ -505,10 +507,13 @@ double integrate_ML_solution(TStellarModel& stellar_model,
     }
 
     double prior_max = *std::max_element(prior_ML.begin(), prior_ML.end());
-    std::cerr << "prior_max = " << prior_max << std::endl;
 
     double chi2_min = *std::min_element(chi2_ML.begin(), chi2_ML.end());
-    std::cerr << "chi2_min = " << chi2_min << std::endl;
+
+    if(verbosity >= 2) {
+        std::cerr << "prior_max = " << prior_max << std::endl;
+        std::cerr << "chi2_min = " << chi2_min << std::endl;
+    }
 
     assert( E_ML.size() == mu_ML.size() );
     assert( chi2_ML.size() == mu_ML.size() );
@@ -605,15 +610,17 @@ double integrate_ML_solution(TStellarModel& stellar_model,
 
     // Smooth PDF with covariance of the ML solution
     cv::Mat cov_img;
-    double expand = 1.;// / (10.*10.);
-    gaussian_filter(expand*inv_cov_11, expand*inv_cov_01, expand*inv_cov_00,
-                    *(img_stack.rect), cov_img, 5, 2, 1.0);
+    gaussian_filter(inv_cov_11, inv_cov_01, inv_cov_00,
+                    *(img_stack.rect), cov_img, 5, 2, 1.0,
+                    verbosity);
 
-    cv::Mat filtered_img = cv::Mat::zeros(img_stack.rect->N_bins[0], img_stack.rect->N_bins[1], CV_32F);
+    cv::Mat filtered_img = cv::Mat::zeros(
+        img_stack.rect->N_bins[0],
+        img_stack.rect->N_bins[1],
+        CV_32F
+    );
     cv::filter2D(*img_stack.img[img_idx], filtered_img, CV_32F, cov_img);
     *img_stack.img[img_idx] = filtered_img;
-
-    std::cerr << "Done with grid evaluation." << std::endl;
 
     // Return mininum chi^2 / passband
     int n_passbands = 0;
@@ -624,8 +631,10 @@ double integrate_ML_solution(TStellarModel& stellar_model,
         n_passbands++;
     }
 
-    std::cerr << "# of passbands: " << n_passbands << std::endl;
-    std::cerr << "chi^2 / passband: " << chi2_min / n_passbands << std::endl;
+    if(verbosity >= 2) {
+        std::cerr << "# of passbands: " << n_passbands << std::endl;
+        std::cerr << "chi^2 / passband: " << chi2_min / n_passbands << std::endl;
+    }
 
     return chi2_min / n_passbands;
 }
@@ -634,7 +643,7 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
                      TStellarModel& stellar_model, TStellarData& stellar_data,
                      TImgStack& img_stack, std::vector<double>& chi2,
                      bool save_surfs, std::string out_fname,
-                     double RV) {
+                     double RV, int verbosity) {
     // Timing
     auto t_start = std::chrono::steady_clock::now();
 
@@ -653,7 +662,8 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
         double chi2_min = integrate_ML_solution(
             stellar_model, los_model,
             stellar_data[i], ext_model,
-            img_stack, i, RV
+            img_stack, i, RV,
+            verbosity
         );
         chi2.push_back(chi2_min);
     }
@@ -671,9 +681,9 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
         TImgWriteBuffer img_buffer(*(img_stack.rect), n_stars);
 
 		for(int n=0; n<n_stars; n++) {
-            std::cerr << "image[" << n << "].shape = ("
-                      << img_stack.img[n]->rows << ", "
-                      << img_stack.img[n]->cols << ")" << std::endl;
+            // std::cerr << "image[" << n << "].shape = ("
+            //           << img_stack.img[n]->rows << ", "
+            //           << img_stack.img[n]->cols << ")" << std::endl;
 			img_buffer.add(*(img_stack.img[n]));
 		}
 
@@ -686,13 +696,15 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
     std::chrono::duration<double, std::milli> dt_write = t_end - t_write;
     std::chrono::duration<double, std::milli> dt_total = t_end - t_start;
 
-    std::cerr << "Done with grid evaluation for all stars."
-              << std::endl << std::endl;
-    std::cerr << "Time elapsed / star:" << std::endl
-              << "  * sample: " << dt_sample.count() / n_stars << " ms"
-              << std::endl
-              << "  *  write: " << dt_write.count() / n_stars << " ms"
-              << std::endl
-              << "  *  total: " << dt_total.count() / n_stars << " ms"
-              << std::endl << std::endl;
+    if(verbosity >= 1) {
+        std::cerr << "Done with grid evaluation for all stars."
+                  << std::endl << std::endl;
+        std::cerr << "Time elapsed / star:" << std::endl
+                  << "  * sample: " << dt_sample.count() / n_stars << " ms"
+                  << std::endl
+                  << "  *  write: " << dt_write.count() / n_stars << " ms"
+                  << std::endl
+                  << "  *  total: " << dt_total.count() / n_stars << " ms"
+                  << std::endl << std::endl;
+    }
 }

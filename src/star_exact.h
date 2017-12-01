@@ -55,14 +55,14 @@ double integrate_ML_solution(TStellarModel& stellar_model,
                              TExtinctionModel& ext_model,
                              TImgStack& img_stack,
                              unsigned int img_idx,
-                             double RV);
+                             double RV, int verbosity);
 
 
 void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
                      TStellarModel& stellar_model, TStellarData& stellar_data,
                      TImgStack& img_stack, std::vector<double>& chi2,
                      bool save_surfs, std::string out_fname,
-                     double RV);
+                     double RV, int verbosity);
 
 
 #endif // _STAR_EXACT_H__

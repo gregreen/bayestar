@@ -226,7 +226,7 @@ int main(int argc, char **argv) {
 			grid_eval_stars(los_model, ext_model, *emplib,
 							stellar_data, img_stack, chi2,
 							opts.save_surfs, opts.output_fname,
-							opts.mean_RV);
+							opts.mean_RV, opts.verbosity);
 		} else if(opts.synthetic) {
 			// MCMC sampling of synthetic stellar model
 			sample_indiv_synth(opts.output_fname, star_options, los_model, *synthlib, ext_model,
