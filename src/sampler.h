@@ -136,6 +136,7 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
                       double RV_mean=3.1, double RV_sigma=-1., double minEBV=0., const bool saveSurfs=false,
                       const bool gatherSurfs=true, const bool use_priors=true, int verbosity=1);
 
+#ifdef _USE_PARALLEL_TEMPERING__
 void sample_indiv_emp_pt(
 	std::string &out_fname,
 	TMCMCOptions &options,
@@ -151,6 +152,7 @@ void sample_indiv_emp_pt(
 	const bool saveSurfs=false, const bool gatherSurfs=true,
 	const bool use_priors=true, int verbosity=1
 );
+#endif // _USE_PARALLEL_TEMPERING__
 
 
 // Auxiliary functions
