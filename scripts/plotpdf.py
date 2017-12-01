@@ -163,6 +163,37 @@ def clouds2ax(ax, fname, group, DM_lim, *args, **kwargs):
 
 	ax.set_xlim(DM_lim[0], DM_lim[1])
 
+
+def dsc2ax(ax, fname, group, DM_lim, *args, **kwargs):
+	chain = hdf5io.TChain(fname, '{:s}/discrete-los'.format(group))
+
+	mu = np.linspace(DM_lim[0], DM_lim[1], chain.get_nDim())
+	if 'alpha' not in kwargs:
+		kwargs['alpha'] = 1. / np.power(chain.get_nSamples(), 0.55)
+
+	# Plot all paths
+	EBV_all = chain.get_samples(0) * 0.01
+	# EBV_all = np.cumsum(np.exp(chain.get_samples(0)), axis=1)
+	lnp = chain.get_lnp()[0, 1:]
+	#lnp = np.exp(lnp - np.max(lnp))
+	lnp_min, lnp_max = np.percentile(lnp, [10., 90.])
+	lnp = (lnp - lnp_min) / (lnp_max - lnp_min)
+	lnp[lnp > 1.] = 1.
+	lnp[lnp < 0.] = 0.
+
+	for i,EBV in enumerate(EBV_all[1:]):
+		c = (1.-lnp[i], 0., lnp[i])
+		kwargs['c'] = c
+		ax.plot(mu, EBV, *args, **kwargs)
+
+	kwargs['c'] = 'g'
+	kwargs['lw'] = 1.5
+	kwargs['alpha'] = 0.5
+	ax.plot(mu, EBV_all[0], *args, **kwargs)
+
+	ax.set_xlim(DM_lim[0], DM_lim[1])
+
+
 def find_contour_levels(pdf, pctiles):
 	norm = np.sum(pdf)
 	pctile_diff = lambda pixval, target: np.sum(pdf[pdf > pixval]) / norm - target
@@ -192,6 +223,8 @@ def main():
 	                            help='Show piecewise-linear l.o.s. reddening.')
 	parser.add_argument('-cl', '--show-clouds', action='store_true',
 	                            help='Show cloud model of reddening.')
+	parser.add_argument('-dsc', '--show-discrete', action='store_true',
+	                            help='Show discrete model of reddening.')
 	parser.add_argument('-ind', '--show-individual', action='store_true',
 	                            help='Show individual stellar pdfs above main plot.')
 	parser.add_argument('-ovplt', '--overplot-clouds', type=float, nargs='+', default=None,
@@ -204,13 +237,9 @@ def main():
 	                          help='Figure width and height in inches.')
 	parser.add_argument('-y', '--EBV-max', type=float, default=None,
 	                          help='Upper limit of E(B-V) for the y-axis.')
-	if 'python' in sys.argv[0]:
-		offset = 2
-	else:
-		offset = 1
-	args = parser.parse_args(sys.argv[offset:])
+	args = parser.parse_args()
 
-	if (args.output == None) and not args.show:
+	if (args.output is None) and not args.show:
 		print 'Either --output or --show must be given.'
 		return 0
 
@@ -405,6 +434,14 @@ def main():
 				clouds2ax(sub_ax, fname, group, DM_lim, c='k')
 		except:
 			pass
+
+	if args.show_discrete:
+		# try:
+			dsc2ax(ax, fname, group, DM_lim, c='k', alpha=0.05, lw=1.5)
+			for sub_ax in ax_indiv:
+				dsc2ax(sub_ax, fname, group, DM_lim, c='k', alpha=0.015)
+		# except:
+		# 	pass
 
 	if EBV_max != None:
 		ax.set_ylim(x_min[1], EBV_max)
