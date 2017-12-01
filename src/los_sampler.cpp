@@ -1746,8 +1746,8 @@ TDiscreteLosMcmcParams::TDiscreteLosMcmcParams(TImgStack *_img_stack, unsigned i
 	y_zero_idx = -img_stack->rect->min[0] / img_stack->rect->dx[0];
 
 	// Priors
-	mu_log_dE = -8.;
-	sigma_log_dE = 10.0;
+	mu_log_dE = -10.;
+	sigma_log_dE = 1.0;
 	mu_log_dy = mu_log_dE - log(img_stack->rect->dx[0]);
 	inv_sigma_log_dy = 1. / sigma_log_dE;
 	inv_sigma_dy_neg = 1. / 0.1;
@@ -1987,10 +1987,27 @@ void TDiscreteLosMcmcParams::guess_EBV_profile_discrete(int16_t *const y_idx_ret
 }
 
 
+void ascii_progressbar(int state, int max_state, int width, std::ostream& out) {
+	double pct = (double)state / (double)(max_state-1);
+	int n_ticks = pct * width;
+
+	out << "|";
+	for(int i=0; i<n_ticks-1; i++) {
+		out << "=";
+	}
+	if(n_ticks != 0) {
+		out << ">";
+	}
+	for(int i=n_ticks; i<width; i++) {
+		out << " ";
+	}
+	out << "| " << 100. * pct << " %" << std::endl;
+}
+
 void discrete_los_ascii_art(int n_x, int n_y, int16_t *y_idx,
 						    int img_y, int max_y, double dy,
 							double x_min, double x_max,
-							std::iostream& out) {
+							std::ostream& out) {
 	// Padding for labels
 	int pad_x = 8;
 	int pad_y = 4;
@@ -2091,9 +2108,49 @@ void discrete_los_ascii_art(int n_x, int n_y, int16_t *y_idx,
 }
 
 
+const int STEP_PROPOSAL = 0;
+const int SWAP_PROPOSAL = 1;
+const int SHIFT_PROPOSAL = 2;
+
+
+// Propose to take a step up or down in one pixel
+void discrete_propose_step(gsl_rng* r, int n_x, int& x_idx, int& dy) {
+	x_idx = gsl_rng_uniform_int(r, n_x);    // Random distance bin: [0, nx-1]
+	dy = 2 * gsl_rng_uniform_int(r, 2) - 1; // Step up or down one unit
+}
+
+
+// Propose to swap differential reddening btw/ two neighboring distance bins
+void discrete_propose_swap(gsl_rng* r, int n_x, int& x_idx) {
+	x_idx = gsl_rng_uniform_int(r, n_x-2) + 1; // Random distance bin: [1, nx-2]
+}
+
+
+// Propose to take a shift step up or down in all pixels beyond a certain distance
+void discrete_propose_shift(gsl_rng* r, int n_x, int& x_idx, int& dy) {
+	x_idx = gsl_rng_uniform_int(r, n_x);    // Random distance bin: [0, nx-1]
+	dy = 2 * gsl_rng_uniform_int(r, 2) - 1; // Step up or down one unit
+}
+
+
+// Checks whether a proposal lands in a valid region of parameter space
+bool discrete_proposal_valid(
+		int proposal_type,
+		int y_idx_new, int n_y,
+		TDiscreteLosMcmcParams& params,
+		int x_idx, int dy, const int16_t *const y_idx_los_old) {
+	//
+	if((proposal_type == STEP_PROPOSAL) || (proposal_type == SWAP_PROPOSAL)) {
+		return (y_idx_new >= 0) && (y_idx_new < n_y);
+	} else { // proposal_type == SHIFT_PROPOSAL
+		return params.shift_step_valid(x_idx, dy, y_idx_los_old);
+	}
+}
+
+
 void sample_los_extinction_discrete(
 		const std::string& out_fname, const std::string& group_name,
-        TMCMCOptions &options, TDiscreteLosMcmcParams &params,
+        TMCMCOptions& options, TDiscreteLosMcmcParams& params,
         int verbosity) {
     // Random number generator
     gsl_rng *r;
@@ -2126,18 +2183,21 @@ void sample_los_extinction_discrete(
     }
 
     int n_steps = 0.5 * (options.steps * n_x);
+	int n_burnin = 0.25 * n_steps;
+	int n_save = 1000;
+	int save_every = n_steps / n_save;
 
     // Chain
-    TChain chain(n_x, 2*n_steps+5);
+    TChain chain(n_x, 1.1*n_save+5);
 
-	std::cerr << std::endl
-		      << "##################################" << std::endl
-			  << "n_x = " << n_x << std::endl
-			  << "n_y = " << n_y << std::endl
-			  << "n_stars = " << n_stars << std::endl
-			  << "n_steps = " << n_steps << std::endl
-			  << "##################################" << std::endl
-			  << std::endl;
+	// std::cerr << std::endl
+	// 	      << "##################################" << std::endl
+	// 		  << "n_x = " << n_x << std::endl
+	// 		  << "n_y = " << n_y << std::endl
+	// 		  << "n_stars = " << n_stars << std::endl
+	// 		  << "n_steps = " << n_steps << std::endl
+	// 		  << "##################################" << std::endl
+	// 		  << std::endl;
 
     int w = 0;
 
@@ -2150,23 +2210,63 @@ void sample_los_extinction_discrete(
     double sigma_dy_neg_target = 1.e-10;
     double tau_decay = (double)n_steps / 5.;
 
-    for(int i = 0; i < n_steps; i++) {
+    for(int i = 0; i < n_steps + n_burnin; i++) {
         sigma_dy_neg -= (sigma_dy_neg - sigma_dy_neg_target) / tau_decay;
         params.inv_sigma_dy_neg = 1. / sigma_dy_neg;
 
-        // Try to take a step up or down in one pixel
+		// Increase weight of current state
         w += 1;
-        int x_idx = gsl_rng_uniform_int(r, n_x);    // Random distance bin: [0, nx-1]
-        int dy = 2 * gsl_rng_uniform_int(r, 2) - 1; // Step up or down one unit
 
-        int y_idx_new = y_idx[x_idx] + dy;
+		// Propose a new state
+		int x_idx, dy, y_idx_new, dy1;
 
-        double dlogL = 0;
-        double dlogPr, alpha;
+		int proposal_type = gsl_rng_uniform_int(r, 3);
 
-        if((y_idx_new >= 0) && (y_idx_new < n_y)) {
-            // Calculate difference in line integrals
-            params.los_integral_diff_step(x_idx, y_idx[x_idx], y_idx_new, delta_line_int);
+		if(proposal_type == STEP_PROPOSAL) {
+			discrete_propose_step(r, n_x, x_idx, dy);
+			y_idx_new = y_idx[x_idx] + dy;
+		} else if(proposal_type == SWAP_PROPOSAL) {
+			discrete_propose_swap(r, n_x, x_idx);
+			dy1 = y_idx[x_idx+1] - y_idx[x_idx];
+	        y_idx_new = y_idx[x_idx-1] + dy1;
+		} else { // proposal_type == SHIFT_PROPOSAL
+			discrete_propose_shift(r, n_x, x_idx, dy);
+		}
+
+        // int y_idx_new = y_idx[x_idx] + dy;
+
+		// Check if the proposal lands in a valid region of parameter space
+		bool prop_valid = discrete_proposal_valid(
+			proposal_type, y_idx_new, n_y,
+			params, x_idx, dy, y_idx);
+
+        if(prop_valid) {
+			double dlogL = 0;
+	        double dlogPr, alpha;
+
+            // Calculate difference in line integrals and prior (between the
+			// current and proposed states).
+			// TODO: Write more sensible priors
+			if(proposal_type == STEP_PROPOSAL) {
+	            params.los_integral_diff_step(
+					x_idx, y_idx[x_idx],
+					y_idx_new, delta_line_int
+				);
+				dlogPr = params.log_prior_diff_step(x_idx, y_idx, y_idx_new);
+			} else if(proposal_type == SWAP_PROPOSAL) {
+				params.los_integral_diff_swap(
+					x_idx, y_idx,
+					delta_line_int
+				);
+				// TODO: Change this if prior ends up depending on distance.
+				dlogPr = 0.;
+			} else { // proposal_type == SHIFT_PROPOSAL
+				params.los_integral_diff_shift(
+					x_idx, dy, y_idx,
+					delta_line_int
+				);
+				dlogPr = params.log_prior_diff_shift(x_idx, dy, y_idx);
+			}
 
             // Change in likelihood
             for(int k = 0; k < n_stars; k++) {
@@ -2174,182 +2274,36 @@ void sample_los_extinction_discrete(
             }
 
             // Change in prior
-            // TODO: Write more sensible priors
-            dlogPr = params.log_prior_diff_step(x_idx, y_idx, y_idx_new);
             alpha = dlogL + dlogPr;
 
-            std::stringstream status_msg;
-
-            if(i % 10000 == 0) {
-                discrete_los_ascii_art(
-					n_x, n_y, y_idx,
-					25, 700, params.img_stack->rect->dx[0],
-					4., 19.,
-					status_msg);
-                status_msg << "Step Proposal:" << "\n"
-                           << "   x: " << x_idx << "\n"
-                           << "  y0: " << y_idx[x_idx] << "\n"
-                           << "  y1: " << y_idx_new << "\n"
-                           << "  --> dlogp, dlogL, dlogPr = (" << alpha << ", " << dlogL << ", " << dlogPr << ")" << "\n"
-                           << "  --> log(p, L, Pr) = (" << log_p << ", " << logL << ", " << logPr << ")" << "\n";
-            }
-
+			// Accept proposal?
             if((alpha > 1) || (exp(alpha) > gsl_rng_uniform(r))) {
                 // ACCEPT
-                status_msg << "   * ACCEPTED with weight " << w << std::endl;
 
                 // Add old point to chain
                 // chain.add_point(y_idx_dbl, log_p, (double)w);
 
                 // Update state to proposal
-                y_idx[x_idx] = y_idx_new;
-                y_idx_dbl[x_idx] = (double)y_idx_new;
-                log_p += alpha;
-                logL += dlogL;
-                logPr += dlogPr;
-
-                for(int k = 0; k < n_stars; k++) {
-                    line_int[k] += delta_line_int[k];
-                }
-
-				// params.los_integral_discrete(y_idx, line_int_test);
-				// status_msg << "   * residual line integral:" << std::endl;
-				// for(int k=0; k<n_stars; k++) {
-				// 	status_msg << "       "
-				// 			   << line_int[k] - line_int_test[k]
-				// 			   << " ("
-				// 			   << (line_int[k] - line_int_test[k]) / (line_int_test[k])
-				// 			   << ")"
-				// 			   << std::endl;
-				// }
-
-                w = 0;
-            } else {
-                status_msg << "   * rejected" << std::endl;
-            }
-
-            if(i % 10000 == 0) {
-                std::cerr << status_msg.str() << std::endl;
-            }
-        }
-
-        // Try to swap differential reddening btw/ two neighboring distance bins
-        w += 1;
-        x_idx = gsl_rng_uniform_int(r, n_x-2) + 1; // Random distance bin: [1, nx-2]
-
-        int dy1 = y_idx[x_idx+1] - y_idx[x_idx];
-        y_idx_new = y_idx[x_idx-1] + dy1;
-
-        if((y_idx_new >= 0) && (y_idx_new < n_y)) {
-            // Calculate difference in line integrals
-            params.los_integral_diff_swap(x_idx, y_idx, delta_line_int);
-
-            // Change in likelihood
-            dlogL = 0;
-            for(int k = 0; k < n_stars; k++) {
-                dlogL += log(1.0 + delta_line_int[k] / (line_int[k]+epsilon));
-            }
-
-            // Change in prior
-            // TODO: Add swap prior change if priors become function of distance
-            dlogPr = 0; //params.log_prior_diff_step(x_idx, y_idx, y_idx_new);
-            alpha = dlogL + dlogPr;
-
-            std::stringstream status_msg_swap;
-
-            if(i % 10000 == 0) {
-                //discrete_los_ascii_art(n_x, n_y, y_idx, 29, 700, 4., 19., status_msg_swap);
-                status_msg_swap << "Swap Proposal:" << "\n"
-                                << "   x: " << x_idx << "\n"
-                                << "  --> dlogp, dlogL, dlogPr = (" << alpha << ", " << dlogL << ", " << dlogPr << ")" << "\n"
-                                << "  --> log(p, L, Pr) = (" << log_p << ", " << logL << ", " << logPr << ")" << "\n";
-            }
-
-            if((alpha > 1) || (exp(alpha) > gsl_rng_uniform(r))) {
-                // ACCEPT
-                status_msg_swap << "   * ACCEPTED with weight " << w << std::endl;
-
-                // Add old point to chain
-                // chain.add_point(y_idx_dbl, log_p, (double)w);
-
-                // Update state to proposal
-                y_idx[x_idx] = y_idx_new;
-                y_idx_dbl[x_idx] = (double)(y_idx[x_idx]);
-                log_p += alpha;
-                logL += dlogL;
-                logPr += dlogPr;
-
-                for(int k = 0; k < n_stars; k++) {
-                    line_int[k] += delta_line_int[k];
-                }
-
-                w = 0;
-            } else {
-                status_msg_swap << "   * rejected" << std::endl;
-            }
-
-            if(i % 10000 == 0) {
-                std::cerr << status_msg_swap.str() << std::endl;
-            }
-        }
-
-		// Try to take a shift step up or down in one pixel
-        w += 1;
-        x_idx = gsl_rng_uniform_int(r, n_x);    // Random distance bin: [0, nx-1]
-        dy = 2 * gsl_rng_uniform_int(r, 2) - 1; // Step up or down one unit
-
-        dlogL = 0;
-        // double dlogPr, alpha;
-
-        if(params.shift_step_valid(x_idx, dy, y_idx)) {
-            // Calculate difference in line integrals
-            params.los_integral_diff_shift(x_idx, dy, y_idx, delta_line_int);
-
-            // Change in likelihood
-            for(int k = 0; k < n_stars; k++) {
-                dlogL += log(1.0 + delta_line_int[k] / (line_int[k]+epsilon));
-            }
-
-            // Change in prior
-            // TODO: Write more sensible priors
-            dlogPr = params.log_prior_diff_shift(x_idx, dy, y_idx);
-            alpha = dlogL + dlogPr;
-
-            std::stringstream status_msg;
-
-            if(i % 10000 == 0) {
-                status_msg << "Shift Proposal:" << "\n"
-                           << "   x: " << x_idx << "\n"
-                           << "  dy: " << dy << "\n"
-                           << "  --> dlogp, dlogL, dlogPr = ("
-						   		<< alpha << ", "
-								<< dlogL << ", "
-								<< dlogPr << ")" << "\n"
-                           << "  --> log(p, L, Pr) = ("
-						   		<< log_p << ", "
-								<< logL << ", "
-								<< logPr << ")" << "\n";
-            }
-
-            if((alpha > 1) || (exp(alpha) > gsl_rng_uniform(r))) {
-                // ACCEPT
-                status_msg << "   * ACCEPTED with weight " << w << std::endl;
-
-                // Add old point to chain
-                // chain.add_point(y_idx_dbl, log_p, (double)w);
-
-                // Update state to proposal
-				for(int j=x_idx; j<params.n_dists; j++) {
-					y_idx[j] += dy;
-					y_idx_dbl[j] = (double)(y_idx[j]);
+				if((proposal_type == STEP_PROPOSAL)
+						|| (proposal_type == SWAP_PROPOSAL)) {
+	                y_idx[x_idx] = y_idx_new;
+	                y_idx_dbl[x_idx] = (double)y_idx_new;
+				} else { // proposal_type == SHIFT_PROPOSAL
+					for(int j=x_idx; j<params.n_dists; j++) {
+						y_idx[j] += dy;
+						y_idx_dbl[j] = (double)(y_idx[j]);
+					}
 				}
-                log_p += alpha;
-                logL += dlogL;
-                logPr += dlogPr;
 
+				// Update line integrals
                 for(int k = 0; k < n_stars; k++) {
                     line_int[k] += delta_line_int[k];
                 }
+
+				// Update prior & likelihood
+				log_p += alpha;
+				logL += dlogL;
+				logPr += dlogPr;
 
 				// params.los_integral_discrete(y_idx, line_int_test);
 				// status_msg << "   * residual line integral:" << std::endl;
@@ -2362,24 +2316,43 @@ void sample_los_extinction_discrete(
 				// 			   << std::endl;
 				// }
 
+				// Reset weight to zero
                 w = 0;
-            } else {
-                status_msg << "   * rejected" << std::endl;
-            }
-
-            if(i % 10000 == 0) {
-                std::cerr << status_msg.str() << std::endl;
             }
         }
+
+		// Add state to chain
+		if((i > n_burnin) && (i % save_every == 0)) {
+			chain.add_point(y_idx_dbl, log_p, 1.);
+		}
+
+		if((verbosity >= 2) && (i % 10000 == 0)) {
+			discrete_los_ascii_art(
+				n_x, n_y, y_idx,
+				40, 700,
+				params.img_stack->rect->dx[0],
+				4., 19.,
+				std::cerr);
+			std::cerr << std::endl;
+			ascii_progressbar(i, n_steps+n_burnin, 50, std::cerr);
+			std::cerr << std::endl;
+		}
     }
 
     // Add final state to chain
     chain.add_point(y_idx_dbl, log_p, (double)w);
 
     // Save the chain
-    TChainWriteBuffer chain_write_buffer(n_x, 1000, 1);
+	// chain.save(out_fname, group_name, "")
+    TChainWriteBuffer chain_write_buffer(n_x, n_save, 1);
 
-    chain_write_buffer.add(chain);
+    chain_write_buffer.add(
+		chain,
+		true,	// converged
+		std::numeric_limits<double>::quiet_NaN(), // ln(Z)
+		NULL,	// Gelman-Rubin statistic
+		false	// subsample
+	);
     chain_write_buffer.write(out_fname, group_name, "discrete-los");
 
     delete[] y_idx;
