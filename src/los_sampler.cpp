@@ -1729,6 +1729,643 @@ float* TLOSMCMCParams::get_Delta_EBV(unsigned int thread_num) {
 
 /****************************************************************************************************************************
  *
+ * TDiscreteLosMcmcParams
+ *
+ ****************************************************************************************************************************/
+
+TDiscreteLosMcmcParams::TDiscreteLosMcmcParams(TImgStack *_img_stack, unsigned int _N_runs, unsigned int _N_threads)
+    : img_stack(_img_stack), N_runs(_N_runs), N_threads(_N_threads)
+{
+    n_dists = img_stack->rect->N_bins[1];
+    n_E = img_stack->rect->N_bins[0];
+
+    line_int = new float[img_stack->N_images * N_threads];
+
+	E_pix_idx = new int16_t[n_dists * N_threads];
+
+	y_zero_idx = -img_stack->rect->min[0] / img_stack->rect->dx[0];
+
+	// Priors
+	mu_log_dE = -10.;
+	sigma_log_dE = 1.0;
+	mu_log_dy = mu_log_dE - log(img_stack->rect->dx[0]);
+	inv_sigma_log_dy = 1. / sigma_log_dE;
+	inv_sigma_dy_neg = 1. / 0.1;
+
+	std::cerr << "n_dists = " << n_dists << std::endl;
+	std::cerr << "n_E = " << n_E << std::endl;
+	std::cerr << "y_zero_idx = " << y_zero_idx << std::endl;
+	std::cerr << "mu_log_dy = " << mu_log_dy << std::endl;
+	std::cerr << "inv_sigma_log_dy = " << inv_sigma_log_dy << std::endl;
+}
+
+TDiscreteLosMcmcParams::~TDiscreteLosMcmcParams() {
+    if(line_int != NULL) { delete[] line_int; }
+    if(E_pix_idx != NULL) { delete[] E_pix_idx; }
+}
+
+float* TDiscreteLosMcmcParams::get_line_int(unsigned int thread_num) {
+	assert(thread_num < N_threads);
+	return line_int + img_stack->N_images * thread_num;
+}
+
+int16_t* TDiscreteLosMcmcParams::get_E_pix_idx(unsigned int thread_num) {
+	assert(thread_num < N_threads);
+	return E_pix_idx + n_dists * thread_num;
+}
+
+
+// Calculates the line integrals for a model in which each distance bin has a
+// (possibly) different, constant reddening.
+//
+// Reddening is discretized, so that it is described by an integer, called the
+// y-value or -index. The distance is called the x-value or -index.
+//
+// Inputs:
+//   y_idx : Pointer to array containing the y-value in each distance bin.
+//   line_int_ret : Pointer to array that will store the line integrals.
+//
+void TDiscreteLosMcmcParams::los_integral_discrete(const int16_t *const y_idx,
+                                                   float *const line_int_ret) {
+    // For each image
+	for(int k = 0; k < img_stack->N_images; k++) {
+		line_int_ret[k] = 0.;
+
+		// For each distance
+		for(int j = 0; j < n_dists; j++) {
+		    line_int_ret[k] += img_stack->img[k]->at<float>(y_idx[j], j);
+		}
+
+		// line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
+	}
+}
+
+
+// Calculates the change to the line integrals for a step that changes the
+// value of E in one distance bin.
+//
+// Inputs:
+//   x_idx : Index of distance bin to change.
+//   y_idx_old : Old y-value of the given distance bin.
+//   y_idx_new : New y-value of the given distance bin.
+//   delta_line_int_ret : Pointer to array that will store updated line integrals.
+//
+void TDiscreteLosMcmcParams::los_integral_diff_step(const int16_t x_idx, const int16_t y_idx_old,
+                                                    const int16_t y_idx_new, float *const delta_line_int_ret) {
+    // For each image
+	for(int k = 0; k < img_stack->N_images; k++) {
+	    delta_line_int_ret[k] = img_stack->img[k]->at<float>(y_idx_new, x_idx)
+	                          - img_stack->img[k]->at<float>(y_idx_old, x_idx);
+
+  // 		delta_line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
+	}
+}
+
+
+float TDiscreteLosMcmcParams::log_dy_prior(const int16_t x_idx, const int16_t dy) {
+    if(dy > 0) {
+        float dxi = inv_sigma_log_dy * (log((float)dy) - mu_log_dy);
+        return -0.5 * dxi*dxi;
+    } else if(dy == 0) {
+        float dxi = inv_sigma_log_dy * mu_log_dy;
+        return -0.5 * dxi*dxi;
+    } else {
+        float dxi = inv_sigma_dy_neg * (float)dy;
+        return -0.5 * dxi*dxi;
+    }
+    //return -0.5 * (float)dy * (float)dy;
+    /*if(dy >= 0) {
+        return -0.5 * (float)dy * (float)dy / (5.*5.);
+    } else {
+        return -0.5 * (float)dy * (float)dy / (0.1*0.1);
+    }*/
+}
+
+float TDiscreteLosMcmcParams::log_prior_diff_step(const int16_t x_idx,
+                                                  const int16_t *const y_idx_los_old,
+                                                  const int16_t y_idx_new) {
+    // Left side
+    int16_t dy_old = y_idx_los_old[x_idx];
+    int16_t dy_new = y_idx_new;
+
+    if(x_idx != 0) {
+        dy_old -= y_idx_los_old[x_idx-1];
+        dy_new -= y_idx_los_old[x_idx-1];
+    } else {
+		dy_old -= y_zero_idx;
+		dy_new -= y_zero_idx;
+	}
+
+    float dlog_prior = log_dy_prior(x_idx, dy_new) - log_dy_prior(x_idx, dy_old);
+
+    // Right side
+    if(x_idx != n_dists-1) {
+        dy_old = y_idx_los_old[x_idx+1] - y_idx_los_old[x_idx];
+        dy_new = y_idx_los_old[x_idx+1] - y_idx_new;
+
+        dlog_prior += log_dy_prior(x_idx, dy_new) - log_dy_prior(x_idx, dy_old);
+    }
+
+    return dlog_prior;
+}
+
+
+// Calculates the change to the line integrals for a step that swaps the
+// values of E in two neighboring distance bins.
+//
+// Inputs:
+//   x0_idx : Index of left distance bin. Will be swapped with bin to the right.
+//   y_idx  : y-values in all the distance bins.
+//   delta_line_int_ret : Pointer to array that will store updated line integrals.
+//
+void TDiscreteLosMcmcParams::los_integral_diff_swap(const int16_t x0_idx, const int16_t *const y_idx,
+                                                    float *const delta_line_int_ret) {
+    int16_t dy;
+
+    // For each image
+	for(int k = 0; k < img_stack->N_images; k++) {
+	    dy = y_idx[x0_idx+1] - y_idx[x0_idx];
+	    delta_line_int_ret[k] = img_stack->img[k]->at<float>(y_idx[x0_idx-1]+dy, x0_idx)
+	                          - img_stack->img[k]->at<float>(y_idx[x0_idx], x0_idx);
+
+		// delta_line_int_ret[k] *= img_stack->rect->dx[1];	// Multiply by dDM
+	}
+}
+
+
+bool TDiscreteLosMcmcParams::shift_step_valid(
+		const int16_t x_idx,
+		const int16_t dy,
+		const int16_t *const y_idx_old) {
+	// Determine whether shift causes y to go above maximum or below zero
+	for(int j=x_idx; j<n_dists; j++) {
+		if((y_idx_old[j]+dy < 0) || (y_idx_old[j]+dy >= n_E)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+void TDiscreteLosMcmcParams::los_integral_diff_shift(
+		const int16_t x_idx,
+		const int16_t dy,
+		const int16_t *const y_idx_old,
+		float *const delta_line_int_ret) {
+	// Determine whether shift causes y to go above maximum or below zero
+	// for(int j=x_idx; j<n_dists; j++) {
+	// 	if((y_idx_old[j]+dy < 0) || (y_idx_old[j]+dy >= n_E)) {
+	// 		// Set line integrals to -infinity
+	// 		for(int k=0; k < img_stack->N_images; k++) {
+	// 			delta_line_int_ret[k] = -std::numeric_limits<float>::infinity();
+	// 		}
+	// 		// Bail out before calculating line integrals, which will try
+	// 		// to access out-of-bounds memory.
+	// 		return;
+	// 	}
+	// }
+
+	// Determine difference in line integral
+
+	// For each image
+	for(int k=0; k < img_stack->N_images; k++) {
+		delta_line_int_ret[k] = 0;
+
+		// For each distance
+		for(int j=x_idx; j<n_dists; j++) {
+			delta_line_int_ret[k] +=
+				  img_stack->img[k]->at<float>(y_idx_old[j]+dy, j)
+				- img_stack->img[k]->at<float>(y_idx_old[j], j);
+		}
+	}
+}
+
+
+float TDiscreteLosMcmcParams::log_prior_diff_shift(
+		const int16_t x_idx,
+		const int16_t dy,
+	    const int16_t *const y_idx_los_old) {
+    // Prior only changes at x-index of shift
+    int16_t dy_old = y_idx_los_old[x_idx];
+
+    if(x_idx != 0) {
+        dy_old -= y_idx_los_old[x_idx-1];
+    } else {
+		dy_old -= y_zero_idx;
+	}
+
+    float dlog_prior = log_dy_prior(x_idx, dy_old+dy) - log_dy_prior(x_idx, dy_old);
+
+    return dlog_prior;
+}
+
+
+void TDiscreteLosMcmcParams::guess_EBV_profile_discrete(int16_t *const y_idx_ret, gsl_rng *r) {
+    double EBV_max_guess = guess_EBV_max(*img_stack) * (0.8 + 0.4 * gsl_rng_uniform(r));
+
+    int n_x = n_dists; //img_stack->rect->N_bins[1];
+    int n_y = n_E; //img_stack->rect->N_bins[0];
+    double dy = img_stack->rect->dx[0];
+
+    double *y = new double[n_x];
+    y[0] = gsl_ran_chisq(r, 1);
+
+    for(int i = 1; i < n_x; i++) {
+        y[i] = y[i-1] + gsl_ran_chisq(r, 1);
+    }
+
+    double y_scale = (EBV_max_guess / y[n_x - 1]) / dy;
+
+    for(int i = 0; i < n_x; i++) {
+        y_idx_ret[i] = (int16_t)ceil(y[i] * y_scale + y_zero_idx);
+
+        if(y_idx_ret[i] >= n_y) {
+            y_idx_ret[i] = (int16_t)(n_y - 1);
+        }
+    }
+
+    delete[] y;
+}
+
+
+void ascii_progressbar(int state, int max_state, int width, std::ostream& out) {
+	double pct = (double)state / (double)(max_state-1);
+	int n_ticks = pct * width;
+
+	out << "|";
+	for(int i=0; i<n_ticks-1; i++) {
+		out << "=";
+	}
+	if(n_ticks != 0) {
+		out << ">";
+	}
+	for(int i=n_ticks; i<width; i++) {
+		out << " ";
+	}
+	out << "| " << 100. * pct << " %" << std::endl;
+}
+
+void discrete_los_ascii_art(int n_x, int n_y, int16_t *y_idx,
+						    int img_y, int max_y, double dy,
+							double x_min, double x_max,
+							std::ostream& out) {
+	// Padding for labels
+	int pad_x = 8;
+	int pad_y = 4;
+
+    // Empty image
+	int row_width = n_x + pad_x + 1;
+	int n_rows = img_y + pad_y;
+    int n_pix = row_width * n_rows;
+    char *ascii_img = new char[n_pix];
+
+    for(int k = 0; k < n_pix; k++) {
+        ascii_img[k] = ' ';
+    }
+
+    //std::cerr << "# of pixels: " << n_pix << std::endl;
+
+    // Scaling of x- and y-axes
+	double x_scale = (x_max - x_min) / (double)n_x;
+    double y_scale = (double)(img_y-1) / (double)(max_y-1);
+
+    // Fill in each column
+    int row, idx;
+
+    for(int k = 0; k < n_x; k++) {
+        if(y_idx[k] < max_y) {
+            row = img_y - int((double)(y_idx[k]) * y_scale) - 1;
+            idx = row_width * row + k;
+            ascii_img[idx] = '*';
+        }
+        //std::cerr << "(col, row) = (" << k << ", " << row << ") --> " << idx << std::endl;
+    }
+
+	// Add in y labels
+	for(int k = 0; k < img_y; k++) {
+		idx = row_width * k + n_x + 1;
+		ascii_img[idx] = '|';
+	}
+
+	for(int k=img_y-1; k>=0; k-=5) {
+		idx = row_width * k  + n_x + 2;
+		ascii_img[idx] = '-';
+
+		const char* fmt = "%4.2f";
+		double y_label = (img_y - 1 - k) * dy / y_scale;
+		int label_len = std::snprintf(nullptr, 0, fmt, y_label);
+		std::vector<char> buf(label_len + 1);
+		std::snprintf(&buf[0], buf.size(), fmt, y_label);
+
+		idx += 2;
+		for(int j=0; j<4; j++) {
+			ascii_img[idx + j] = buf[j];
+		}
+	}
+
+	// Add in x labels
+	for(int k=0; k<n_x+2; k++) {
+		row = img_y;
+		idx = row_width * row + k;
+		ascii_img[idx] = '-';
+	}
+
+	for(int k=10; k<n_x; k+=20) {
+		idx = row_width * (img_y+1) + k;
+		ascii_img[idx] = '|';
+
+		const char* fmt = "%4.1f";
+		double x_label = x_min + k * x_scale;
+		int label_len = std::snprintf(nullptr, 0, fmt, x_label);
+		std::vector<char> buf(label_len + 1);
+		std::snprintf(&buf[0], buf.size(), fmt, x_label);
+
+		idx += row_width - 2;
+		for(int j=0; j<4; j++) {
+			ascii_img[idx + j] = buf[j];
+		}
+	}
+
+	// Add endlines to rows
+	for(int k = 0; k < n_rows; k++) {
+        idx = row_width * (k+1) - 1;
+        //std::cerr << "Adding endline " << k << ") --> " << idx << std::endl;
+        ascii_img[idx] = '\n';
+    }
+
+    // Terminate with null char
+    //std::cerr << "Adding 0 at end of char array" << std::endl;
+    ascii_img[n_pix - 1] = 0;
+
+    // Print and cleanup
+    //std::cerr << "Printing char" << std::endl;
+    out << ascii_img << "\n";
+
+    //std::cerr << "done with ascii art" << std::endl;
+
+    delete[] ascii_img;
+
+    //std::cerr << "done with ascii art cleanup" << std::endl;
+}
+
+
+const int STEP_PROPOSAL = 0;
+const int SWAP_PROPOSAL = 1;
+const int SHIFT_PROPOSAL = 2;
+
+
+// Propose to take a step up or down in one pixel
+void discrete_propose_step(gsl_rng* r, int n_x, int& x_idx, int& dy) {
+	x_idx = gsl_rng_uniform_int(r, n_x);    // Random distance bin: [0, nx-1]
+	dy = 2 * gsl_rng_uniform_int(r, 2) - 1; // Step up or down one unit
+}
+
+
+// Propose to swap differential reddening btw/ two neighboring distance bins
+void discrete_propose_swap(gsl_rng* r, int n_x, int& x_idx) {
+	x_idx = gsl_rng_uniform_int(r, n_x-2) + 1; // Random distance bin: [1, nx-2]
+}
+
+
+// Propose to take a shift step up or down in all pixels beyond a certain distance
+void discrete_propose_shift(gsl_rng* r, int n_x, int& x_idx, int& dy) {
+	x_idx = gsl_rng_uniform_int(r, n_x);    // Random distance bin: [0, nx-1]
+	dy = 2 * gsl_rng_uniform_int(r, 2) - 1; // Step up or down one unit
+}
+
+
+// Checks whether a proposal lands in a valid region of parameter space
+bool discrete_proposal_valid(
+		int proposal_type,
+		int y_idx_new, int n_y,
+		TDiscreteLosMcmcParams& params,
+		int x_idx, int dy, const int16_t *const y_idx_los_old) {
+	//
+	if((proposal_type == STEP_PROPOSAL) || (proposal_type == SWAP_PROPOSAL)) {
+		return (y_idx_new >= 0) && (y_idx_new < n_y);
+	} else { // proposal_type == SHIFT_PROPOSAL
+		return params.shift_step_valid(x_idx, dy, y_idx_los_old);
+	}
+}
+
+
+void sample_los_extinction_discrete(
+		const std::string& out_fname, const std::string& group_name,
+        TMCMCOptions& options, TDiscreteLosMcmcParams& params,
+        int verbosity) {
+    // Random number generator
+    gsl_rng *r;
+	seed_gsl_rng(&r);
+
+	int n_x = params.img_stack->rect->N_bins[1];    // # of distance pixels
+	int n_y = params.img_stack->rect->N_bins[0];    // # of reddening pixels
+	int n_stars = params.img_stack->N_images;       // # of stars
+
+    // Temporary variables
+	double dlog_p;
+	double log_p = 0;
+	double logL = 0;
+	double logPr = 0;
+	float *line_int = new float[n_stars];
+	float *delta_line_int = new float[n_stars];
+
+	float *line_int_test = new float[n_stars];
+
+    // Guess reddening profile
+    int16_t *y_idx = new int16_t[n_x];
+    double *y_idx_dbl = new double[n_x];
+    params.guess_EBV_profile_discrete(y_idx, r);
+
+    // Calculate initial line integral for each star
+    params.los_integral_discrete(y_idx, line_int);
+
+    for(int k = 0; k < n_x; k++) {
+        y_idx_dbl[k] = (double)(y_idx[k]);
+    }
+
+    int n_steps = 0.5 * (options.steps * n_x);
+	int n_burnin = 0.25 * n_steps;
+	int n_save = 1000;
+	int save_every = n_steps / n_save;
+
+    // Chain
+    TChain chain(n_x, 1.1*n_save+5);
+
+	// std::cerr << std::endl
+	// 	      << "##################################" << std::endl
+	// 		  << "n_x = " << n_x << std::endl
+	// 		  << "n_y = " << n_y << std::endl
+	// 		  << "n_stars = " << n_stars << std::endl
+	// 		  << "n_steps = " << n_steps << std::endl
+	// 		  << "##################################" << std::endl
+	// 		  << std::endl;
+
+    int w = 0;
+
+    // Softening parameter
+    // TODO: Make p_badstar either a config option or dep. on ln(Z)
+    float p_badstar = 0.0001;
+    float epsilon = p_badstar / (float)n_y;
+
+    double sigma_dy_neg = 1.e-5;
+    double sigma_dy_neg_target = 1.e-10;
+    double tau_decay = (double)n_steps / 5.;
+
+    for(int i = 0; i < n_steps + n_burnin; i++) {
+        sigma_dy_neg -= (sigma_dy_neg - sigma_dy_neg_target) / tau_decay;
+        params.inv_sigma_dy_neg = 1. / sigma_dy_neg;
+
+		// Increase weight of current state
+        w += 1;
+
+		// Propose a new state
+		int x_idx, dy, y_idx_new, dy1;
+
+		int proposal_type = gsl_rng_uniform_int(r, 3);
+
+		if(proposal_type == STEP_PROPOSAL) {
+			discrete_propose_step(r, n_x, x_idx, dy);
+			y_idx_new = y_idx[x_idx] + dy;
+		} else if(proposal_type == SWAP_PROPOSAL) {
+			discrete_propose_swap(r, n_x, x_idx);
+			dy1 = y_idx[x_idx+1] - y_idx[x_idx];
+	        y_idx_new = y_idx[x_idx-1] + dy1;
+		} else { // proposal_type == SHIFT_PROPOSAL
+			discrete_propose_shift(r, n_x, x_idx, dy);
+		}
+
+        // int y_idx_new = y_idx[x_idx] + dy;
+
+		// Check if the proposal lands in a valid region of parameter space
+		bool prop_valid = discrete_proposal_valid(
+			proposal_type, y_idx_new, n_y,
+			params, x_idx, dy, y_idx);
+
+        if(prop_valid) {
+			double dlogL = 0;
+	        double dlogPr, alpha;
+
+            // Calculate difference in line integrals and prior (between the
+			// current and proposed states).
+			// TODO: Write more sensible priors
+			if(proposal_type == STEP_PROPOSAL) {
+	            params.los_integral_diff_step(
+					x_idx, y_idx[x_idx],
+					y_idx_new, delta_line_int
+				);
+				dlogPr = params.log_prior_diff_step(x_idx, y_idx, y_idx_new);
+			} else if(proposal_type == SWAP_PROPOSAL) {
+				params.los_integral_diff_swap(
+					x_idx, y_idx,
+					delta_line_int
+				);
+				// TODO: Change this if prior ends up depending on distance.
+				dlogPr = 0.;
+			} else { // proposal_type == SHIFT_PROPOSAL
+				params.los_integral_diff_shift(
+					x_idx, dy, y_idx,
+					delta_line_int
+				);
+				dlogPr = params.log_prior_diff_shift(x_idx, dy, y_idx);
+			}
+
+            // Change in likelihood
+            for(int k = 0; k < n_stars; k++) {
+                dlogL += log(1.0 + delta_line_int[k] / (line_int[k]+epsilon));
+            }
+
+            // Change in prior
+            alpha = dlogL + dlogPr;
+
+			// Accept proposal?
+            if((alpha > 1) || (exp(alpha) > gsl_rng_uniform(r))) {
+                // ACCEPT
+
+                // Add old point to chain
+                // chain.add_point(y_idx_dbl, log_p, (double)w);
+
+                // Update state to proposal
+				if((proposal_type == STEP_PROPOSAL)
+						|| (proposal_type == SWAP_PROPOSAL)) {
+	                y_idx[x_idx] = y_idx_new;
+	                y_idx_dbl[x_idx] = (double)y_idx_new;
+				} else { // proposal_type == SHIFT_PROPOSAL
+					for(int j=x_idx; j<params.n_dists; j++) {
+						y_idx[j] += dy;
+						y_idx_dbl[j] = (double)(y_idx[j]);
+					}
+				}
+
+				// Update line integrals
+                for(int k = 0; k < n_stars; k++) {
+                    line_int[k] += delta_line_int[k];
+                }
+
+				// Update prior & likelihood
+				log_p += alpha;
+				logL += dlogL;
+				logPr += dlogPr;
+
+				// params.los_integral_discrete(y_idx, line_int_test);
+				// status_msg << "   * residual line integral:" << std::endl;
+				// for(int k=0; k<n_stars; k++) {
+				// 	status_msg << "       "
+				// 			   << line_int[k] - line_int_test[k]
+				// 			   << " ("
+				// 			   << (line_int[k] - line_int_test[k]) / (line_int_test[k])
+				// 			   << ")"
+				// 			   << std::endl;
+				// }
+
+				// Reset weight to zero
+                w = 0;
+            }
+        }
+
+		// Add state to chain
+		if((i > n_burnin) && (i % save_every == 0)) {
+			chain.add_point(y_idx_dbl, log_p, 1.);
+		}
+
+		if((verbosity >= 2) && (i % 10000 == 0)) {
+			discrete_los_ascii_art(
+				n_x, n_y, y_idx,
+				40, 700,
+				params.img_stack->rect->dx[0],
+				4., 19.,
+				std::cerr);
+			std::cerr << std::endl;
+			ascii_progressbar(i, n_steps+n_burnin, 50, std::cerr);
+			std::cerr << std::endl;
+		}
+    }
+
+    // Add final state to chain
+    chain.add_point(y_idx_dbl, log_p, (double)w);
+
+    // Save the chain
+	// chain.save(out_fname, group_name, "")
+    TChainWriteBuffer chain_write_buffer(n_x, n_save, 1);
+
+    chain_write_buffer.add(
+		chain,
+		true,	// converged
+		std::numeric_limits<double>::quiet_NaN(), // ln(Z)
+		NULL,	// Gelman-Rubin statistic
+		false	// subsample
+	);
+    chain_write_buffer.write(out_fname, group_name, "discrete-los");
+
+    delete[] y_idx;
+    delete[] y_idx_dbl;
+    delete[] line_int;
+    delete[] delta_line_int;
+	delete[] line_int_test;
+    gsl_rng_free(r);
+}
+
+
+/****************************************************************************************************************************
+ *
  * TImgStack
  *
  ****************************************************************************************************************************/

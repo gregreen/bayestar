@@ -41,6 +41,9 @@ struct TProgramOpts {
 	double pct_smoothing_min;
 	double pct_smoothing_max;
 
+	bool discrete_los;
+	unsigned int discrete_steps;
+
 	unsigned int N_regions;
 	unsigned int los_steps;
 	unsigned int los_samplers;

@@ -138,14 +138,14 @@ def plot_pdf_comparison(fname_exact, fname_bayestar, out_fname):
 
 
 def main():
-    l, b = 45, 45
+    l, b = 90, 10
     name = 'test-l{:d}-b{:d}'.format(l, b)
 
     fname_exact = os.path.join(output_dir, '{}-out.h5'.format(name))
     # fname_bayestar = os.path.join(output_dir, 'test-l0-b0-real-1M-err0-nomaglim.h5')
-    fname_bayestar = os.path.join(output_dir, '{}.h5'.format(name))
+    fname_bayestar = os.path.join(output_dir, '{}-interp.h5'.format(name))
     # out_fname = os.path.join(plot_dir, 'test-l0-b0-real-1M-err0-nomaglim-comparison-{:d}.png')
-    out_fname = os.path.join(plot_dir, 'comp-{}-{{:d}}.png'.format(name))
+    out_fname = os.path.join(plot_dir, 'comp-{}-{{:d}}-interp.png'.format(name))
 
     plot_pdf_comparison(fname_exact, fname_bayestar, out_fname)
 

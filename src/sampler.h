@@ -38,6 +38,8 @@
 //#define __STDC_LIMIT_MACROS
 #include <stdint.h>
 
+#include <unistd.h>
+
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 

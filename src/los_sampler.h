@@ -131,6 +131,59 @@ struct TLOSMCMCParams {
 
 };
 
+
+struct TDiscreteLosMcmcParams {
+    TImgStack *img_stack;   // Stack of (distance, reddening) posteriors for stars
+    double y_zero_idx;
+
+    float *line_int;        // Line integral through line of sight for each thread
+    int16_t *E_pix_idx;     // LOS reddening profile, in the form of the pixel y-index at each distance (for each thread)
+
+    unsigned int n_dists, n_E;  // # of distance and reddening pixels, respectively
+    unsigned int N_runs;    // # of times to repeat inference (to check convergence)
+	unsigned int N_threads; // # of threads (can be less than # of runs)
+
+	// Priors on Delta E in each distance bin
+	float mu_log_dE, sigma_log_dE;
+	float mu_log_dy, inv_sigma_log_dy;
+	float inv_sigma_dy_neg;
+
+	TDiscreteLosMcmcParams(TImgStack *_img_stack, unsigned int _N_runs, unsigned int _N_threads);
+	~TDiscreteLosMcmcParams();
+
+	// Access fit information for one thread
+	float* get_line_int(unsigned int thread_num);
+	int16_t* get_E_pix_idx(unsigned int thread_num);
+
+	// Line-of-sight integral calculations
+	void los_integral_discrete(const int16_t *const y_idx, float *const line_int_ret);
+	void los_integral_diff_step(const int16_t x_idx, const int16_t y_idx_old,
+                                const int16_t y_idx_new, float *const delta_line_int_ret);
+    void los_integral_diff_swap(const int16_t x0_idx, const int16_t *const y_idx,
+                                float *const delta_line_int_ret);
+
+    float log_dy_prior(const int16_t x_idx, const int16_t dy);
+    float log_prior_diff_step(const int16_t x_idx, const int16_t *const y_idx_los_old,
+                              const int16_t y_idx_new);
+
+	bool shift_step_valid(
+		const int16_t x_idx,
+		const int16_t dy,
+		const int16_t *const y_idx_old);
+	void los_integral_diff_shift(
+		const int16_t x_idx,
+		const int16_t dy,
+		const int16_t *const y_idx_old,
+		float *const delta_line_int_ret);
+	float log_prior_diff_shift(
+		const int16_t x_idx,
+		const int16_t dy,
+	    const int16_t *const y_idx_los_old);
+
+    void guess_EBV_profile_discrete(int16_t *const y_idx_ret, gsl_rng *r);
+};
+
+
 // Transform from log(DeltaEBV) to cumulative EBV for piecewise-linear l.o.s. fit
 class TLOSTransform : public TTransformParamSpace {
 private:
@@ -200,6 +253,11 @@ void gen_rand_los_extinction_clouds(double *const x, unsigned int N, gsl_rng *r,
 void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, double *const ret, const double *const Delta_mu,
                          const double *const logDelta_EBV, unsigned int N_clouds);
 
+
+// Sample discrete line-of-sight model
+void sample_los_extinction_discrete(const std::string& out_fname, const std::string& group_name,
+                           TMCMCOptions &options, TDiscreteLosMcmcParams &params,
+                           int verbosity);
 
 
 #endif // _LOS_SAMPLER_H__

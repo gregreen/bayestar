@@ -80,7 +80,7 @@ def mock_mags(stellarmodel, mu, Ar, Mr, FeH, mag_limit=(23., 23., 23., 23., 23.)
 
 	# Apply extinction and add in errors
 	bands = ['g','r','i','z','y','J','H','K']
-	Ab = np.array([3.172, 2.271, 1.682, 1.322, 1.087, 0.786, 0.508, 0.320])
+	Ab = np.array([3.384, 2.483, 1.838, 1.414, 1.126, 0.650, 0.327, 0.161])
 	for b,A,lim in zip(bands,Ab,mag_limit):
 		m[b] += Ar * A / Ab[1]
 
@@ -129,7 +129,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	stellar_model = TStellarModel(t_fname)
 
 	R = np.array([3.384, 2.483, 1.838, 1.414, 1.126, 0.650, 0.327, 0.161])
-
+	
 	mu_max = mag_lim[1] - gal_model.Mr_min + 3.
 	mu_min = min(0., mu_max-25.)
 	Mr_max = min(mag_lim[1]+3., gal_model.Mr_max)
