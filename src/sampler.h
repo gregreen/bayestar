@@ -46,7 +46,9 @@
 #include <H5Cpp.h>
 #include <H5Exception.h>
 
+#ifdef _USE_PARALLEL_TERMPERING
 #include <ptsampler.h>
+#endif // _USE_PARALLEL_TERMPERING
 
 #include "h5utils.h"
 

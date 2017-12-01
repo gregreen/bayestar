@@ -114,8 +114,8 @@ include_directories(${EIGEN3_INCLUDE_DIRS})
 MESSAGE( STATUS "EIGEN3_INCLUDE_DIRS: ${EIGEN3_INCLUDE_DIRS}" )
 MESSAGE( STATUS "EIGEN3_LIBRARIES: ${EIGEN3_LIBRARIES}" )
 
-### Sampler
-include_directories(/home/greg/projects/sampler-cpp/src/)
+### Parallel Tempering Sampler
+#include_directories(/home/greg/projects/sampler-cpp/src/)
 
 ### Fixed-size types
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_LIMIT_MACROS")
@@ -140,5 +140,5 @@ target_link_libraries(bayestar ${Boost_LIBRARIES})
 target_link_libraries(bayestar opencv_core opencv_imgproc)
 #target_link_libraries(bayestar ${OPENCV_LIBRARIES})
 #target_link_libraries(bayestar ${OpenMP_LIBRARIES})
-target_link_libraries(bayestar /home/greg/projects/sampler-cpp/libsampler.a)
+#target_link_libraries(bayestar /home/greg/projects/sampler-cpp/libsampler.a)
 target_link_libraries(bayestar ${EIGEN3_LIBRARIES})

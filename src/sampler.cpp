@@ -1194,6 +1194,8 @@ void sample_indiv_emp(std::string &out_fname, TMCMCOptions &options, TGalacticLO
 	delete[] GR;
 }
 
+
+#ifdef _USE_PARALLEL_TEMPERING__
 // Sample individual star using parallel tempering
 void sample_indiv_emp_pt(
 	std::string &out_fname,
@@ -1461,6 +1463,7 @@ void sample_indiv_emp_pt(
 	if(imgBuffer != NULL) { delete imgBuffer; }
 	delete[] GR;
 }
+#endif // _USE_PARALLEL_TERMPERING
 
 
 /*************************************************************************

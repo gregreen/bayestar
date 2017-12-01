@@ -233,6 +233,7 @@ int main(int argc, char **argv) {
 			                   stellar_data, img_stack, conv, lnZ, opts.sigma_RV,
 			                   opts.min_EBV, opts.save_surfs, gatherSurfs, opts.verbosity);
 		} else {
+			#ifdef _USE_PARALLEL_TEMPERING__
 			// MCMC sampling of empirical stellar model
 			sample_indiv_emp_pt(opts.output_fname, star_options, los_model,
 								*emplib, ext_model, EBV_smoothing,
@@ -240,6 +241,16 @@ int main(int argc, char **argv) {
 								opts.mean_RV, opts.sigma_RV, opts.min_EBV,
 			                    opts.save_surfs, gatherSurfs, opts.star_priors,
 								opts.verbosity);
+			#else // _USE_PARALLEL_TEMPERING
+			// MCMC sampling of empirical stellar model
+			sample_indiv_emp(opts.output_fname, star_options, los_model,
+							 *emplib, ext_model, EBV_smoothing,
+			                 stellar_data, img_stack, conv, lnZ,
+							 opts.mean_RV, opts.sigma_RV, opts.min_EBV,
+			                 opts.save_surfs, gatherSurfs, opts.star_priors,
+							 opts.verbosity);
+			#endif // _USE_PARALLEL_TERMPERING
+
 		}
 
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);
