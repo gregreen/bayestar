@@ -902,7 +902,7 @@ TChainWriteBuffer::~TChainWriteBuffer() {
 }
 
 void TChainWriteBuffer::reserve(unsigned int nReserved) {
-	assert(nReserved > nReserved_);
+	assert(nReserved >= nReserved_);
 	float *buf_new = new float[nDim_ * (nSamples_+2) * nReserved];
 	if(buf != NULL) {
 		memcpy(buf_new, buf, sizeof(float) * nDim_ * (nSamples_+2) * length_);
@@ -913,7 +913,8 @@ void TChainWriteBuffer::reserve(unsigned int nReserved) {
 	nReserved_ = nReserved;
 }
 
-void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ, double * GR) {
+void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
+							double * GR, bool subsample) {
 	// Make sure buffer is long enough
 	if(length_ >= nReserved_) {
 		reserve(1.5 * (length_ + 1));
@@ -924,55 +925,82 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ, dou
 	TChainMetadata meta = {converged, (float)lnZ};
 	metadata.push_back(meta);
 
-	// Choose which points in chain to sample
-	double totalWeight = chain.get_total_weight();
-	for(unsigned int i=0; i<nSamples_; i++) {
-		samplePos[i] = gsl_rng_uniform(r) * totalWeight;
-	}
-	std::sort(samplePos.begin(), samplePos.end());
-
-	// Copy chosen points into buffer
-	unsigned int i = 1;	// Position in chain
-	unsigned int k = 0;	// Position in buffer
-	double w = chain.get_w(0);
-	unsigned int chainLength = chain.get_length();
-	size_t startIdx = length_ * nDim_ * (nSamples_+2);
 	const double *chainElement;
-	while(k < nSamples_) {
-		if(w < samplePos[k]) {
-			assert(i < chainLength);
-			w += chain.get_w(i);
-			i++;
-		} else {
-			chainElement = chain.get_element(i-1);
-			buf[startIdx + nDim_*(k+2)] = chain.get_L(i-1);
-			for(size_t n = 1; n < nDim_; n++) {
-				buf[startIdx + nDim_*(k+2) + n] = chainElement[n-1];
+	unsigned int chainLength = chain.get_length();
+	unsigned int start_idx = length_ * nDim_ * (nSamples_+2);
+
+	if(subsample) {	// Choose random subsample of points to add
+		// Choose which points in chain to sample
+		double totalWeight = chain.get_total_weight();
+		for(unsigned int i=0; i<nSamples_; i++) {
+			samplePos[i] = gsl_rng_uniform(r) * totalWeight;
+		}
+		std::sort(samplePos.begin(), samplePos.end());
+
+		// Copy chosen points into buffer
+		unsigned int i = 1;	// Position in chain
+		unsigned int k = 0;	// Position in buffer
+		double w = chain.get_w(0);
+		size_t start_idx = length_ * nDim_ * (nSamples_+2);
+		while(k < nSamples_) {
+			if(w < samplePos[k]) {
+				assert(i < chainLength);
+				w += chain.get_w(i);
+				i++;
+			} else {
+				chainElement = chain.get_element(i-1);
+				buf[start_idx + nDim_*(k+2)] = chain.get_L(i-1);
+				for(size_t n = 1; n < nDim_; n++) {
+					buf[start_idx + nDim_*(k+2) + n] = chainElement[n-1];
+				}
+				k++;
 			}
-			k++;
+		}
+		assert(k == nSamples_);
+	} else {
+		// Add points in chain in order, ignoring weights
+		// (this works if every weight is unity)
+		unsigned int n_to_add = std::min(nSamples_, chainLength);
+
+		for(int64_t k=0; k<n_to_add; k++) {
+			buf[start_idx + nDim_*(k+2)] = chain.get_L(k);
+			chainElement = chain.get_element(k);
+
+			for(size_t n=1; n<nDim_; n++) {
+				buf[start_idx + nDim_*(k+2) + n] = chainElement[n-1];
+			}
+		}
+
+		// Fill out the buffer with NaNs if chain has fewer
+		// than nSamples_ elements
+		for(int64_t k=n_to_add; k<nSamples_; k++) {
+			buf[start_idx + nDim_*(k+2)] = std::numeric_limits<float>::quiet_NaN();
+
+			for(size_t n=1; n<nDim_; n++) {
+				buf[start_idx + nDim_*(k+2) + n] = std::numeric_limits<float>::quiet_NaN();
+			}
 		}
 	}
-	assert(k == nSamples_);
 
 	// Copy best point into buffer
-	i = chain.get_index_of_best();
+	unsigned int i = chain.get_index_of_best();
 	chainElement = chain.get_element(i);
-	buf[startIdx + nDim_] = chain.get_L(i);
+	buf[start_idx + nDim_] = chain.get_L(i);
 	for(size_t n = 1; n < nDim_; n++) {
-		buf[startIdx + nDim_ + n] = chainElement[n-1];
+		buf[start_idx + nDim_ + n] = chainElement[n-1];
 	}
 
 	// Copy the Gelman-Rubin diagnostic into the buffer
-	buf[startIdx] = std::numeric_limits<float>::quiet_NaN();
+	buf[start_idx] = std::numeric_limits<float>::quiet_NaN();
 	if(GR == NULL) {
 		for(size_t n = 1; n < nDim_; n++) {
-			buf[startIdx + n] = std::numeric_limits<float>::quiet_NaN();
+			buf[start_idx + n] = std::numeric_limits<float>::quiet_NaN();
 		}
 	} else {
 		//std::cout << "Writing G-R ..." << std::endl;
 		for(size_t n = 1; n < nDim_; n++) {
 			//std::cout << n << std::endl;
-			buf[startIdx + n] = GR[n-1];
+			buf[start_idx + n] = GR[n-1];
 		}
 	}
 
