@@ -92,4 +92,15 @@ inline bool is_inf_replacement(double x) {
 #endif // LN10
 
 
+/*************************************************************************
+ *   Custom types
+ *************************************************************************/
+
+// Easily switch between 32- and 64-bit floating-point types
+typedef float floating_t;
+#ifndef CV_FLOATING_TYPE
+#define CV_FLOATING_TYPE CV_32F
+#endif // CV_FLOATING_TYPE
+
+
 #endif // _DEFINITIONS_H__
