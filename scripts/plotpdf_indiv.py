@@ -35,6 +35,8 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 
 import hdf5io
+import h5py
+
 
 def los2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	chain = hdf5io.TChain(fname, '%s/los' % group)
@@ -238,11 +240,11 @@ def main():
 	                            help='Maximum # of figures to display (default: display all)')
 	parser.add_argument('--stretch', type=str, choices=('linear', 'sqrt', 'log'), default='sqrt',
 	                            help='Stretch for the color scale.')
-	if 'python' in sys.argv[0]:
-		offset = 2
-	else:
-		offset = 1
-	args = parser.parse_args(sys.argv[offset:])
+  	parser.add_argument('-cat', '--catalog', type=str,
+     							help='Overplot true stellar (DM, EBV) from mock catalog.')
+  	parser.add_argument('-y', '--EBV-max', type=float,
+     							help='Maximum E(B-V) to plot.')
+	args = parser.parse_args()
 
 	if (args.output == None) and not args.show:
 		print 'Either --output or --show must be given.'
@@ -255,10 +257,10 @@ def main():
 	x_min, x_max = [4., 0.], [19., 5.]
 	pdf_stack = None
 	pdf_indiv = None
-	EBV_max = None
+	EBV_max = args.EBV_max
 
-	dset = '%s/stellar chains' % group
 	try:
+		dset = '%s/stellar chains' % group
 		chain = hdf5io.TChain(fname, dset)
 		lnZ = chain.get_lnZ()[:]
 		lnZ_max = np.percentile(lnZ[np.isfinite(lnZ)], 95.)
@@ -268,6 +270,11 @@ def main():
 		chain = None
 		lnZ_max = 0.
 		lnZ_idx = None
+
+	# Load catalog
+	if args.catalog is not None:
+	    with h5py.File(args.catalog, 'r') as f:
+	        cat = f['parameters/{}'.format(group)][:]
 
 	# Load stellar pdfs
 	try:
@@ -323,7 +330,8 @@ def main():
 	# Determine maximum E(B-V)
 	w_y = np.mean(pdf_stack, axis=0)
 	y_max = 1.25 * np.max(np.where(w_y > 5.e-2)[0])
-	EBV_max = y_max * (x_max[1] / pdf_stack.shape[1])
+	if EBV_max is None:
+		EBV_max = y_max * (x_max[1] / pdf_stack.shape[1])
 
 	# Set matplotlib style attributes
 	mplib.rc('text', usetex=True)
@@ -346,7 +354,7 @@ def main():
 
 	x_idx = x_max[0] - 0.05 * (x_max[0] - x_min[0])
 
-	if EBV_max != None:
+	if EBV_max is not None:
 		y_lnZ = EBV_max - 0.125 * (EBV_max - x_min[1])
 
 	f_stretch = lambda a: a
@@ -407,7 +415,7 @@ def main():
 		if args.show_clouds:
 			clouds.plot(ax, c='k')
 
-		if EBV_max != None:
+		if EBV_max is not None:
 			ax.set_ylim(x_min[1], EBV_max)
 
 		ax.grid(which='minor', alpha=0.05)
@@ -435,6 +443,12 @@ def main():
 		#if args.overplot_los != None:
 		#	mu_los = np.linspace(4., 19., len(args.overplot_los)+1)
 
+		# Indiciate true stellar (DM, EBV)
+		if args.catalog is not None:
+			ax.scatter(cat['DM'][i], cat['EBV'][i],
+					   edgecolor='none', facecolor='r',
+					   alpha=1.0, s=20)
+
 		ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
 		ax.xaxis.set_minor_locator(AutoMinorLocator())
 		ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
@@ -458,7 +472,7 @@ def main():
 		                    left=0.12, right=0.98,
 		                    wspace=0., hspace=0.)
 
-		fig.savefig('%s.%.4d.png' % (base_fname, i), transparent=True, bbox_inches='tight', dpi=400)
+		fig.savefig('%s.%.4d.png' % (base_fname, i), transparent=False, bbox_inches='tight', dpi=400)
 
 	if args.show:
 		plt.show()

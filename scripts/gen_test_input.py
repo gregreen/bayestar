@@ -110,7 +110,8 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
                     mag_lim=(23., 22., 22., 21., 20., 15., 14., 13.5),
                     EBV_of_mu=None, EBV_uniform=False,
                     redraw=True, n_bands=4,
-                    scale=1., model_kwargs={}, t_fname=None):
+                    scale=1., model_kwargs={}, t_fname=None,
+					show=False):
 	dtype = [('DM', 'f8'), ('EBV', 'f8'),
 	         ('Mr', 'f8'), ('FeH', 'f8'),
 	         ('mag', '8f8'), ('err', '8f8')]
@@ -129,7 +130,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	stellar_model = TStellarModel(t_fname)
 
 	R = np.array([3.384, 2.483, 1.838, 1.414, 1.126, 0.650, 0.327, 0.161])
-	
+
 	mu_max = mag_lim[1] - gal_model.Mr_min + 3.
 	mu_min = min(0., mu_max-25.)
 	Mr_max = min(mag_lim[1]+3., gal_model.Mr_max)
@@ -263,33 +264,32 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
 	#print ret['err']
 
 	#print np.sum(ret['mag'] < 1.)
+	if show:
+		fig = plt.figure()
 
-	fig = plt.figure()
+		for n in xrange(8):
+			# Mag histogram
+			ax = fig.add_subplot(8,2,1+2*n)
 
-	for n in xrange(8):
-		# Mag histogram
-		ax = fig.add_subplot(8,2,1+2*n)
+			idx = ret['err'][:, n] < 1.e9
+			ax.hist(ret['mag'][idx, n], bins=100)
 
-		idx = ret['err'][:, n] < 1.e9
-		ax.hist(ret['mag'][idx, n], bins=100)
+			m = np.linspace(10., mag_lim[n] + 0.5, 1000)
+			err_curve = err_model(m, mag_lim[n], scale=scale)
 
-		m = np.linspace(10., mag_lim[n] + 0.5, 1000)
-		err_curve = err_model(m, mag_lim[n], scale=scale)
+			ylim = ax.get_ylim()
+			err_curve *= 0.9 * ylim[1] / np.max(err_curve)
 
-		ylim = ax.get_ylim()
-		err_curve *= 0.9 * ylim[1] / np.max(err_curve)
+			ax.plot(m, err_curve)
 
-		ax.plot(m, err_curve)
+			ax.set_xlim(10., 25.)
 
-		ax.set_xlim(10., 25.)
+			# Error histogram
+			ax = fig.add_subplot(8,2,2+2*n)
+			ax.hist(ret['err'][idx, n], bins=100)
+			ax.set_xlim(0., 0.2)
 
-		# Error histogram
-		ax = fig.add_subplot(8,2,2+2*n)
-		ax.hist(ret['err'][idx, n], bins=100)
-		ax.set_xlim(0., 0.2)
-
-
-	plt.show()
+		plt.show()
 
 	return ret
 
@@ -373,30 +373,43 @@ def main():
 		N_stars = model.tot_num_stars(args.gal_lb[0], args.gal_lb[1], args.radius)
 		N_stars = np.random.poisson(lam=N_stars)
 	else:
-		if args.radius != None:
+		if args.radius is not None:
 			print 'Cannot specify both -N and -rad'
 
 		redraw = True
 		N_stars = args.N
 
 	EBV_of_mu = None
-	if args.clouds != None:
-		mu = np.linspace(-5., 35., 1000)
-		dmu = mu[1] - mu[0]
-		Delta_EBV = 0.01 * dmu * np.ones(mu.size)
-		for i in range(len(args.clouds)/2):
-			s = 0.05
-			m = args.clouds[2*i]
-			EBV = args.clouds[2*i+1]
-			Delta_EBV += EBV/np.sqrt(2.*np.pi)/s*np.exp(-(mu-m)*(mu-m)/2./s/s)
-		EBV = np.cumsum(Delta_EBV) * dmu
-		EBV_of_mu = InterpolatedUnivariateSpline(mu, EBV)
-		mu = np.linspace(4., 19., 1000)
-		EBV = EBV_of_mu(mu)
-		fig = plt.figure()
-		ax = fig.add_subplot(1,1,1)
-		ax.plot(mu, EBV)
-		plt.show()
+	if args.clouds is not None:
+		def gen_EBV_interpolant(cloud_spec):
+			def f(x):
+				E = np.zeros(x.size)
+				for i in range(len(cloud_spec)/2):
+					idx = x > cloud_spec[2*i]
+					if np.any(idx):
+						E[idx] += cloud_spec[2*i+1]
+				return E
+			return f
+
+		EBV_of_mu = gen_EBV_interpolant(args.clouds)
+
+		# mu = np.linspace(-5., 35., 1000)
+		# dmu = mu[1] - mu[0]
+		# Delta_EBV = 0.01 * dmu * np.ones(mu.size)
+		# for i in range(len(args.clouds)/2):
+		# 	s = 0.05
+		# 	m = args.clouds[2*i]
+		# 	EBV = args.clouds[2*i+1]
+		# 	Delta_EBV += EBV/np.sqrt(2.*np.pi)/s*np.exp(-(mu-m)*(mu-m)/2./s/s)
+		# EBV = np.cumsum(Delta_EBV) * dmu
+		# EBV_of_mu = InterpolatedUnivariateSpline(mu, EBV)
+		if args.show:
+			mu = np.linspace(4., 19., 1000)
+			EBV = EBV_of_mu(mu)
+			fig = plt.figure()
+			ax = fig.add_subplot(1,1,1)
+			ax.plot(mu, EBV)
+			plt.show()
 		#print Ar
 
 	params = None
@@ -410,7 +423,8 @@ def main():
 		                         mag_lim=args.limiting_mag, EBV_of_mu=EBV_of_mu,
 		                         EBV_uniform=args.EBV_uniform, redraw=redraw,
 		                         n_bands=args.n_bands, scale=args.scale_errors,
-		                         model_kwargs=model_kwargs, t_fname=t_fname)
+		                         model_kwargs=model_kwargs, t_fname=t_fname,
+								 show=args.show)
 		print '%d stars observed' % (len(params))
 
 	#params['mag'][:,4] -= 0.05

@@ -728,14 +728,14 @@ void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsig
                        bool norm, double sigma1, double sigma2, double nsigma, bool sigma_pix_units) const {
 	assert((dim1 >= 0) && (dim1 < N) && (dim2 >= 0) && (dim2 < N) && (dim1 != dim2));
 
-	mat = cv::Mat::zeros(grid.N_bins[0], grid.N_bins[1], CV_64F);
+	mat = cv::Mat::zeros(grid.N_bins[0], grid.N_bins[1], CV_FLOATING_TYPE);
 
 	//std::cout << grid.N_bins[0] << " " << grid.N_bins[1] << std::endl;
 
 	unsigned int i1, i2;
 	for(size_t i=0; i<length; i++) {
 		if(grid.get_index(x[N*i+dim1], x[N*i+dim2], i1, i2)) {
-			mat.at<double>(i1, i2) += w[i];
+			mat.at<floating_t>(i1, i2) += w[i];
 			//std::cerr << mat.at<double>(i1, i2) << std::endl;
 		}
 	}
@@ -765,7 +765,7 @@ void TChain::get_image(cv::Mat& mat, const TRect& grid, unsigned int dim1, unsig
 	}
 
 	// Convert to float
-	mat.convertTo(mat, CV_32F);
+	mat.convertTo(mat, CV_FLOATING_TYPE);
 }
 
 
@@ -829,7 +829,7 @@ void TImgWriteBuffer::add(const cv::Mat& img) {
 	float *const imgBuf = &(buf[rect_.N_bins[0] * rect_.N_bins[1] * length_]);
 	for(size_t j=0; j<rect_.N_bins[0]; j++) {
 		for(size_t k=0; k<rect_.N_bins[1]; k++) {
-			imgBuf[rect_.N_bins[1]*j + k] = img.at<float>(j,k);
+			imgBuf[rect_.N_bins[1]*j + k] = img.at<floating_t>(j,k);
 		}
 	}
 
@@ -974,10 +974,10 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
 		// Fill out the buffer with NaNs if chain has fewer
 		// than nSamples_ elements
 		for(int64_t k=n_to_add; k<nSamples_; k++) {
-			buf[start_idx + nDim_*(k+2)] = std::numeric_limits<float>::quiet_NaN();
+			buf[start_idx + nDim_*(k+2)] = std::numeric_limits<floating_t>::quiet_NaN();
 
 			for(size_t n=1; n<nDim_; n++) {
-				buf[start_idx + nDim_*(k+2) + n] = std::numeric_limits<float>::quiet_NaN();
+				buf[start_idx + nDim_*(k+2) + n] = std::numeric_limits<floating_t>::quiet_NaN();
 			}
 		}
 	}
@@ -991,10 +991,10 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
 	}
 
 	// Copy the Gelman-Rubin diagnostic into the buffer
-	buf[start_idx] = std::numeric_limits<float>::quiet_NaN();
+	buf[start_idx] = std::numeric_limits<floating_t>::quiet_NaN();
 	if(GR == NULL) {
 		for(size_t n = 1; n < nDim_; n++) {
-			buf[start_idx + n] = std::numeric_limits<float>::quiet_NaN();
+			buf[start_idx + n] = std::numeric_limits<floating_t>::quiet_NaN();
 		}
 	} else {
 		//std::cout << "Writing G-R ..." << std::endl;
@@ -1508,8 +1508,8 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string gr
 	float *buf = new float[rect.N_bins[0]*rect.N_bins[1]];
 	for(size_t j=0; j<rect.N_bins[0]; j++) {
 		for(size_t k=0; k<rect.N_bins[1]; k++) {
-			buf[rect.N_bins[1]*j + k] = img.at<double>(j,k);
-			/*float tmp = img.at<double>(j,k);
+			buf[rect.N_bins[1]*j + k] = img.at<floating_t>(j,k);
+			/*float tmp = img.at<floating_t>(j,k);
 			if(tmp > 0.) {
 				std::cerr << j << ", " << k << " --> " << j + rect.N_bins[0]*k << " --> " << tmp << std::endl;
 			}*/

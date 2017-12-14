@@ -222,10 +222,11 @@ int main(int argc, char **argv) {
 		// Sample individual stars
 		if(!opts.sample_stars) {
 			// Grid evaluation of stellar models
-			// TODO: Obey --no-stellar-priors flag
 			grid_eval_stars(los_model, ext_model, *emplib,
-							stellar_data, img_stack, chi2,
+							stellar_data, EBV_smoothing,
+							img_stack, chi2,
 							opts.save_surfs, opts.output_fname,
+							opts.star_priors,
 							opts.mean_RV, opts.verbosity);
 		} else if(opts.synthetic) {
 			// MCMC sampling of synthetic stellar model
@@ -250,7 +251,6 @@ int main(int argc, char **argv) {
 			                 opts.save_surfs, gatherSurfs, opts.star_priors,
 							 opts.verbosity);
 			#endif // _USE_PARALLEL_TERMPERING
-
 		}
 
 		clock_gettime(CLOCK_MONOTONIC, &t_mid);
@@ -337,7 +337,11 @@ int main(int argc, char **argv) {
 				}
 			}
 
-			TLOSMCMCParams params(&img_stack, lnZ_filtered, p0, opts.N_runs, opts.N_threads, opts.N_regions, EBV_max);
+			TLOSMCMCParams params(
+				&img_stack, lnZ_filtered, p0,
+				opts.N_runs, opts.N_threads,
+				opts.N_regions, EBV_max
+			);
 			if(opts.SFD_subpixel) { params.set_subpixel_mask(subpixel); }
 
 			if(opts.test_mode) {
@@ -347,6 +351,12 @@ int main(int argc, char **argv) {
 			if(opts.discrete_los) {
 				cout << "Sampling line of sight discretely ..." << endl;
 	            TDiscreteLosMcmcParams discrete_los_params(&img_stack, 1, 1);
+				discrete_los_params.initialize_priors(
+					los_model,
+					opts.log_Delta_EBV_floor,
+					opts.log_Delta_EBV_ceil,
+					opts.verbosity
+				);
 	            sample_los_extinction_discrete(
 	                opts.output_fname,
 	                *it,
@@ -370,10 +380,14 @@ int main(int argc, char **argv) {
 				params.gen_guess_covariance(1.);
 
 				if(opts.disk_prior) {
+					params.alpha_skew = 1.;
 					params.calc_Delta_EBV_prior(
-						los_model, opts.log_Delta_EBV_floor,
+						los_model,
+						opts.log_Delta_EBV_floor,
 					    opts.log_Delta_EBV_ceil,
-					    stellar_data.EBV, opts.verbosity
+					    stellar_data.EBV,
+						1.4,
+						opts.verbosity
 					);
 				}
 

@@ -19,7 +19,7 @@ void print_matrix(cv::Mat& mat, std::ostream& s,
                   int width=10, int precision=5) {
     for(int j=0; j<mat.rows; j++) {
         for(int k=0; k<mat.cols; k++) {
-            print_float(mat.at<float>(j,k), s, width, precision);
+            print_float(mat.at<floating_t>(j,k), s, width, precision);
         }
         s << std::endl;
     }
@@ -217,7 +217,7 @@ void gaussian_filter(std::shared_ptr<LinearFitParams> p,
     // std::cerr << "width = (" << width[0] << ", " << width[1] << ")" << std::endl;
 
     // std::cerr << "initializing img" << std::endl;
-    img = cv::Mat::zeros(2*width[0]+1, 2*width[1]+1, CV_32F);
+    img = cv::Mat::zeros(2*width[0]+1, 2*width[1]+1, CV_FLOATING_TYPE);
 
     // Evaluate filter at each point
     // std::cerr << "evaluating image" << std::endl;
@@ -235,7 +235,7 @@ void gaussian_filter(std::shared_ptr<LinearFitParams> p,
             // std::cerr << " (" << i << ", " << j << ")" << std::endl;
             // std::cerr << " width = (" << 2*width[0]+1 << ", " << 2*width[1]+1 << ")" << std::endl;
 
-            img.at<float>(i, j) += exp(-0.5 * (cxx + 2*cxy + cyy));
+            img.at<floating_t>(i, j) += exp(-0.5 * (cxx + 2*cxy + cyy));
         }
     }
     // std::cerr << "done creating filter" << std::endl;
@@ -304,7 +304,7 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
     double h0 = 0.5 * (double)(h_sub - 1);
 
     // Create zeroed sub-sampled image
-    cv::Mat img_sub = cv::Mat::zeros(w_sub, h_sub, CV_32F);
+    cv::Mat img_sub = cv::Mat::zeros(w_sub, h_sub, CV_FLOATING_TYPE);
 
     // std::cerr << std::endl
     //           << "inv_cov_?? : "
@@ -330,7 +330,7 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
             // std::cerr << " (" << i << ", " << j << ")" << std::endl;
             // std::cerr << " width = (" << 2*width[0]+1 << ", " << 2*width[1]+1 << ")" << std::endl;
             double weight = exp(-0.5 * (cxx + 2*cxy + cyy));
-            img_sub.at<float>(i, j) += weight;
+            img_sub.at<floating_t>(i, j) += weight;
             // sum += weight;
         }
     }
@@ -341,7 +341,7 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
     cv::resize(img_sub, img_down, cv::Size(h, w), 0, 0, cv::INTER_AREA);
 
     img = img_down;
-    img /= img.at<float>(width[0], width[1]);
+    img /= img.at<floating_t>(width[0], width[1]);
 
     // std::cerr << "size = " << img_sub.rows << ", " << img_sub.cols << std::endl;
     // std::cerr << "size = " << img_down.rows << ", " << img_down.cols << std::endl;
@@ -374,6 +374,7 @@ double integrate_ML_solution(TStellarModel& stellar_model,
                              TExtinctionModel& ext_model,
                              TImgStack& img_stack,
                              unsigned int img_idx,
+                             bool use_priors,
                              double RV, int verbosity) {
     //
     TSED sed;
@@ -497,7 +498,7 @@ double integrate_ML_solution(TStellarModel& stellar_model,
             //     chi2 += los_model.log_prior_emp(mu, Mr, FeH) + stellar_model.get_log_lf(Mr);
             //     // std::cerr << chi2 << std::endl;
             //
-            //     img_stack.img[img_idx]->at<float>(img_idx0, img_idx1) += exp(-0.5 * chi2);
+            //     img_stack.img[img_idx]->at<floating_t>(img_idx0, img_idx1) += exp(-0.5 * chi2);
             // } else {
             //     // std::cerr << "(mu, E) = (" << ML->mean(1) << ", " << ML->mean(0) << ") out of bounds." << std::endl;
             // }
@@ -533,9 +534,14 @@ double integrate_ML_solution(TStellarModel& stellar_model,
         // bool in_bounds = img_stack.rect->get_index(E_ML.at(k), mu_ML.at(k), img_idx0, img_idx1);
 
         if(in_bounds) {
-            double log_p = -0.5 * (chi2_ML.at(k) - chi2_min)
-                           + prior_ML.at(k) - prior_max;
+            double log_p = -0.5 * (chi2_ML.at(k) - chi2_min);
+
+            if(use_priors) {
+                log_p += prior_ML.at(k) - prior_max;
+            }
+
             double p = exp(log_p);
+
             // if(std::isnan(log_p)) {
             //     std::cerr << "NaN: (" << E_ML.at(arr_idx) << ", "
             //                           << mu_ML.at(arr_idx) << ", "
@@ -554,14 +560,14 @@ double integrate_ML_solution(TStellarModel& stellar_model,
             // }
             // std::cerr << log_p << std::endl;
 
-            // img_stack.img[img_idx]->at<float>(img_idx0, img_idx1) += exp(log_p);
+            // img_stack.img[img_idx]->at<floating_t>(img_idx0, img_idx1) += exp(log_p);
 
 
             // Interpolate between bins
-            img_stack.img[img_idx]->at<float>(img_idx0, img_idx1) += (1-a0) * (1-a1) * p;
-            img_stack.img[img_idx]->at<float>(img_idx0+1, img_idx1) += a0 * (1-a1) * p;
-            img_stack.img[img_idx]->at<float>(img_idx0, img_idx1+1) += (1-a0) * a1 * p;
-            img_stack.img[img_idx]->at<float>(img_idx0+1, img_idx1+1) += a0 * a1 * p;
+            img_stack.img[img_idx]->at<floating_t>(img_idx0, img_idx1) += (1-a0) * (1-a1) * p;
+            img_stack.img[img_idx]->at<floating_t>(img_idx0+1, img_idx1) += a0 * (1-a1) * p;
+            img_stack.img[img_idx]->at<floating_t>(img_idx0, img_idx1+1) += (1-a0) * a1 * p;
+            img_stack.img[img_idx]->at<floating_t>(img_idx0+1, img_idx1+1) += a0 * a1 * p;
         }
     }
 
@@ -589,7 +595,7 @@ double integrate_ML_solution(TStellarModel& stellar_model,
     //             //               << exp(log_p) << std::endl;
     //             // }
     //             // std::cerr << log_p << std::endl;
-    //             img_stack.img[img_idx]->at<float>(img_idx0, img_idx1) += exp(log_p);
+    //             img_stack.img[img_idx]->at<floating_t>(img_idx0, img_idx1) += exp(log_p);
     //         }
     //
     //         // gaussian_filter(ML, *(img_stack.rect), cov_img, 5, 2);
@@ -597,7 +603,7 @@ double integrate_ML_solution(TStellarModel& stellar_model,
     // }
 
     // std::cerr << "img.type = " << img_stack.img[img_idx]->type() << std::endl;
-    // img_stack.img[img_idx]->at<float>(0, 0) = 1.;
+    // img_stack.img[img_idx]->at<floating_t>(0, 0) = 1.;
     // img_stack.img[img_idx]->at<double>(0, 0) = 1.;
     // (*img_stack.img[img_idx])(0,0) = 1.;
 
@@ -617,9 +623,9 @@ double integrate_ML_solution(TStellarModel& stellar_model,
     cv::Mat filtered_img = cv::Mat::zeros(
         img_stack.rect->N_bins[0],
         img_stack.rect->N_bins[1],
-        CV_32F
+        CV_FLOATING_TYPE
     );
-    cv::filter2D(*img_stack.img[img_idx], filtered_img, CV_32F, cov_img);
+    cv::filter2D(*img_stack.img[img_idx], filtered_img, CV_FLOATING_TYPE, cov_img);
     *img_stack.img[img_idx] = filtered_img;
 
     // Return mininum chi^2 / passband
@@ -641,9 +647,13 @@ double integrate_ML_solution(TStellarModel& stellar_model,
 
 void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
                      TStellarModel& stellar_model, TStellarData& stellar_data,
+                     TEBVSmoothing& EBV_smoothing,
                      TImgStack& img_stack, std::vector<double>& chi2,
                      bool save_surfs, std::string out_fname,
+                     bool use_priors,
                      double RV, int verbosity) {
+    // TODO: copy in EBV_smoothing from MCMC sampler
+
     // Timing
     auto t_start = std::chrono::steady_clock::now();
 
@@ -659,10 +669,16 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
     chi2.clear();
 
     for(int i=0; i<n_stars; i++) {
+        if(verbosity >= 2) {
+            std::cerr << "Star " << i+1 << " of " << n_stars << std::endl;
+        }
+
         double chi2_min = integrate_ML_solution(
             stellar_model, los_model,
             stellar_data[i], ext_model,
-            img_stack, i, RV,
+            img_stack, i,
+            use_priors,
+            RV,
             verbosity
         );
         chi2.push_back(chi2_min);
@@ -670,6 +686,26 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
 
     // Crop to correct (E, DM) range
     img_stack.crop(0., 7., 4., 19.);
+
+    // Smooth the individual stellar surfaces along E(B-V) axis, with
+	// kernel that varies with E(B-V).
+    auto t_smooth = std::chrono::steady_clock::now();
+
+	if(EBV_smoothing.get_pct_smoothing_max() > 0.) {
+		std::cerr << "Smoothing images along reddening axis." << std::endl;
+		std::vector<double> sigma_pix;
+		EBV_smoothing.calc_pct_smoothing(
+            stellar_data.nside,
+            img_stack.rect->min[0],
+            img_stack.rect->max[0],
+            img_stack.rect->N_bins[0],
+            sigma_pix
+        );
+		for(int i=0; i<sigma_pix.size(); i++) {
+            sigma_pix[i] *= (double)i;
+        }
+		img_stack.smooth(sigma_pix);
+	}
 
     // Save the PDFs to disk
     auto t_write = std::chrono::steady_clock::now();
@@ -692,7 +728,8 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
 
     auto t_end = std::chrono::steady_clock::now();
 
-    std::chrono::duration<double, std::milli> dt_sample = t_write - t_start;
+    std::chrono::duration<double, std::milli> dt_sample = t_smooth - t_start;
+    std::chrono::duration<double, std::milli> dt_smooth = t_write - t_smooth;
     std::chrono::duration<double, std::milli> dt_write = t_end - t_write;
     std::chrono::duration<double, std::milli> dt_total = t_end - t_start;
 
@@ -701,6 +738,8 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
                   << std::endl << std::endl;
         std::cerr << "Time elapsed / star:" << std::endl
                   << "  * sample: " << dt_sample.count() / n_stars << " ms"
+                  << std::endl
+                  << "  * smooth: " << dt_smooth.count() / n_stars << " ms"
                   << std::endl
                   << "  *  write: " << dt_write.count() / n_stars << " ms"
                   << std::endl

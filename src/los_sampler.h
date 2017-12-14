@@ -36,11 +36,14 @@
 #include <math.h>
 #include <numeric>
 #include <time.h>
+#include <memory>
 
 #include <stdint.h>
 
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
+
+#include "definitions.h"
 
 #include "model.h"
 #include "data.h"
@@ -110,9 +113,9 @@ struct TLOSMCMCParams {
 	double *sigma_log_Delta_EBV;
 	double alpha_skew;
 
-	TLOSMCMCParams(TImgStack* _img_stack, const std::vector<double>& _lnZ, double _p0,
-		       unsigned int _N_runs, unsigned int _N_threads, unsigned int _N_regions,
-	               double _EBV_max=-1.);
+	TLOSMCMCParams(TImgStack* _img_stack, const std::vector<double>& _lnZ,
+				   double _p0, unsigned int _N_runs, unsigned int _N_threads,
+				   unsigned int _N_regions, double _EBV_max=-1.);
 	~TLOSMCMCParams();
 
 	void set_p0(double _p0);
@@ -122,7 +125,8 @@ struct TLOSMCMCParams {
 	void calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model,
 							  double log_Delta_EBV_floor,
 							  double log_Delta_EBV_ceil,
-	                          double EBV_tot, int verbosity=1);
+							  double sigma, double EBV_tot,
+							  int verbosity=1);
 
 	void gen_guess_covariance(double scale_length);
 
@@ -133,54 +137,108 @@ struct TLOSMCMCParams {
 
 
 struct TDiscreteLosMcmcParams {
-    TImgStack *img_stack;   // Stack of (distance, reddening) posteriors for stars
-    double y_zero_idx;
+    TImgStack* img_stack;   // Stack of (distance, reddening) posteriors for stars
+    double y_zero_idx;		// y-index corresponding to zero reddening
 
-    float *line_int;        // Line integral through line of sight for each thread
-    int16_t *E_pix_idx;     // LOS reddening profile, in the form of the pixel y-index at each distance (for each thread)
+    double* line_int;       // Line integral through line of sight for each thread
+    int16_t* E_pix_idx;     // LOS reddening profile, in the form of the pixel y-index at each distance (for each thread)
 
     unsigned int n_dists, n_E;  // # of distance and reddening pixels, respectively
     unsigned int N_runs;    // # of times to repeat inference (to check convergence)
 	unsigned int N_threads; // # of threads (can be less than # of runs)
 
 	// Priors on Delta E in each distance bin
-	float mu_log_dE, sigma_log_dE;
-	float mu_log_dy, inv_sigma_log_dy;
-	float inv_sigma_dy_neg;
+	double mu_log_dE, sigma_log_dE;
+	double mu_log_dy, inv_sigma_log_dy;
+	double inv_sigma_dy_neg;
 
-	TDiscreteLosMcmcParams(TImgStack *_img_stack, unsigned int _N_runs, unsigned int _N_threads);
+	// Distance-dependent priors on Delta E
+	std::shared_ptr<cv::Mat> log_P_dy;
+
+	TDiscreteLosMcmcParams(TImgStack *_img_stack,
+						   unsigned int _N_runs,
+						   unsigned int _N_threads);
 	~TDiscreteLosMcmcParams();
 
 	// Access fit information for one thread
-	float* get_line_int(unsigned int thread_num);
+	double* get_line_int(unsigned int thread_num);
 	int16_t* get_E_pix_idx(unsigned int thread_num);
 
-	// Line-of-sight integral calculations
-	void los_integral_discrete(const int16_t *const y_idx, float *const line_int_ret);
-	void los_integral_diff_step(const int16_t x_idx, const int16_t y_idx_old,
-                                const int16_t y_idx_new, float *const delta_line_int_ret);
-    void los_integral_diff_swap(const int16_t x0_idx, const int16_t *const y_idx,
-                                float *const delta_line_int_ret);
+	// Line-of-sight integrals
+	void los_integral_discrete(const int16_t *const y_idx,
+							   double *const line_int_ret);
 
-    float log_dy_prior(const int16_t x_idx, const int16_t dy);
-    float log_prior_diff_step(const int16_t x_idx, const int16_t *const y_idx_los_old,
+	// Prior on line-of-sight dust distribution
+	floating_t log_dy_prior(const int16_t x_idx, const int16_t dy);	// Indiv. dist.
+	floating_t log_prior(const int16_t *const y_idx);	// Entire profile
+
+	// Step proposal
+	void los_integral_diff_step(const int16_t x_idx,
+								const int16_t y_idx_old,
+                                const int16_t y_idx_new,
+								double *const delta_line_int_ret);
+
+	floating_t log_prior_diff_step(const int16_t x_idx,
+							  const int16_t *const y_idx_los_old,
                               const int16_t y_idx_new);
 
-	bool shift_step_valid(
+	// Swap proposal
+    void los_integral_diff_swap(const int16_t x0_idx,
+								const int16_t *const y_idx,
+                                double *const delta_line_int_ret);
+
+	floating_t log_prior_diff_swap(const int16_t x0_idx,
+		                      const int16_t *const y_idx_los_old);
+
+	// Shift-right proposal
+	bool shift_r_step_valid(
 		const int16_t x_idx,
 		const int16_t dy,
 		const int16_t *const y_idx_old);
-	void los_integral_diff_shift(
+
+	void los_integral_diff_shift_r(
 		const int16_t x_idx,
 		const int16_t dy,
 		const int16_t *const y_idx_old,
-		float *const delta_line_int_ret);
-	float log_prior_diff_shift(
+		double *const delta_line_int_ret);
+
+	floating_t log_prior_diff_shift_r(
 		const int16_t x_idx,
 		const int16_t dy,
 	    const int16_t *const y_idx_los_old);
 
+	// Shift-left proposal
+	bool shift_l_step_valid(
+		const int16_t x_idx,
+		const int16_t dy,
+		const int16_t *const y_idx_old);
+
+	void los_integral_diff_shift_l(
+		const int16_t x_idx,
+		const int16_t dy,
+		const int16_t *const y_idx_old,
+		double *const delta_line_int_ret);
+
+	floating_t log_prior_diff_shift_l(
+		const int16_t x_idx,
+		const int16_t dy,
+	    const int16_t *const y_idx_los_old);
+
+	// Miscellaneous functions
+	void los_integral_diff_shift_compare_operations(
+		const int16_t x_idx,
+		const int16_t dy,
+		const int16_t *const y_idx_old,
+		unsigned int& n_eval_diff,
+		unsigned int& n_eval_cumulative);
+
     void guess_EBV_profile_discrete(int16_t *const y_idx_ret, gsl_rng *r);
+
+	void initialize_priors(
+		TGalacticLOSModel& gal_los_model,
+		double log_Delta_EBV_floor,
+		double log_Delta_EBV_ceil,
+		int verbosity=0);
 };
 
 
