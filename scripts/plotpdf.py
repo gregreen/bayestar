@@ -35,6 +35,7 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 
 import hdf5io
+import h5py
 
 
 def los_integral(surfs, DEBV, EBV_lim=(0., 5.), subsampling=1):
@@ -167,7 +168,8 @@ def clouds2ax(ax, fname, group, DM_lim, *args, **kwargs):
 def dsc2ax(ax, fname, group, DM_lim, *args, **kwargs):
 	chain = hdf5io.TChain(fname, '{:s}/discrete-los'.format(group))
 
-	mu = np.linspace(DM_lim[0], DM_lim[1], chain.get_nDim())
+	dmu = (DM_lim[1] - DM_lim[0]) / chain.get_nDim()
+	mu = np.linspace(DM_lim[0]+0.5*dmu, DM_lim[1]-0.5*dmu, chain.get_nDim())
 	if 'alpha' not in kwargs:
 		kwargs['alpha'] = 1. / np.power(chain.get_nSamples(), 0.55)
 
@@ -237,6 +239,8 @@ def main():
 	                          help='Figure width and height in inches.')
 	parser.add_argument('-y', '--EBV-max', type=float, default=None,
 	                          help='Upper limit of E(B-V) for the y-axis.')
+	parser.add_argument('-cat', '--catalog', type=str,
+							  help='Overplot true stellar (DM, EBV) from mock catalog.')
 	args = parser.parse_args()
 
 	if (args.output is None) and not args.show:
@@ -442,6 +446,13 @@ def main():
 				dsc2ax(sub_ax, fname, group, DM_lim, c='k', alpha=0.015)
 		# except:
 		# 	pass
+
+	if args.catalog is not None:
+		# Load catalog
+	    with h5py.File(args.catalog, 'r') as f:
+	        cat = f['parameters/{}'.format(group)][:]
+
+		ax.scatter(cat['DM'], cat['EBV'], facecolor='green', edgecolor='none', s=20, alpha=0.5)
 
 	if EBV_max != None:
 		ax.set_ylim(x_min[1], EBV_max)
