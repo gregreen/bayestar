@@ -136,8 +136,8 @@ MESSAGE( STATUS "EIGEN3_LIBRARIES: ${EIGEN3_LIBRARIES}" )
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_LIMIT_MACROS")
 
 ### Add additional link directories to search in
-link_directories(${ADDITIONAL_LINK_DIRS})
-MESSAGE( STATUS "Additional link directories: ${ADDITIONAL_LINK_DIRS}" )
+#link_directories(${ADDITIONAL_LINK_DIRS})
+#MESSAGE( STATUS "Additional link directories: ${ADDITIONAL_LINK_DIRS}" )
 
 #
 # Executable
@@ -154,8 +154,8 @@ add_executable(bayestar src/main.cpp src/model.cpp src/sampler.cpp
 #cmake_policy(SET CMP0003 OLD)
 #cmake_policy(SET CMP0060 NEW)
 target_link_libraries(bayestar rt)
-#target_link_libraries(bayestar ${HDF5_LIBRARIES})# ${HDF5_CXX_LIBRARIES})
-target_link_libraries(bayestar hdf5 hdf5_cpp)
+target_link_libraries(bayestar ${HDF5_LIBRARIES})# ${HDF5_CXX_LIBRARIES})
+#target_link_libraries(bayestar hdf5 hdf5_cpp)
 target_link_libraries(bayestar ${GSL_LIBRARIES})
 target_link_libraries(bayestar ${Boost_LIBRARIES})
 target_link_libraries(bayestar opencv_core opencv_imgproc)
@@ -164,4 +164,6 @@ target_link_libraries(bayestar opencv_core opencv_imgproc)
 #target_link_libraries(bayestar /home/greg/projects/sampler-cpp/libsampler.a)
 target_link_libraries(bayestar ${EIGEN3_LIBRARIES})
 target_link_libraries(bayestar -Wl,--verbose)
-target_link_libraries(bayestar -L${ADDITIONAL_LINK_DIRS})
+IF(${ADDITIONAL_LINK_DIRS})
+	target_link_libraries(bayestar -L${ADDITIONAL_LINK_DIRS})
+ENDIF(${ADDITIONAL_LINK_DIRS})
