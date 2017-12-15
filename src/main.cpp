@@ -276,7 +276,7 @@ int main(int argc, char **argv) {
 			// For sampled stars, use convergence and lnZ
 			assert(conv.size() == lnZ.size());
 			for(vector<double>::iterator it_lnZ = lnZ.begin(); it_lnZ != lnZ.end(); ++it_lnZ) {
-				if(!isnan(*it_lnZ) && !is_inf_replacement(*it_lnZ)) {
+				if(!std::isnan(*it_lnZ) && !is_inf_replacement(*it_lnZ)) {
 					lnZ_filtered.push_back(*it_lnZ);
 				}
 			}
@@ -289,7 +289,7 @@ int main(int argc, char **argv) {
 			for(size_t n=0; n<conv.size(); n++) {
 				filter_tmp = conv[n]
 							 && (lnZ[n] > lnZmax - (25. + opts.ev_cut))
-							 && !isnan(lnZ[n])
+							 && !std::isnan(lnZ[n])
 							 && !is_inf_replacement(lnZ[n])
 							 && (stellar_data.star[n].EBV < opts.subpixel_max);
 				keep.push_back(filter_tmp);
@@ -304,7 +304,7 @@ int main(int argc, char **argv) {
 			// For grid-evaluated stars, use chi^2 / passband
 			for(size_t n=0; n<chi2.size(); n++) {
 				filter_tmp = (chi2[n] < opts.chi2_cut)
-							 && !isnan(chi2[n])
+							 && !std::isnan(chi2[n])
 							 && !is_inf_replacement(chi2[n])
 							 && (stellar_data.star[n].EBV < opts.subpixel_max);
 				keep.push_back(filter_tmp);

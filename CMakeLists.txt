@@ -57,7 +57,12 @@ ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
 # Non-compiler-specific flags
 #
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++14 ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11 ")
+
+#
+# Standard revision, ABI, etc.
+#
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
 
 #
 # Profiling
@@ -76,8 +81,12 @@ IF(CMAKE_COMPILER_IS_GNUCXX)
 ENDIF(CMAKE_COMPILER_IS_GNUCXX)
 
 ### HDF5
-find_package(HDF5 REQUIRED COMPONENTS C CXX)
+find_package(HDF5 COMPONENTS C CXX HL REQUIRED)
 include_directories(${HDF5_INCLUDE_DIRS})
+MESSAGE( STATUS "HDF5_INCLUDE_DIRS: ${HDF5_INCLUDE_DIRS}" )
+MESSAGE( STATUS "HDF5_LIBRARY_DIRS: ${HDF5_LIBRARY_DIRS}" )
+MESSAGE( STATUS "HDF5_LIBRARIES: ${HDF5_LIBRARIES}" )
+MESSAGE( STATUS "HDF5_CXX_LIBRARIES: ${HDF5_CXX_LIBRARIES}" )
 
 ### OpenCV
 pkg_check_modules(OPENCV opencv)
@@ -88,11 +97,15 @@ MESSAGE( STATUS "OPENCV_INCLUDE_DIRS: ${OPENCV_INCLUDE_DIRS}" )
 MESSAGE( STATUS "OPENCV_LIBRARIES: ${OPENCV_LIBRARIES}" )
 
 ### GSL
-find_package(GSL REQUIRED)
+pkg_check_modules(GSL gsl)
+#find_package(GSL REQUIRED)
+MESSAGE( STATUS "GSL_INCLUDE_DIRS: ${GSL_INCLUDE_DIR}" )
+MESSAGE( STATUS "GSL_LIBRARY_DIRS: ${GSL_LIBRARY_DIRS}" )
 include_directories(${GSL_INCLUDE_DIR})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DHAVE_INLINE=1 -DGSL_RANGE_CHECK=0")
 
 ### Boost
+#pkg_check_modules(BOOST boost)
 find_package(Boost REQUIRED COMPONENTS program_options)
 include_directories(${Boost_INCLUDE_DIRS})
 MESSAGE( STATUS "Boost_INCLUDE_DIRS: ${Boost_INCLUDE_DIRS}" )
@@ -109,7 +122,9 @@ ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
 #set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS})
 
 ### EIGEN3
-find_package(Eigen3 REQUIRED NO_MODULES)
+pkg_check_modules(EIGEN3 eigen3)
+#MESSAGE( STATUS "Eigen3 found: ${EIGEN3_FOUND}" )
+#find_package(Eigen3 REQUIRED NO_MODULES)
 include_directories(${EIGEN3_INCLUDE_DIRS})
 MESSAGE( STATUS "EIGEN3_INCLUDE_DIRS: ${EIGEN3_INCLUDE_DIRS}" )
 MESSAGE( STATUS "EIGEN3_LIBRARIES: ${EIGEN3_LIBRARIES}" )
@@ -119,6 +134,10 @@ MESSAGE( STATUS "EIGEN3_LIBRARIES: ${EIGEN3_LIBRARIES}" )
 
 ### Fixed-size types
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_LIMIT_MACROS")
+
+### Add additional link directories to search in
+link_directories(${ADDITIONAL_LINK_DIRS})
+MESSAGE( STATUS "Additional link directories: ${ADDITIONAL_LINK_DIRS}" )
 
 #
 # Executable
@@ -132,9 +151,11 @@ add_executable(bayestar src/main.cpp src/model.cpp src/sampler.cpp
 #
 # Link libraries
 #
+#cmake_policy(SET CMP0003 OLD)
+#cmake_policy(SET CMP0060 NEW)
 target_link_libraries(bayestar rt)
-target_link_libraries(bayestar ${HDF5_LIBRARIES} ${HDF5_CXX_LIBRARIES})
-#target_link_libraries(bayestar hdf5 hdf5_cpp)
+#target_link_libraries(bayestar ${HDF5_LIBRARIES})# ${HDF5_CXX_LIBRARIES})
+target_link_libraries(bayestar hdf5 hdf5_cpp)
 target_link_libraries(bayestar ${GSL_LIBRARIES})
 target_link_libraries(bayestar ${Boost_LIBRARIES})
 target_link_libraries(bayestar opencv_core opencv_imgproc)
@@ -142,3 +163,5 @@ target_link_libraries(bayestar opencv_core opencv_imgproc)
 #target_link_libraries(bayestar ${OpenMP_LIBRARIES})
 #target_link_libraries(bayestar /home/greg/projects/sampler-cpp/libsampler.a)
 target_link_libraries(bayestar ${EIGEN3_LIBRARIES})
+target_link_libraries(bayestar -Wl,--verbose)
+target_link_libraries(bayestar -L${ADDITIONAL_LINK_DIRS})
