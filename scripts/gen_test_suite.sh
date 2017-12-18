@@ -17,11 +17,11 @@ for l in ${lValues[@]}; do
 
                 echo "(l,b,n,d0,E0) = $l, $b, $n, $da, $Ea"
 
-                fname="test_l${l}_b${b}_n${n}_cl${da}-${Ea}.h5"
+                fname="test_l${l}_b${b}_cl${da}-${Ea}_n${n}.h5"
 
                 python scripts/gen_test_input.py \
                     -N $n \
-                    -o "input/test-suite/${fname}" \
+                    -o "test-suite/input/${fname}" \
                     -lb $l $b \
                     -EBV 0.00001 \
                     -cl $da $Ea \
@@ -37,11 +37,11 @@ for l in ${lValues[@]}; do
 
                         echo "(l,b,n,d0,E0,d1,E1) = $l, $b, $n, $da, $Ea, $db, $Eb"
 
-                        fname="test_l${l}_b${b}_n${n}_cl${da}-${Ea}-${db}-${Eb}.h5"
+                        fname="test_l${l}_b${b}_cl${da}-${Ea}-${db}-${Eb}_n${n}.h5"
 
                         python scripts/gen_test_input.py \
                             -N $n \
-                            -o "input/test-suite/${fname}" \
+                            -o "test-suite/input/${fname}" \
                             -lb $l $b \
                             -EBV 0.00001 \
                             -cl $da $Ea $db $Eb \
