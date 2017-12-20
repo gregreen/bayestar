@@ -109,6 +109,14 @@ def main():
     line_int_true = calc_los_integrals(star_data, E_true)
 
     delta_lnL = np.log(line_int / line_int_true)
+    
+    idx = np.isnan(delta_lnL) & (line_int < line_int_true)
+    if np.any(idx):
+        delta_lnL[idx] = -np.inf
+    
+    idx = np.isnan(delta_lnL) & (line_int > line_int_true)
+    if np.any(idx):
+        delta_lnL[idx] = np.inf
 
     n_positive = np.sum(delta_lnL > 0)
     print('# favored by inferred l.o.s.: {:d} / {:d}'.format(
@@ -206,9 +214,10 @@ def main():
             ylim = ax.get_ylim()
             x_txt = xlim[0] + 0.04 * (xlim[1] - xlim[0])
             y_txt = ylim[1] - 0.03 * (ylim[1] - ylim[0])
+            label = r'${:.3g}$'.format(delta_lnL[i])
+            label = label.replace('inf', r'\infty')
             ax.text(
-                x_txt, y_txt,
-                r'${:.3g}$'.format(delta_lnL[i]),
+                x_txt, y_txt, label,
                 ha='left', va='top',
                 fontsize=14)
 
@@ -216,17 +225,20 @@ def main():
 
             if col == 0:
                 title = [r'disfavor \ true', r'favor \ true'][row]
-                ax.set_ylabel(r'$\mathrm{{ {} }}$'.format(title), fontsize=16)
+                title = r'$\mathrm{{ {} }}$'.format(title)
+                ax.set_ylabel(title, fontsize=16)
             else:
                 ax.set_yticklabels([])
 
             if row != 1:
                 ax.set_xticklabels([])
 
+    title = '{:.3g}'.format(np.sum(delta_lnL))
+    title = title.replace('inf', r'\infty')
     title = (
-        r'$\Delta \ln \mathcal{{L}} = {:.3g}'
+        r'$\Delta \ln \mathcal{{L}} = {:s}'
       + r' \ \left( \mathrm{{inferred \, - \, true}} \right)$'
-    ).format(np.sum(delta_lnL))
+    ).format(title)
     fig.suptitle(title, fontsize=14)
 
     # fig.subplots_adjust(
@@ -235,7 +247,8 @@ def main():
     #     bottom=0.1, top=0.95)
 
     # Histogram of Delta ln(L)
-    bin_max = 1.1 * np.nanmax(np.abs(delta_lnL))
+    idx = np.isfinite(delta_lnL)
+    bin_max = 1.1 * np.nanmax(np.abs(delta_lnL[idx]))
 
     ax = fig.add_subplot(gs2[0,0])
     counts = ax.hist(
