@@ -15,13 +15,17 @@ for f in test-suite/output/*.h5; do
     baseFname="${f/output/plots}"
     catFname="${f/output/input}"
     
-    #outFname="${baseFname%.h5}_sightline.png"
-    #echo "$f -> $outFname"
-    #python scripts/plotpdf.py "$f" 512 1 -o "${outFname}" -pdfs -dsc -ovplt $cloudSpec -y 2.0 -cat "${catFname}"
+    outFname="${baseFname%.h5}_sightline.png"
+    if [ ! -f "${outFname}" ]; then
+        echo "$f -> $outFname"
+        python scripts/plotpdf.py "$f" 512 1 -o "${outFname}" -pdfs -dsc -ovplt $cloudSpec -y 2.0 -cat "${catFname}"
+        cp "${outFname}" "${plotDir}"
+    fi
     
     outFname="${baseFname%.h5}_lineint.png"
-    echo "$f -> $outFname"
-    python scripts/calculate_line_integrals.py -i "$f" -l 512 1 -o "${outFname}" -cl ${cloudSpec} -cat "${catFname}"
-
-    cp "${outFname}" "${plotDir}"
+    if [ ! -f "${outFname}" ]; then
+        echo "$f -> $outFname"
+        python scripts/calculate_line_integrals.py -i "$f" -l 512 1 -o "${outFname}" -cl ${cloudSpec} -cat "${catFname}"
+        cp "${outFname}" "${plotDir}"
+    fi
 done
