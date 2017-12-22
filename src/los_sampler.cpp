@@ -2331,6 +2331,44 @@ const int SHIFT_ABS_L_PROPOSAL = 4;
 const int SHIFT_ABS_R_PROPOSAL = 5;
 
 
+struct DiscreteProposal {
+	// DiscreteProposal(gsl_rng* r);
+	void roll(gsl_rng* r);
+	void set(bool _step, bool _swap, bool _shift,
+			 bool _left, bool _absolute, int _code);
+	bool step, swap, shift, left, absolute;
+	int code;
+};
+
+void DiscreteProposal::set(bool _step, bool _swap, bool _shift,
+						   bool _left, bool _absolute, int _code)
+{
+	step = _step;
+	swap = _swap;
+	shift = _shift;
+	left = _left;
+	absolute = _absolute;
+	code = _code;
+}
+
+void DiscreteProposal::roll(gsl_rng* r) {
+	int p = gsl_rng_uniform_int(r, 12);
+	if(p < 4) {
+		set(true, false, false, false, false, STEP_PROPOSAL);
+	} else if(p < 8) {
+		set(false, true, false, false, false, SWAP_PROPOSAL);
+	} else if(p == 8) {
+		set(false, false, true, true, false, SHIFT_L_PROPOSAL);
+	} else if(p == 9) {
+		set(false, false, true, false, false, SHIFT_R_PROPOSAL);
+	} else if(p == 10) {
+		set(false, false, true, true, true, SHIFT_ABS_L_PROPOSAL);
+	} else {
+		set(false, false, true, false, true, SHIFT_ABS_R_PROPOSAL);
+	}
+}
+
+
 // Propose to take a step up or down in one pixel
 void discrete_propose_step(gsl_rng* r, int n_x, int& x_idx, int& dy) {
 	x_idx = gsl_rng_uniform_int(r, n_x);    // Random distance bin: [0, nx-1]
@@ -2395,18 +2433,18 @@ void discrete_propose_shift_abs(
 
 // Checks whether a proposal lands in a valid region of parameter space
 bool discrete_proposal_valid(
-		int proposal_type,
+		DiscreteProposal& proposal_type,
 		int y_idx_new, int n_y,
 		TDiscreteLosMcmcParams& params,
 		int x_idx, int dy, const int16_t *const y_idx_los_old) {
-	//
-	if((proposal_type == STEP_PROPOSAL) || (proposal_type == SWAP_PROPOSAL)) {
+	// STEP_PROPOSAL or SWAP_PROPOSAL
+	if(!proposal_type.shift) {
 		return (y_idx_new >= 0) && (y_idx_new < n_y);
-	} else if((proposal_type == SHIFT_L_PROPOSAL)
-		   || (proposal_type == SHIFT_ABS_L_PROPOSAL))
-	{
+	} else if(proposal_type.left) {
+		// SHIFT_L_PROPOSAL or SHIFT_ABS_L_PROPOSAL
 		return params.shift_l_step_valid(x_idx, dy, y_idx_los_old);
-	} else { // SHIFT_R_PROPOSAL or SHIFT_ABS_R_PROPOSAL
+	} else {
+		// SHIFT_R_PROPOSAL or SHIFT_ABS_R_PROPOSAL
 		return params.shift_r_step_valid(x_idx, dy, y_idx_los_old);
 	}
 }
@@ -2513,13 +2551,15 @@ void sample_los_extinction_discrete(
 	// Proposal settings
 	// TODO: Set these more intelligently, or make them configurable?
 	// Mean value of y chosen in "absolute shift" proposals
-	double y_shift_abs_mean = n_y / 10;
+	double y_shift_abs_mean = n_y / 20;
 	// Maximum value of y chosen in "absolute shift" proposals
 	double y_shift_abs_max = n_y;
 
 	// uint64_t n_eval_diff = 0;
 	// uint64_t n_eval_cumulative = 0;
 	// uint64_t n_shift_steps = 0;
+
+	DiscreteProposal proposal_type;
 
     for(int i = 0; i < n_steps + n_burnin; i++) {
         sigma_dy_neg -= (sigma_dy_neg - sigma_dy_neg_target) / tau_decay;
@@ -2532,7 +2572,8 @@ void sample_los_extinction_discrete(
 		int x_idx, dy, y_idx_new, dy1;
 
 		// Determine what type of proposal to make
-		int proposal_type = gsl_rng_uniform_int(r, N_PROPOSAL_TYPES);
+		proposal_type.roll(r);
+		// int proposal_type = gsl_rng_uniform_int(r, N_PROPOSAL_TYPES);
 		// int proposal_type = STEP_PROPOSAL;
 		// int proposal_type;
 		// double prop_rand = gsl_rng_uniform(r);
@@ -2547,24 +2588,24 @@ void sample_los_extinction_discrete(
 		// 	proposal_type = SHIFT_PROPOSAL;
 		// }
 
-		n_proposals[proposal_type]++;
+		n_proposals[proposal_type.code]++;
 
-		if(proposal_type == STEP_PROPOSAL) {
+		if(proposal_type.step) {
 			discrete_propose_step(r, n_x, x_idx, dy);
 			y_idx_new = y_idx[x_idx] + dy;
-		} else if(proposal_type == SWAP_PROPOSAL) {
+		} else if(proposal_type.swap) {
 			discrete_propose_swap(r, n_x, x_idx);
 			dy1 = y_idx[x_idx+1] - y_idx[x_idx];
 	        y_idx_new = y_idx[x_idx-1] + dy1;
-		} else if((proposal_type == SHIFT_L_PROPOSAL)
-			   || (proposal_type == SHIFT_R_PROPOSAL))
-		{ // SHIFT_L_PROPOSAL or SHIFT_R_PROPOSAL
-			discrete_propose_shift(r, n_x, x_idx, dy);
-		} else { // SHIFT_ABS_L_PROPOSAL or SHIFT_ABS_R_PROPOSAL
+		} else if(proposal_type.absolute) {
+			// SHIFT_ABS_L_PROPOSAL or SHIFT_ABS_R_PROPOSAL
 			discrete_propose_shift_abs(
 				r, y_idx, n_x, y_shift_abs_mean, y_shift_abs_max,
 				x_idx, dy, ln_proposal_factor
 			);
+		} else {
+			// SHIFT_L_PROPOSAL or SHIFT_R_PROPOSAL
+			discrete_propose_shift(r, n_x, x_idx, dy);
 		}
 
         // int y_idx_new = y_idx[x_idx] + dy;
@@ -2575,14 +2616,14 @@ void sample_los_extinction_discrete(
 			params, x_idx, dy, y_idx);
 
         if(prop_valid) {
-			n_proposals_valid[proposal_type]++;
+			n_proposals_valid[proposal_type.code]++;
 
 			double dlogL = 0;
 	        double dlogPr, alpha;
 
             // Calculate difference in line integrals and prior (between the
 			// current and proposed states).
-			if(proposal_type == STEP_PROPOSAL) {
+			if(proposal_type.step) {
 	            params.los_integral_diff_step(
 					x_idx,
 					y_idx[x_idx],
@@ -2590,15 +2631,13 @@ void sample_los_extinction_discrete(
 					delta_line_int
 				);
 				dlogPr = params.log_prior_diff_step(x_idx, y_idx, y_idx_new);
-			} else if(proposal_type == SWAP_PROPOSAL) {
+			} else if(proposal_type.swap) {
 				params.los_integral_diff_swap(
 					x_idx, y_idx,
 					delta_line_int
 				);
 				dlogPr = params.log_prior_diff_swap(x_idx, y_idx);
-			} else if((proposal_type == SHIFT_L_PROPOSAL)
-				   || (proposal_type == SHIFT_ABS_L_PROPOSAL))
-			{
+			} else if(proposal_type.left) {
 				dlogPr = params.log_prior_diff_shift_l(x_idx, dy, y_idx);
 				// No point in calculating line integrals if prior -> -infinity.
 				if(dlogPr != -std::numeric_limits<double>::infinity()) {
@@ -2652,9 +2691,7 @@ void sample_los_extinction_discrete(
             // Acceptance probability
             alpha = dlogL + dlogPr;
 
-			if((proposal_type == SHIFT_ABS_L_PROPOSAL) ||
-			   (proposal_type == SHIFT_ABS_R_PROPOSAL))
-			{
+			if(proposal_type.absolute) {
 				alpha += ln_proposal_factor;
 			}
 
@@ -2670,20 +2707,17 @@ void sample_los_extinction_discrete(
 				// }
 
                 // ACCEPT
-				n_proposals_accepted[proposal_type]++;
+				n_proposals_accepted[proposal_type.code]++;
 
                 // Add old point to chain
                 // chain.add_point(y_idx_dbl, log_p, (double)w);
 
                 // Update state to proposal
-				if(    (proposal_type == STEP_PROPOSAL)
-				    || (proposal_type == SWAP_PROPOSAL))
-				{
+				if(!proposal_type.shift) {
+					// STEP_PROPOSAL or SWAP_PROPOSAL
 	                y_idx[x_idx] = y_idx_new;
 	                // y_idx_dbl[x_idx] = (double)y_idx_new;
-				} else if((proposal_type == SHIFT_L_PROPOSAL)
-				       || (proposal_type == SHIFT_ABS_L_PROPOSAL))
-				{
+				} else if(proposal_type.left) {
 					for(int j=0; j<=x_idx; j++) {
 						y_idx[j] += dy;
 					}
@@ -2853,10 +2887,17 @@ void sample_los_extinction_discrete(
 		prop_name[SHIFT_ABS_L_PROPOSAL] = "shift_abs_l";
 		prop_name[SHIFT_ABS_R_PROPOSAL] = "shift_abs_r";
 
+		uint64_t n_proposals_tot = 0;
+		for(int i=0; i<N_PROPOSAL_TYPES; i++) {
+			n_proposals_tot += n_proposals[i];
+		}
+
 		for(int i=0; i<N_PROPOSAL_TYPES; i++) {
 			double p_valid = (double)n_proposals_valid[i] / (double)n_proposals[i];
 			double p_accept = (double)n_proposals_accepted[i] / (double)n_proposals[i];
-			std::cerr << prop_name[i] << " proposals:" << std::endl
+			double p_of_tot = (double)n_proposals[i] / (double)n_proposals_tot;
+			std::cerr << prop_name[i] << " proposals "
+					  << "(" << 100. * p_of_tot << " %):" << std::endl
 					  << " *    valid : " << 100. * p_valid << " %" << std::endl
   					  << " * accepted : " << 100. * p_accept << " %" << std::endl;
 		}
