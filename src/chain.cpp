@@ -927,7 +927,7 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
 
 	const double *chainElement;
 	unsigned int chainLength = chain.get_length();
-	unsigned int start_idx = length_ * nDim_ * (nSamples_+2);
+	size_t start_idx = length_ * nDim_ * (nSamples_+2);
 
 	if(subsample) {	// Choose random subsample of points to add
 		// Choose which points in chain to sample
@@ -941,7 +941,7 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
 		unsigned int i = 1;	// Position in chain
 		unsigned int k = 0;	// Position in buffer
 		double w = chain.get_w(0);
-		size_t start_idx = length_ * nDim_ * (nSamples_+2);
+		//size_t start_idx = length_ * nDim_ * (nSamples_+2);
 		while(k < nSamples_) {
 			if(w < samplePos[k]) {
 				assert(i < chainLength);
@@ -961,6 +961,10 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
 		// Add points in chain in order, ignoring weights
 		// (this works if every weight is unity)
 		unsigned int n_to_add = std::min(nSamples_, chainLength);
+        //std::cerr << "n_to_add = " << n_to_add
+        //          << " (nSamples_ = " << nSamples_ << " ,"
+        //          << " chainLength = " << chainLength << ")"
+        //          << std::endl;
 
 		for(int64_t k=0; k<n_to_add; k++) {
 			buf[start_idx + nDim_*(k+2)] = chain.get_L(k);

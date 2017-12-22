@@ -2515,6 +2515,7 @@ void sample_los_extinction_discrete(
 	int n_burnin = 0.25 * n_steps;
 	int n_save = 1000;
 	int save_every = n_steps / n_save;
+    int save_in = save_every;
 
 	// How often to recalculate exact line integrals
 	int recalculate_every = 100;
@@ -2794,11 +2795,12 @@ void sample_los_extinction_discrete(
         }
 
 		// Add state to chain
-		if((i > n_burnin) && (i % save_every == 0)) {
+		if((i >= n_burnin) && (--save_in == 0)) {
 			for(int k=0; k<n_x; k++) {
 				y_idx_dbl[k] = (double)y_idx[k];
 			}
 			chain.add_point(y_idx_dbl, log_p, 1.);
+            save_in = save_every;
 		}
 
 		if((verbosity >= 2) && (i % 10000 == 0)) {
