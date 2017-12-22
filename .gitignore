@@ -6,6 +6,7 @@
 ##################################
 *.o
 *.pyc
+bayestar
 
 # CMake temporary files #
 #########################
@@ -30,6 +31,7 @@ build
 *.hdf5
 *.dat
 *.fits
+*.cfg
 
 # Text and log files #
 ######################
@@ -39,3 +41,13 @@ build
 # Graphics #
 ############
 *.png
+
+# Archives #
+############
+*.tar
+*.tar.gz
+
+# Miscellaneous #
+#################
+callgrind.out.*
+src/bayestar_config.h
