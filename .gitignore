@@ -51,3 +51,7 @@ build
 #################
 callgrind.out.*
 src/bayestar_config.h
+*.bak
+*.swp
+*.save
+*.save.*
