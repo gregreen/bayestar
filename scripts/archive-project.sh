@@ -1,4 +1,12 @@
 #!/bin/bash
+#
+# Creates a tarball containing the Bayestar repository, along
+# with a file called "commit.txt," containing the git hash of
+# the current commit.
+# 
+# Invocation:
+#   bash archive-project <output.tar>
+# 
 
 export COMMIT_HASH=`git rev-parse HEAD`
 git archive --format=tar --output=$1 ${COMMIT_HASH}
