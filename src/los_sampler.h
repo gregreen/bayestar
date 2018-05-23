@@ -87,6 +87,7 @@ struct TImgStack {
 	bool initialize_to_zero(unsigned int img_idx);
 
 	void smooth(std::vector<double> sigma, double n_sigma=5);
+    void normalize(double norm=1.0);
 };
 
 struct TLOSMCMCParams {

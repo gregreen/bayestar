@@ -3196,6 +3196,16 @@ void TImgStack::smooth(std::vector<double> sigma, double n_sigma) {
 	delete[] dc;
 }
 
+
+void TImgStack::normalize(double norm) {
+    // Calculate and divide out sum of each matrix
+    for(int i=0; i<N_images; i++) {
+        double sum_img = cv::sum(*(img[i]))[0];
+        *(img[i]) *= norm/sum_img;
+    }
+}
+
+
 // void shift_image_vertical(cv::Mat& img, int n_pix) {
 //
 // }
