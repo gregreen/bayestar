@@ -392,11 +392,12 @@ double integrate_ML_solution(TStellarModel& stellar_model,
                     inv_cov_00, inv_cov_01, inv_cov_11,
                     RV);
 
+    // Set image of p(mu, E) to zero
     if (!img_stack.initialize_to_zero(img_idx)) {
         std::cerr << "Failed to initialize image to zero!" << std::endl;
     }
 
-    // Arrays holding ML (E, mu), chi2 and prior
+    // Calculate ML (E, mu), chi^2 and prior for each (Mr, [Fe/H]) pair
     std::vector<double> E_ML;
     std::vector<double> mu_ML;
     std::vector<double> chi2_ML;
@@ -506,7 +507,8 @@ double integrate_ML_solution(TStellarModel& stellar_model,
             // gaussian_filter(ML, *(img_stack.rect), cov_img, 5, 2);
         }
     }
-
+    
+    // Calculate best prior and likelihood (minimum chi^2)
     double prior_max = *std::max_element(prior_ML.begin(), prior_ML.end());
 
     double chi2_min = *std::min_element(chi2_ML.begin(), chi2_ML.end());
@@ -520,10 +522,20 @@ double integrate_ML_solution(TStellarModel& stellar_model,
     assert( chi2_ML.size() == mu_ML.size() );
     assert( prior_ML.size() == mu_ML.size() );
 
+    std::vector<int32_t> save_list; // List of Gaussians to save
+    save_list.reserve(mu_ML.size());
+    double delta_chi2_threshold = 8.;
+    
+    // Interpolation information
     unsigned int img_idx0, img_idx1;
     double a0, a1;
-
+    
     for(int k=0; k<mu_ML.size(); k++) {
+        // Choose whether or not to save this point
+        if(chi2_ML.at(k) - chi2_min - prior_ML.at(k) + prior_max < delta_chi2_threshold) {
+            save_list.push_back(k);
+        }
+        
         // Add single point to image at ML solution location (E, mu)
         bool in_bounds = img_stack.rect->get_interpolant(
             E_ML.at(k), mu_ML.at(k),
@@ -627,6 +639,15 @@ double integrate_ML_solution(TStellarModel& stellar_model,
     );
     cv::filter2D(*img_stack.img[img_idx], filtered_img, CV_FLOATING_TYPE, cov_img);
     *img_stack.img[img_idx] = filtered_img;
+    
+    // Save chosen Gaussians
+    if(verbosity >= 2) {
+        std::cerr << "Saving " << save_list.size() << " Gaussians." << std::endl;
+    }
+    //for(int i=0; i<save_list.size(); i++) {
+        //
+        //
+    //}
 
     // Return mininum chi^2 / passband
     int n_passbands = 0;
@@ -652,8 +673,6 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
                      bool save_surfs, std::string out_fname,
                      bool use_priors,
                      double RV, int verbosity) {
-    // TODO: copy in EBV_smoothing from MCMC sampler
-
     // Timing
     auto t_start = std::chrono::steady_clock::now();
 
@@ -706,6 +725,9 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
         }
 		img_stack.smooth(sigma_pix);
 	}
+    
+    // Normalize PDFs to unity
+    img_stack.normalize();
 
     // Save the PDFs to disk
     auto t_write = std::chrono::steady_clock::now();
