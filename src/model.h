@@ -312,7 +312,7 @@ public:
 	// Full priors on (DM, Mr, [Fe/H]) for empirical stellar model
 	double log_prior_emp(double DM, double Mr, double FeH) const;
 	double log_prior_emp(const double* x) const;
-
+    
 	// Expected dust reddening, up to normalizing constant
 	double dA_dmu(double DM) const;
 
@@ -367,6 +367,9 @@ private:
 
 	double nside_2_arcmin(unsigned int nside) const;
 };
+
+
+double chi2_parallax(double DM, double parallax, double parallax_err);
 
 
 #endif // _MODEL_H__

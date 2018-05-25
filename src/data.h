@@ -56,17 +56,19 @@ void seed_gsl_rng(gsl_rng **r);
 struct TStellarData {
 	struct TFileData {
 		uint64_t obj_id;
-		double l, b;
-		float mag[NBANDS];
-		float err[NBANDS];
-		float maglimit[NBANDS];
-		uint32_t N_det[NBANDS];
-		float EBV;
+		double l, b;            // Galactic (l, b), in deg
+        float pi, pi_err;       // parallax, in milliarcseconds
+		float mag[NBANDS];      // Observed magnitudes, in mag
+		float err[NBANDS];      // Magnitude uncertainties, in mag
+		float maglimit[NBANDS]; // Limit magnitudes, in mag
+		uint32_t N_det[NBANDS]; // # of detections in each passband
+		float EBV;              // E(B-V), in mag
 	};
 	
 	struct TMagnitudes {
 		uint64_t obj_id;
 		double l, b;
+        double pi, pi_err;
 		double m[NBANDS];
 		double err[NBANDS];
 		double maglimit[NBANDS];
@@ -95,6 +97,8 @@ struct TStellarData {
 			obj_id = rhs.obj_id;
 			l = rhs.l;
 			b = rhs.b;
+			pi = rhs.pi;
+			pi_err = rhs.pi_err;
 			for(unsigned int i=0; i<NBANDS; i++) {
 				m[i] = rhs.m[i];
 				err[i] = rhs.err[i];

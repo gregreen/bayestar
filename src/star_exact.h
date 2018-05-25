@@ -64,7 +64,7 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
                      TEBVSmoothing& EBV_smoothing,
                      TImgStack& img_stack, std::vector<double>& chi2,
                      bool save_surfs, std::string out_fname,
-                     bool use_priors,
+                     bool use_priors, bool use_gaia,
                      double RV, int verbosity);
 
 
