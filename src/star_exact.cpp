@@ -348,24 +348,6 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
 }
 
 
-// void add_fit_to_image(cv::Mat& img, TRect& grid, LinearFitParams& fit,
-//                       double weight, double n_sigma, int min_width) {
-//       // Determine sigma along each axis
-//     //   double det = p->inv_cov(0,0) * p->inv_cov(1,1) - p->inv_cov(0,1) * p->inv_cov(1,0);// + 1.e-5;
-//     //   double sigma[2] = {
-//     //       sqrt(p->inv_cov(1,1) / det),
-//     //       sqrt(p->inv_cov(0,0) / det)
-//     //   };
-//       //
-//     //   // Determine dimensions of filter
-//     //   int width[2];
-//       //
-//     //   for(unsigned int i=0; i<2; i++) {
-//     //       width[i] = std::max(min_width, (int)(ceil(sigma[i] / grid.dx[i])));
-//     //   }
-//       //
-//     //   // TODO: Finish this
-// }
 
 
 double integrate_ML_solution(TStellarModel& stellar_model,
@@ -375,6 +357,7 @@ double integrate_ML_solution(TStellarModel& stellar_model,
                              TImgStack& img_stack,
                              unsigned int img_idx,
                              bool use_priors,
+			                 bool use_gaia,
                              double RV, int verbosity) {
     //
     TSED sed;
@@ -426,88 +409,29 @@ double integrate_ML_solution(TStellarModel& stellar_model,
                                 inv_cov_00, inv_cov_01, inv_cov_11,
                                 mu, E, chi2,
                                 RV);
-
-            // Check that the max-likelihood solution really is at a local
-            // minimum in chi2
-            // double eps = 1.e-2;
-            // for(int dmu=-1; dmu<2; dmu++) {
-            //     for(int dE=-1; dE<2; dE++) {
-            //         if((dmu == 0) && (dE == 0)) { continue; }
-            //
-            //         double mu_test = mu + (double)dmu*eps;
-            //         double E_test = E + (double)dE*eps;
-            //
-            //         double chi2_tmp = calc_star_chi2(
-            //             mags_obs, ext_model, sed,
-            //             mu_test, E_test, RV
-            //         );
-            //
-            //         if(chi2_tmp < chi2) {
-            //             std::cerr << std::endl
-            //                       << "Not a trough in chi^2!" << std::endl
-            //                       << "  chi^2(" << mu_test << ", " << E_test << ")"
-            //                       << " = " << chi2_tmp << std::endl
-            //                       << "  chi^2(" << mu << ", " << E << ")"
-            //                       << " = " << chi2 << std::endl << std::endl;
-            //             std::exit(1);
-            //         } else {
-            //             // std::cerr << " chi^2 : " << chi2_tmp << " > " << chi2 << std::endl;
-            //         }
-            //     }
-            // }
-
-            // std::shared_ptr<LinearFitParams> ML = star_max_likelihood(sed, mags_obs, ext_model, RV);
-            // if((Mr_idx == 0) && (FeH_idx == 0)) {
-            // // if(ML->chi2 < 3.) {
-            //     double det = ML->inv_cov(0,0) * ML->inv_cov(1,1) - ML->inv_cov(0,1) * ML->inv_cov(1,0);
-            //     std::cerr << "  (mu, E) = (" << ML->mean(0) << ", " << ML->mean(1) << ")" << std::endl;
-            //     std::cerr << "  chi^2 = " << ML->chi2 << std::endl;
-            //     std::cerr << "  sigma = (" << sqrt(ML->inv_cov(1,1) / det)
-            //               << ", " << sqrt(ML->inv_cov(0,0) / det) << ")" << std::endl;
-            //     std::cerr << "  Sigma^-1:" << std::endl;
-            //     std::cerr << "    " << ML->inv_cov(0, 0) << "  " << ML->inv_cov(0, 1) << std::endl;
-            //     std::cerr << "    " << ML->inv_cov(1, 0) << "  " << ML->inv_cov(1, 1) << std::endl;
-            //     std::cerr << std::endl;
-            // }
-            // if((Mr_idx == 0) && (FeH_idx == 0)) {
-            //     double det = inv_cov_00 * inv_cov_11 - inv_cov_01 * inv_cov_01;
-            //     std::cerr << "  (E, mu) = (" << E << ", " << mu << ")" << std::endl;
-            //     std::cerr << "  chi^2 = " << chi2 << std::endl;
-            //     std::cerr << "  sigma = (" << sqrt(inv_cov_00 / det)
-            //               << ", " << sqrt(inv_cov_11 / det) << ")" << std::endl;
-            //     std::cerr << "  Sigma^-1:" << std::endl;
-            //     std::cerr << "    " << inv_cov_11 << "  " << inv_cov_01 << std::endl;
-            //     std::cerr << "    " << inv_cov_01 << "  " << inv_cov_00 << std::endl;
-            //     std::cerr << std::endl;
-            // }
-
-            double prior = los_model.log_prior_emp(mu, Mr, FeH)
-                         + stellar_model.get_log_lf(Mr);
-
+            
+            if(use_gaia) {
+                chi2 += chi2_parallax(mu, mags_obs.pi, mags_obs.pi_err);
+            }
+            
+            double prior = 0.;
+            if(use_priors) {
+                prior = los_model.log_prior_emp(mu, Mr, FeH) + stellar_model.get_log_lf(Mr);
+            }
+            
             // std::cerr << "p(FeH = " << FeH << ") = " << prior << std::endl;
 
             E_ML.push_back(E);
             mu_ML.push_back(mu);
             chi2_ML.push_back(chi2);
             prior_ML.push_back(prior);
-
-            // Add single point to image at ML solution location (mu, E)
-            // bool in_bounds = img_stack.rect->get_index(E, mu, img_idx0, img_idx1);
-            // if(in_bounds) {
-            //     // std::cerr << ML->chi2 << " -> " << exp(-0.5 * (ML->chi2)) << std::endl;
-            //     chi2 += los_model.log_prior_emp(mu, Mr, FeH) + stellar_model.get_log_lf(Mr);
-            //     // std::cerr << chi2 << std::endl;
-            //
-            //     img_stack.img[img_idx]->at<floating_t>(img_idx0, img_idx1) += exp(-0.5 * chi2);
-            // } else {
-            //     // std::cerr << "(mu, E) = (" << ML->mean(1) << ", " << ML->mean(0) << ") out of bounds." << std::endl;
-            // }
-
-            // gaussian_filter(ML, *(img_stack.rect), cov_img, 5, 2);
         }
     }
-
-    double prior_max = *std::max_element(prior_ML.begin(), prior_ML.end());
+    
+    double prior_max = 0.;
+    if(use_priors) {
+        prior_max = *std::max_element(prior_ML.begin(), prior_ML.end());
+    }
 
     double chi2_min = *std::min_element(chi2_ML.begin(), chi2_ML.end());
 
@@ -535,32 +459,12 @@ double integrate_ML_solution(TStellarModel& stellar_model,
 
         if(in_bounds) {
             double log_p = -0.5 * (chi2_ML.at(k) - chi2_min);
-
+            
             if(use_priors) {
                 log_p += prior_ML.at(k) - prior_max;
             }
 
             double p = exp(log_p);
-
-            // if(std::isnan(log_p)) {
-            //     std::cerr << "NaN: (" << E_ML.at(arr_idx) << ", "
-            //                           << mu_ML.at(arr_idx) << ", "
-            //                           << Mr << ", "
-            //                           << FeH << ")" << std::endl;
-            // }
-            // if(std::isinf(log_p)) {
-            //     std::cerr << "Inf: (" << E_ML.at(arr_idx) << ", "
-            //                           << mu_ML.at(arr_idx) << ", "
-            //                           << Mr << ", "
-            //                           << FeH << ")" << std::endl;
-            //     std::cerr << "  * chi2 = " << chi2_ML.at(arr_idx) << std::endl
-            //               << "  * prior = " << prior_ML.at(arr_idx)-prior_max << std::endl;
-            //     std::cerr << "  * exp(-0.5*chi2 + prior) = "
-            //               << exp(log_p) << std::endl;
-            // }
-            // std::cerr << log_p << std::endl;
-
-            // img_stack.img[img_idx]->at<floating_t>(img_idx0, img_idx1) += exp(log_p);
 
 
             // Interpolate between bins
@@ -571,48 +475,6 @@ double integrate_ML_solution(TStellarModel& stellar_model,
         }
     }
 
-    // for(int Mr_idx=0, arr_idx=0; Mr_idx<N_Mr; Mr_idx++) {
-    //     for(int FeH_idx=0; FeH_idx<N_FeH; FeH_idx++, arr_idx++) {
-    //         // Add single point to image at ML solution location (E, mu)
-    //         bool in_bounds = img_stack.rect->get_index(E_ML.at(arr_idx), mu_ML.at(arr_idx), img_idx0, img_idx1);
-    //         if(in_bounds) {
-    //             double log_p = -0.5 * (chi2_ML.at(arr_idx) - chi2_min)
-    //                            + prior_ML.at(arr_idx) - prior_max;
-    //             // if(std::isnan(log_p)) {
-    //             //     std::cerr << "NaN: (" << E_ML.at(arr_idx) << ", "
-    //             //                           << mu_ML.at(arr_idx) << ", "
-    //             //                           << Mr << ", "
-    //             //                           << FeH << ")" << std::endl;
-    //             // }
-    //             // if(std::isinf(log_p)) {
-    //             //     std::cerr << "Inf: (" << E_ML.at(arr_idx) << ", "
-    //             //                           << mu_ML.at(arr_idx) << ", "
-    //             //                           << Mr << ", "
-    //             //                           << FeH << ")" << std::endl;
-    //             //     std::cerr << "  * chi2 = " << chi2_ML.at(arr_idx) << std::endl
-    //             //               << "  * prior = " << prior_ML.at(arr_idx)-prior_max << std::endl;
-    //             //     std::cerr << "  * exp(-0.5*chi2 + prior) = "
-    //             //               << exp(log_p) << std::endl;
-    //             // }
-    //             // std::cerr << log_p << std::endl;
-    //             img_stack.img[img_idx]->at<floating_t>(img_idx0, img_idx1) += exp(log_p);
-    //         }
-    //
-    //         // gaussian_filter(ML, *(img_stack.rect), cov_img, 5, 2);
-    //     }
-    // }
-
-    // std::cerr << "img.type = " << img_stack.img[img_idx]->type() << std::endl;
-    // img_stack.img[img_idx]->at<floating_t>(0, 0) = 1.;
-    // img_stack.img[img_idx]->at<double>(0, 0) = 1.;
-    // (*img_stack.img[img_idx])(0,0) = 1.;
-
-    // cv::Mat filter_test;
-    // gaussian_filter(inv_cov_11, inv_cov_01, inv_cov_00,
-    //                 *(img_stack.rect), filter_test, 5, 2, 0.5);
-    // std::cerr << std::endl << "filter_test:" << std::endl;
-    // print_matrix(filter_test, std::cerr, 15, 12);
-    // std::cerr << std::endl;
 
     // Smooth PDF with covariance of the ML solution
     cv::Mat cov_img;
@@ -636,6 +498,11 @@ double integrate_ML_solution(TStellarModel& stellar_model,
         }
         n_passbands++;
     }
+    if(use_gaia) {
+        if(mags_obs.pi_err < mags_obs.pi) {
+            n_passbands++;
+        }
+    }
 
     if(verbosity >= 2) {
         std::cerr << "# of passbands: " << n_passbands << std::endl;
@@ -651,9 +518,8 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
                      TImgStack& img_stack, std::vector<double>& chi2,
                      bool save_surfs, std::string out_fname,
                      bool use_priors,
+                     bool use_gaia,
                      double RV, int verbosity) {
-    // TODO: copy in EBV_smoothing from MCMC sampler
-
     // Timing
     auto t_start = std::chrono::steady_clock::now();
 
@@ -678,6 +544,7 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
             stellar_data[i], ext_model,
             img_stack, i,
             use_priors,
+            use_gaia,
             RV,
             verbosity
         );
