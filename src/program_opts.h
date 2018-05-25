@@ -31,6 +31,7 @@ struct TProgramOpts {
 	double star_p_replacement;
 	double min_EBV;    // in mags
 	bool star_priors;
+    bool use_gaia;
 
 	double sigma_RV;
 	double mean_RV;

@@ -42,7 +42,7 @@ TStellarData::TStellarData(const std::string& infile, std::string _pix_name, dou
 
 
 TStellarData::TStellarData(uint64_t _healpix_index, uint32_t _nside, bool _nested, double _l, double _b) {
-	healpix_index = _healpix_index;
+    healpix_index = _healpix_index;
 	nside = _nside;
 	nested = _nested;
 	l = _l;
@@ -90,6 +90,8 @@ bool TStellarData::save(const std::string& fname, const std::string& group, cons
 	dtype.insertMember("obj_id", HOFFSET(TFileData, obj_id), H5::PredType::NATIVE_UINT64);
 	dtype.insertMember("l", HOFFSET(TFileData, l), H5::PredType::NATIVE_DOUBLE);
 	dtype.insertMember("b", HOFFSET(TFileData, b), H5::PredType::NATIVE_DOUBLE);
+	dtype.insertMember("pi", HOFFSET(TFileData, pi), H5::PredType::NATIVE_FLOAT);
+	dtype.insertMember("pi_err", HOFFSET(TFileData, pi_err), H5::PredType::NATIVE_FLOAT);
 	dtype.insertMember("mag", HOFFSET(TFileData, mag), f4arr);
 	dtype.insertMember("err", HOFFSET(TFileData, err), f4arr);
 	dtype.insertMember("maglimit", HOFFSET(TFileData, maglimit), f4arr);
@@ -114,6 +116,8 @@ bool TStellarData::save(const std::string& fname, const std::string& group, cons
 		data[i].obj_id = star[i].obj_id;
 		data[i].l = star[i].l;
 		data[i].b = star[i].b;
+		data[i].pi = star[i].pi;
+		data[i].pi_err = star[i].pi_err;
 		for(size_t k=0; k<NBANDS; k++) {
 			data[i].mag[k] = star[i].m[k];
 			data[i].err[k] = star[i].err[k];
@@ -168,6 +172,8 @@ void TStellarData::TMagnitudes::set(const TStellarData::TFileData& dat, double e
 	obj_id = dat.obj_id;
 	l = dat.l;
 	b = dat.b;
+	pi = dat.pi;
+	pi_err = dat.pi_err;
 	lnL_norm = 0.;
 	for(unsigned int i=0; i<NBANDS; i++) {
 		m[i] = dat.mag[i];
@@ -216,6 +222,8 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	dtype.insertMember("obj_id", HOFFSET(TFileData, obj_id), H5::PredType::NATIVE_UINT64);
 	dtype.insertMember("l", HOFFSET(TFileData, l), H5::PredType::NATIVE_DOUBLE);
 	dtype.insertMember("b", HOFFSET(TFileData, b), H5::PredType::NATIVE_DOUBLE);
+	dtype.insertMember("pi", HOFFSET(TFileData, pi), H5::PredType::NATIVE_FLOAT);
+	dtype.insertMember("pi_err", HOFFSET(TFileData, pi_err), H5::PredType::NATIVE_FLOAT);
 	dtype.insertMember("mag", HOFFSET(TFileData, mag), f4arr);
 	dtype.insertMember("err", HOFFSET(TFileData, err), f4arr);
 	dtype.insertMember("maglimit", HOFFSET(TFileData, maglimit), f4arr);

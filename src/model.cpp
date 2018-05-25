@@ -1144,3 +1144,23 @@ void TLuminosityFunc::load(const std::string &fn) {
 	std::cerr << "# Loaded Phi(" << Mr0 << " <= Mr <= " <<  Mr0 + dMr*(lf.size()-1) << ") LF from " << fn << "\n";
 }
 */
+
+/*****************************************************************************
+ * Miscellaneous functions
+ ****************************************************************************/
+
+
+// Parallax likelihood
+double chi2_parallax(double DM, double parallax, double parallax_err) {
+    // parallax and parallax_err are assumed to be in milliarcseconds
+    // DM is assumed to be in mag
+    double pi_mu = pow(10., 2.-0.2*DM); // in milliarcseconds
+    double dpi = parallax - pi_mu;
+    return dpi*dpi / (parallax_err*parallax_err);
+}
+
+double log_likelihood_parallax_range(double DM0, double DM1, double parallax, double parallax_err) {
+    // Same as above, but integrates over a range of distance moduli
+    // TODO
+    return 0;
+}

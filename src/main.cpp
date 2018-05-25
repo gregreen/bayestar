@@ -227,6 +227,7 @@ int main(int argc, char **argv) {
 							img_stack, chi2,
 							opts.save_surfs, opts.output_fname,
 							opts.star_priors,
+                            opts.use_gaia,
 							opts.mean_RV, opts.verbosity);
 		} else if(opts.synthetic) {
 			// MCMC sampling of synthetic stellar model

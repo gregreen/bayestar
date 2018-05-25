@@ -25,6 +25,7 @@ TProgramOpts::TProgramOpts() {
     star_p_replacement = 0.2;
     min_EBV = 0.;
     star_priors = true;
+    use_gaia = false;
 
     sigma_RV = -1.;
     mean_RV = 3.1;
@@ -108,6 +109,8 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
                 to_string(opts.star_p_replacement) + ")").c_str())
 		("no-stellar-priors",
             "Turn off priors for individual stars.")
+        ("use-gaia",
+            "Use gaia parallax likelihood for individual stars.")
 		("min-EBV",
             po::value<double>(&(opts.min_EBV)),
             ("Minimum stellar E(B-V) (default: " +
@@ -447,6 +450,7 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
     if(vm.count("sample-stars")) { opts.sample_stars = true; }
 	if(vm.count("save-surfs")) { opts.save_surfs = true; }
 	if(vm.count("no-stellar-priors")) { opts.star_priors = false; }
+	if(vm.count("use-gaia")) { opts.use_gaia = true; }
 	if(vm.count("disk-prior")) { opts.disk_prior = true; }
 	if(vm.count("SFD-prior")) { opts.SFD_prior = true; }
 	if(vm.count("SFD-subpixel")) { opts.SFD_subpixel = true; }
