@@ -350,15 +350,19 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
 
 
 
-double integrate_ML_solution(TStellarModel& stellar_model,
-                             TGalacticLOSModel& los_model,
-                             TStellarData::TMagnitudes& mags_obs,
-                             TExtinctionModel& ext_model,
-                             TImgStack& img_stack,
-                             unsigned int img_idx,
-                             bool use_priors,
-			                 bool use_gaia,
-                             double RV, int verbosity) {
+double integrate_ML_solution(
+            TStellarModel& stellar_model,
+            TGalacticLOSModel& los_model,
+            TStellarData::TMagnitudes& mags_obs,
+            TExtinctionModel& ext_model,
+            TImgStack& img_stack,
+            unsigned int img_idx,
+            bool save_gaussians,
+            std::shared_ptr<std::vector<TDMESaveData> > save_data,
+            bool use_priors,
+            bool use_gaia,
+            double RV, int verbosity)
+{
     //
     TSED sed;
     unsigned int N_Mr = stellar_model.get_N_Mr();
@@ -375,11 +379,12 @@ double integrate_ML_solution(TStellarModel& stellar_model,
                     inv_cov_00, inv_cov_01, inv_cov_11,
                     RV);
 
+    // Set image of p(mu, E) to zero
     if (!img_stack.initialize_to_zero(img_idx)) {
         std::cerr << "Failed to initialize image to zero!" << std::endl;
     }
 
-    // Arrays holding ML (E, mu), chi2 and prior
+    // Calculate ML (E, mu), chi^2 and prior for each (Mr, [Fe/H]) pair
     std::vector<double> E_ML;
     std::vector<double> mu_ML;
     std::vector<double> chi2_ML;
@@ -394,7 +399,9 @@ double integrate_ML_solution(TStellarModel& stellar_model,
     for(int Mr_idx=0; Mr_idx<N_Mr; Mr_idx++) {
         for(int FeH_idx=0; FeH_idx<N_FeH; FeH_idx++) {
             // Look up model absolute magnitudes of this stellar type
-            bool success = stellar_model.get_sed(Mr_idx, FeH_idx, sed, Mr, FeH);
+            bool success = stellar_model.get_sed(
+                Mr_idx, FeH_idx,
+                sed, Mr, FeH);
             if(!success) {
                 std::cerr << "SED (" << Mr_idx << ", " << FeH_idx
                           << ") not in library!" << std::endl;
@@ -416,7 +423,8 @@ double integrate_ML_solution(TStellarModel& stellar_model,
             
             double prior = 0.;
             if(use_priors) {
-                prior = los_model.log_prior_emp(mu, Mr, FeH) + stellar_model.get_log_lf(Mr);
+                prior = los_model.log_prior_emp(mu, Mr, FeH)
+                        + stellar_model.get_log_lf(Mr);
             }
             
             // std::cerr << "p(FeH = " << FeH << ") = " << prior << std::endl;
@@ -428,6 +436,7 @@ double integrate_ML_solution(TStellarModel& stellar_model,
         }
     }
     
+    // Calculate best prior and likelihood (minimum chi^2)
     double prior_max = 0.;
     if(use_priors) {
         prior_max = *std::max_element(prior_ML.begin(), prior_ML.end());
@@ -444,10 +453,26 @@ double integrate_ML_solution(TStellarModel& stellar_model,
     assert( chi2_ML.size() == mu_ML.size() );
     assert( prior_ML.size() == mu_ML.size() );
 
+    std::vector<int32_t> save_list; // List of Gaussians to save
+    save_list.reserve(mu_ML.size());
+    double delta_logp_threshold = -8.;
+    
+    // Interpolation information
     unsigned int img_idx0, img_idx1;
     double a0, a1;
-
+    
     for(int k=0; k<mu_ML.size(); k++) {
+        // Calculate ln(p/p_0)
+        double log_p = -0.5 * (chi2_ML.at(k) - chi2_min);
+        if(use_priors) {
+            log_p += prior_ML.at(k) - prior_max;
+        }
+        
+        // Choose whether or not to save this point
+        if(log_p > delta_logp_threshold) {
+            save_list.push_back(k);
+        }
+        
         // Add single point to image at ML solution location (E, mu)
         bool in_bounds = img_stack.rect->get_interpolant(
             E_ML.at(k), mu_ML.at(k),
@@ -458,14 +483,7 @@ double integrate_ML_solution(TStellarModel& stellar_model,
         // bool in_bounds = img_stack.rect->get_index(E_ML.at(k), mu_ML.at(k), img_idx0, img_idx1);
 
         if(in_bounds) {
-            double log_p = -0.5 * (chi2_ML.at(k) - chi2_min);
-            
-            if(use_priors) {
-                log_p += prior_ML.at(k) - prior_max;
-            }
-
             double p = exp(log_p);
-
 
             // Interpolate between bins
             img_stack.img[img_idx]->at<floating_t>(img_idx0, img_idx1) += (1-a0) * (1-a1) * p;
@@ -474,7 +492,6 @@ double integrate_ML_solution(TStellarModel& stellar_model,
             img_stack.img[img_idx]->at<floating_t>(img_idx0+1, img_idx1+1) += a0 * a1 * p;
         }
     }
-
 
     // Smooth PDF with covariance of the ML solution
     cv::Mat cov_img;
@@ -489,6 +506,27 @@ double integrate_ML_solution(TStellarModel& stellar_model,
     );
     cv::filter2D(*img_stack.img[img_idx], filtered_img, CV_FLOATING_TYPE, cov_img);
     *img_stack.img[img_idx] = filtered_img;
+    
+    // Stores chosen Gaussians
+    if(save_gaussians) {
+        if(verbosity >= 2) {
+            std::cerr << "Saving " << save_list.size()
+                      << " Gaussians." << std::endl;
+        }
+        
+        //std::shared_ptr<std::vector<TDMESaveData> > save_data
+        //    = std::make_shared<std::vector<TDMESaveData> >();
+        save_data->reserve(save_list.size());
+        
+        for(int32_t i : save_list) {
+            save_data->push_back({
+                (float)(mu_ML.at(i)),
+                (float)(E_ML.at(i)),
+                (float)(-0.5*(chi2_ML.at(i) - chi2_min)),
+                (float)(prior_ML.at(i) - prior_max)
+            });
+        }
+    }
 
     // Return mininum chi^2 / passband
     int n_passbands = 0;
@@ -512,11 +550,16 @@ double integrate_ML_solution(TStellarModel& stellar_model,
     return chi2_min / n_passbands;
 }
 
-void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
-                     TStellarModel& stellar_model, TStellarData& stellar_data,
+void grid_eval_stars(TGalacticLOSModel& los_model,
+                     TExtinctionModel& ext_model,
+                     TStellarModel& stellar_model,
+                     TStellarData& stellar_data,
                      TEBVSmoothing& EBV_smoothing,
-                     TImgStack& img_stack, std::vector<double>& chi2,
-                     bool save_surfs, std::string out_fname,
+                     TImgStack& img_stack,
+                     std::vector<double>& chi2,
+                     bool save_surfs,
+                     bool save_gaussians,
+                     std::string out_fname,
                      bool use_priors,
                      bool use_gaia,
                      double RV, int verbosity) {
@@ -533,22 +576,46 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
     // Loop over all stars and evaluate PDFs on grid in (mu, E)
     int n_stars = stellar_data.star.size();
     chi2.clear();
+    
+    // Name of group to save data to
+    std::stringstream group_name;
+    group_name << "/" << stellar_data.pix_name;
+    
+    // Create empty vector of stellar data to save
+    std::vector<std::shared_ptr<std::vector<TDMESaveData> > > save_data;
+    save_data.reserve(n_stars);
 
     for(int i=0; i<n_stars; i++) {
         if(verbosity >= 2) {
             std::cerr << "Star " << i+1 << " of " << n_stars << std::endl;
         }
+        
+        save_data.push_back(
+            std::make_shared<std::vector<TDMESaveData> >()
+        );
 
         double chi2_min = integrate_ML_solution(
             stellar_model, los_model,
             stellar_data[i], ext_model,
             img_stack, i,
+            save_gaussians,
+            save_data.at(i),
             use_priors,
             use_gaia,
             RV,
             verbosity
         );
         chi2.push_back(chi2_min);
+    }
+    
+    // Save individual Gaussians for each star
+    if(save_gaussians) {
+        save_gridstars(
+            out_fname,
+            group_name.str(),
+            "gridstars",
+            save_data
+        );
     }
 
     // Crop to correct (E, DM) range
@@ -573,14 +640,14 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
         }
 		img_stack.smooth(sigma_pix);
 	}
+    
+    // Normalize PDFs to unity
+    img_stack.normalize();
 
     // Save the PDFs to disk
     auto t_write = std::chrono::steady_clock::now();
 
     if(save_surfs) {
-        std::stringstream group_name;
-        group_name << "/" << stellar_data.pix_name;
-
         TImgWriteBuffer img_buffer(*(img_stack.rect), n_stars);
 
 		for(int n=0; n<n_stars; n++) {
@@ -613,4 +680,86 @@ void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
                   << "  *  total: " << dt_total.count() / n_stars << " ms"
                   << std::endl << std::endl;
     }
+}
+
+
+bool save_gridstars(
+    const std::string& fname,
+    const std::string& group,
+    const std::string& dset,
+    std::vector<std::shared_ptr<std::vector<TDMESaveData> > >& fits)
+{
+    // Number of stars to save
+    uint32_t n_stars = fits.size();
+	if(n_stars == 0) {
+		std::cerr << "! No stars to write." << std::endl;
+		return false;
+	}
+
+    // Open up file and create group
+	H5::Exception::dontPrint();
+
+	H5::H5File *file = H5Utils::openFile(fname);
+	if(file == NULL) { return false; }
+
+	H5::Group *gp = H5Utils::openGroup(file, group);
+	if(gp == NULL) {
+		delete file;
+		return false;
+	}
+    
+    // Determine maximum number of Gaussians for one star
+    uint32_t n_gaussians = 0;
+    for(auto v : fits) {
+        if(v->size() > n_gaussians) {
+            n_gaussians = v->size();
+        }
+    }
+    
+    // Datatype
+    H5::CompType dtype(sizeof(TDMESaveData));
+    dtype.insertMember("dm", HOFFSET(TDMESaveData, dm), H5::PredType::NATIVE_FLOAT);
+    dtype.insertMember("E", HOFFSET(TDMESaveData, E), H5::PredType::NATIVE_FLOAT);
+    dtype.insertMember("ln_likelihood", HOFFSET(TDMESaveData, ln_likelihood), H5::PredType::NATIVE_FLOAT);
+    dtype.insertMember("ln_prior", HOFFSET(TDMESaveData, ln_prior), H5::PredType::NATIVE_FLOAT);
+    
+	// Dataspace
+	hsize_t dim[2] = {n_stars, n_gaussians};
+	H5::DataSpace dspace(2, &(dim[0]));
+
+	// Property List
+	H5::DSetCreatPropList plist;
+	
+    // Target chunk size of 1 MB
+	int64_t target_size = 1024*1024;
+	int64_t size_per_star = n_gaussians * sizeof(TDMESaveData);
+	hsize_t n_stars_chunk = target_size / size_per_star;
+    if(n_stars_chunk < 1) {
+        n_stars_chunk = 1;
+    }
+	hsize_t chunk[2] = {n_stars_chunk, n_gaussians};
+	plist.setChunk(2, &(chunk[0]));
+    
+	plist.setDeflate(3); // DEFLATE compression level (min=0, max=9)
+
+	// Dataset
+	H5::DataSet dataset = gp->createDataSet(dset, dtype, dspace, plist);
+    
+    // Copy data into one array
+    TDMESaveData* data = new TDMESaveData[n_stars*n_gaussians];
+    for(int i=0; i<fits.size(); i++) {
+        for(int j=0; j<fits[i]->size(); j++) {
+            data[n_gaussians*i+j] = fits[i]->at(j);
+        }
+        for(int j=fits[i]->size(); j<n_gaussians; j++) {
+            TDMESaveData* d = &(data[n_gaussians*i+j]);
+            d->dm = 0.;
+            d->E = 0.;
+            d->ln_likelihood = -std::numeric_limits<float>::infinity();
+            d->ln_prior = -std::numeric_limits<float>::infinity();
+        }
+    }
+    
+    // Write dataset
+    dataset.write(data, dtype);
 }

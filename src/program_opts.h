@@ -21,6 +21,7 @@ struct TProgramOpts {
 	string output_fname;
 
 	bool save_surfs;
+    bool save_gridstars;
 
 	double err_floor;  // in millimags
 

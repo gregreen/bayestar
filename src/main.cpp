@@ -225,7 +225,9 @@ int main(int argc, char **argv) {
 			grid_eval_stars(los_model, ext_model, *emplib,
 							stellar_data, EBV_smoothing,
 							img_stack, chi2,
-							opts.save_surfs, opts.output_fname,
+							opts.save_surfs,
+                            opts.save_gridstars,
+                            opts.output_fname,
 							opts.star_priors,
                             opts.use_gaia,
 							opts.mean_RV, opts.verbosity);
