@@ -49,23 +49,40 @@ void star_max_likelihood(TSED& mags_model, TStellarData::TMagnitudes& mags_obs,
                          double& mu, double& E, double& chi2,
                          double RV=3.1);
 
-double integrate_ML_solution(TStellarModel& stellar_model,
-                             TGalacticLOSModel& los_model,
-                             TStellarData::TMagnitudes& mags_obs,
-                             TExtinctionModel& ext_model,
-                             TImgStack& img_stack,
-                             unsigned int img_idx,
-                             bool use_priors,
-                             double RV, int verbosity);
+struct TDMESaveData {
+    float dm;
+    float E;
+    float ln_likelihood;
+    float ln_prior;
+};
 
+double integrate_ML_solution(
+            TStellarModel& stellar_model,
+            TGalacticLOSModel& los_model,
+            TStellarData::TMagnitudes& mags_obs,
+            TExtinctionModel& ext_model,
+            TImgStack& img_stack,
+            unsigned int img_idx,
+            bool save_gaussians,
+            std::shared_ptr<std::vector<TDMESaveData> > save_data,
+            bool use_priors,
+            bool use_gaia,
+            double RV, int verbosity);
 
 void grid_eval_stars(TGalacticLOSModel& los_model, TExtinctionModel& ext_model,
                      TStellarModel& stellar_model, TStellarData& stellar_data,
                      TEBVSmoothing& EBV_smoothing,
                      TImgStack& img_stack, std::vector<double>& chi2,
-                     bool save_surfs, std::string out_fname,
+                     bool save_surfs, bool save_gaussians,
+                     std::string out_fname,
                      bool use_priors, bool use_gaia,
                      double RV, int verbosity);
+
+bool save_gridstars(
+    const std::string& fname,
+    const std::string& group,
+    const std::string& dset,
+    std::vector<std::shared_ptr<std::vector<TDMESaveData> > >& fits);
 
 
 #endif // _STAR_EXACT_H__

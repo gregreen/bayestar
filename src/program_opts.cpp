@@ -15,6 +15,7 @@ TProgramOpts::TProgramOpts() {
     output_fname = "NONE";
 
     save_surfs = false;
+    save_gridstars = false;
 
     err_floor = 20;
 
@@ -384,6 +385,7 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
         "Dual Options (both commandline and configuration file)");
 	dual_desc.add_options()
 		("save-surfs", "Save probability surfaces.")
+		("save-gridstars", "Save grid-evaluated stellar inferences.")
 		("clobber", "Overwrite existing output. Otherwise, will\n"
 		            "only process pixels with incomplete output.")
 		("verbosity",
@@ -449,6 +451,7 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
 	if(vm.count("synthetic")) { opts.synthetic = true; }
     if(vm.count("sample-stars")) { opts.sample_stars = true; }
 	if(vm.count("save-surfs")) { opts.save_surfs = true; }
+	if(vm.count("save-gridstars")) { opts.save_gridstars = true; }
 	if(vm.count("no-stellar-priors")) { opts.star_priors = false; }
 	if(vm.count("use-gaia")) { opts.use_gaia = true; }
 	if(vm.count("disk-prior")) { opts.disk_prior = true; }
