@@ -52,6 +52,8 @@
 #include "chain.h"
 #include "binner.h"
 
+#include "gaussian_process.h"
+
 
 // Parameters commonly passed to sampling routines
 struct TMCMCOptions {
@@ -137,6 +139,58 @@ struct TLOSMCMCParams {
 };
 
 
+class TNeighborPixels {
+    // Information on a set of nearby pixels
+private:
+    unsigned int n_pix, n_samples, n_dists;
+    double dm_min, dm_max;
+    
+    // shape = (pix, sample, dist)
+    std::vector<double> delta;
+    
+    // Prior stored for each neighbor
+    std::vector<double> prior;
+    
+    // (lon, lat) of neibhoring pixels
+    std::vector<double> lon, lat;
+    
+    // Inverse covariance matrix for each distance
+    std::vector<UniqueMatrixXd> inv_cov;
+    
+    std::vector<double> A_i_given_noti;
+    std::vector<double> inv_var; // shape = (pix, dist)
+    
+public:
+    // Constructor/destructor
+    TNeighborPixels();
+    ~TNeighborPixels();
+    
+    // Getters
+    double get_delta(
+            unsigned int pix,
+            unsigned int sample,
+            unsigned int dist) const;
+    
+    const std::vector<double> get_prior() const;
+    
+    unsigned int get_n_pix() const;
+    unsigned int get_n_samples() const;
+    unsigned int get_n_dists() const;
+    
+    // Setters
+    
+    // Calculate statistics
+    double get_inv_var(unsigned int pix,
+                       unsigned int dist) const;
+    double calc_mean(
+            unsigned int pix,
+            unsigned int dist,
+            const std::vector<uint32_t>& sample) const;
+    
+    // Misc
+    void init_covariance(double scale);
+};
+
 struct TDiscreteLosMcmcParams {
     TImgStack* img_stack;   // Stack of (distance, reddening) posteriors for stars
     double y_zero_idx;		// y-index corresponding to zero reddening
@@ -147,6 +201,7 @@ struct TDiscreteLosMcmcParams {
     unsigned int n_dists, n_E;  // # of distance and reddening pixels, respectively
     unsigned int N_runs;    // # of times to repeat inference (to check convergence)
 	unsigned int N_threads; // # of threads (can be less than # of runs)
+    
 
 	// Priors on Delta E in each distance bin
 	double mu_log_dE, sigma_log_dE;
@@ -174,72 +229,83 @@ struct TDiscreteLosMcmcParams {
 	floating_t log_prior(const int16_t *const y_idx);	// Entire profile
 
 	// Step proposal
-	void los_integral_diff_step(const int16_t x_idx,
-								const int16_t y_idx_old,
-                                const int16_t y_idx_new,
-								double *const delta_line_int_ret);
+	void los_integral_diff_step(
+            const int16_t x_idx,
+            const int16_t y_idx_old,
+            const int16_t y_idx_new,
+            double *const delta_line_int_ret);
 
-	floating_t log_prior_diff_step(const int16_t x_idx,
-							  const int16_t *const y_idx_los_old,
-                              const int16_t y_idx_new);
+	floating_t log_prior_diff_step(
+            const int16_t x_idx,
+            const int16_t *const y_idx_los_old,
+            const int16_t y_idx_new);
 
 	// Swap proposal
-    void los_integral_diff_swap(const int16_t x0_idx,
-								const int16_t *const y_idx,
-                                double *const delta_line_int_ret);
+    void los_integral_diff_swap(
+            const int16_t x0_idx,
+            const int16_t *const y_idx,
+            double *const delta_line_int_ret);
 
-	floating_t log_prior_diff_swap(const int16_t x0_idx,
-		                      const int16_t *const y_idx_los_old);
+	floating_t log_prior_diff_swap(
+            const int16_t x0_idx,
+		    const int16_t *const y_idx_los_old);
 
 	// Shift-right proposal
 	bool shift_r_step_valid(
-		const int16_t x_idx,
-		const int16_t dy,
-		const int16_t *const y_idx_old);
+            const int16_t x_idx,
+            const int16_t dy,
+            const int16_t *const y_idx_old);
 
 	void los_integral_diff_shift_r(
-		const int16_t x_idx,
-		const int16_t dy,
-		const int16_t *const y_idx_old,
-		double *const delta_line_int_ret);
+            const int16_t x_idx,
+            const int16_t dy,
+            const int16_t *const y_idx_old,
+            double *const delta_line_int_ret);
 
 	floating_t log_prior_diff_shift_r(
-		const int16_t x_idx,
-		const int16_t dy,
-	    const int16_t *const y_idx_los_old);
+            const int16_t x_idx,
+            const int16_t dy,
+            const int16_t *const y_idx_los_old);
 
 	// Shift-left proposal
 	bool shift_l_step_valid(
-		const int16_t x_idx,
-		const int16_t dy,
-		const int16_t *const y_idx_old);
+            const int16_t x_idx,
+            const int16_t dy,
+            const int16_t *const y_idx_old);
 
 	void los_integral_diff_shift_l(
-		const int16_t x_idx,
-		const int16_t dy,
-		const int16_t *const y_idx_old,
-		double *const delta_line_int_ret);
+            const int16_t x_idx,
+            const int16_t dy,
+            const int16_t *const y_idx_old,
+            double *const delta_line_int_ret);
 
 	floating_t log_prior_diff_shift_l(
-		const int16_t x_idx,
-		const int16_t dy,
-	    const int16_t *const y_idx_los_old);
+            const int16_t x_idx,
+            const int16_t dy,
+            const int16_t *const y_idx_los_old);
 
 	// Miscellaneous functions
 	void los_integral_diff_shift_compare_operations(
-		const int16_t x_idx,
-		const int16_t dy,
-		const int16_t *const y_idx_old,
-		unsigned int& n_eval_diff,
-		unsigned int& n_eval_cumulative);
+            const int16_t x_idx,
+            const int16_t dy,
+            const int16_t *const y_idx_old,
+            unsigned int& n_eval_diff,
+            unsigned int& n_eval_cumulative);
 
     void guess_EBV_profile_discrete(int16_t *const y_idx_ret, gsl_rng *r);
 
 	void initialize_priors(
-		TGalacticLOSModel& gal_los_model,
-		double log_Delta_EBV_floor,
-		double log_Delta_EBV_ceil,
-		int verbosity=0);
+            TGalacticLOSModel& gal_los_model,
+            double log_Delta_EBV_floor,
+            double log_Delta_EBV_ceil,
+            int verbosity=0);
+    
+    void update_priors_image(
+            const std::vector<double>& mu_log_Delta_EBV,
+            const std::vector<double>& sigma_log_Delta_EBV,
+            double alpha_skew,
+            int subsampling=10,
+            int verbosity=0);
 };
 
 
@@ -272,13 +338,21 @@ void test_extinction_profiles(TLOSMCMCParams &params);
 
 // Sample piecewise-linear model
 
-void sample_los_extinction(const std::string& out_fname, const std::string& group_name,
-                           TMCMCOptions &options, TLOSMCMCParams &params,
-                           int verbosity=1);
+void sample_los_extinction(
+        const std::string& out_fname, const std::string& group_name,
+        TMCMCOptions &options, TLOSMCMCParams &params,
+        int verbosity=1);
 
-double lnp_los_extinction(const double *const Delta_EBV, unsigned int N_regions, TLOSMCMCParams &params);
+double lnp_los_extinction(
+        const double *const Delta_EBV,
+        unsigned int N_regions,
+        TLOSMCMCParams &params);
 
-void gen_rand_los_extinction_from_guess(double *const logEBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
+void gen_rand_los_extinction_from_guess(
+        double *const logEBV,
+        unsigned int N,
+        gsl_rng *r,
+        TLOSMCMCParams &params);
 
 void gen_rand_los_extinction(double *const Delta_EBV, unsigned int N, gsl_rng *r, TLOSMCMCParams &params);
 

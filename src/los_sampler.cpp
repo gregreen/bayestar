@@ -1736,6 +1736,108 @@ float* TLOSMCMCParams::get_Delta_EBV(unsigned int thread_num) {
 }
 
 
+/****************************************************************************************************************************
+ *
+ * TNeighborPixels 
+ *
+ ****************************************************************************************************************************/
+
+
+//void TNeighborPixels::init_neighbor_info(
+//        const std::vector<double>& lon,
+//        const std::vector<double>& lat,
+//        const TGalacticLOSModel& gal_los_model)
+//{
+//    n_neighbors = lon.size();
+//    
+//    double l, b;
+//    gal_los_model.get_lb(l, b);
+//    
+//    neighbor_lon = std::make_shared<std::vector<double> >();
+//    neighbor_lat = std::make_shared<std::vector<double> >();
+//    neighbor_lon.reserve(n_neighbors+1);
+//    neighbor_lat.reserve(n_neighbors+1);
+//    
+//    neighbor_lon->push_back(l);
+//    neighbor_lat->push_back(b);
+//    neighbor_lon->insert(neighbor_lon->end(), lon.begin(), lon.end());
+//    neighbor_lat->insert(neighbor_lon->end(), lon.begin(), lon.end());
+//    
+//    // TODO: Load in real data 
+//    
+//}
+
+
+void TNeighborPixels::init_covariance(
+        double scale)
+{
+    //
+    std::vector<double> dist;
+	double dmu = (dm_max - dm_min) / (double)(n_dists);
+    double mu;
+    for(int i=0; i<n_dists; i++) {
+        mu = dm_min + i * dmu;
+        dist.push_back(std::pow(10., 0.2*mu + 1.));
+    }
+    
+    double scale_coeff = -1. / scale;
+    std::function<double(double)> kernel = [scale_coeff](double d2) -> double {
+        return std::exp(scale_coeff * std::sqrt(d2));
+    };
+    
+    inv_cov.clear();
+    
+    inv_cov_lonlat(lon, lat, dist, kernel, inv_cov);
+    
+    // TODO: Calculate A_cond for central and each neighbor,
+    //       or for i and \i.
+    //conditional_gaussian_scalar(
+    //    SharedMatrixXd& C_inv, 0,
+    //    inv_var, SharedMatrixXd& A_cond);
+    
+    inv_var.clear();
+    inv_var.reserve(n_pix*n_dists);
+    for(int pix=0; pix<n_pix; pix++) {
+        for(int dist=0; dist<n_dists; dist++) {
+            inv_var.push_back((*(inv_cov[dist]))(pix, pix));
+        }
+    }
+}
+
+
+double TNeighborPixels::get_inv_var(
+        unsigned int pix,
+        unsigned int dist) const
+{
+    return inv_var[pix*n_dists + dist];
+}
+
+
+double TNeighborPixels::get_delta(
+        unsigned int pix,
+        unsigned int sample,
+        unsigned int dist) const
+{
+    return delta[(pix*n_samples + sample)*n_dists + dist];
+}
+
+
+double TNeighborPixels::calc_mean(
+        unsigned int pix,
+        unsigned int dist,
+        const std::vector<uint32_t>& sample) const
+{
+    double mu = 0.;
+    for(int i=0; i<pix; i++) {
+        mu += (*(inv_cov[dist]))(pix, i) * get_delta(i, sample[i], dist);
+    }
+    for(int i=pix+1; i<n_pix; i++) {
+        mu += (*(inv_cov[dist]))(pix, i) * get_delta(i, sample[i], dist);
+    }
+    mu *= -1. / get_inv_var(pix, dist);
+    return mu;
+}
+
 
 /****************************************************************************************************************************
  *
@@ -1803,11 +1905,33 @@ void TDiscreteLosMcmcParams::initialize_priors(
 		0.5,
 		verbosity
 	);
+    
+    std::vector<double> mu_log_Delta_EBV;
+    std::vector<double> sigma_log_Delta_EBV;
+    mu_log_Delta_EBV.reserve(n_dists);
+    sigma_log_Delta_EBV.reserve(n_dists);
+    for(int i=0; i<n_dists; i++) {
+        mu_log_Delta_EBV.push_back(los_params.log_Delta_EBV_prior[i]);
+        sigma_log_Delta_EBV.push_back(los_params.sigma_log_Delta_EBV[i]);
+    }
+    update_priors_image(
+            mu_log_Delta_EBV,
+            sigma_log_Delta_EBV,
+            los_params.alpha_skew,
+            10, verbosity);
+}
 
+
+void TDiscreteLosMcmcParams::update_priors_image(
+        const std::vector<double>& mu_log_Delta_EBV,
+        const std::vector<double>& sigma_log_Delta_EBV,
+        double alpha_skew,
+        int subsampling,
+        int verbosity)
+{
 	// Evaluate the probability mass for each (reddening jump, distance)
 	*log_P_dy = cv::Mat::zeros(n_E, n_dists, CV_FLOATING_TYPE);
 	// std::cerr <<
-	int subsampling = 10;
 	double dE0, dE, P_dist;
 	for(int x=0; x<n_dists; x++) {
 		P_dist = 0.;
@@ -1816,10 +1940,10 @@ void TDiscreteLosMcmcParams::initialize_priors(
 			for(int k=0; k<subsampling; k++) {
 				dE = dE0 + (double)k / (double)subsampling * img_stack->rect->dx[0];
 				if(dE > 0) {
-					double score = (log(dE) - los_params.log_Delta_EBV_prior[x])
-								   / los_params.sigma_log_Delta_EBV[x];
+					double score = (log(dE) - mu_log_Delta_EBV[x])
+								   / sigma_log_Delta_EBV[x];
 					double P_tmp = exp(-0.5 * score * score);
-					P_tmp *= 1. + erf(los_params.alpha_skew * score * INV_SQRT2);
+					P_tmp *= 1. + erf(alpha_skew * score * INV_SQRT2);
 					P_tmp /= dE;
 					log_P_dy->at<floating_t>(y, x) += P_tmp;
 				}

@@ -40,8 +40,8 @@
 
 
 void conditional_gaussian_scalar(
-        SharedMatrixXd& C_inv, unsigned int idx,
-        double& inv_var, SharedMatrixXd& A_cond)
+        const Eigen::MatrixXd& C_inv, unsigned int idx,
+        double& inv_var, Eigen::MatrixXd& A_cond)
 {
     // Calculates p(x_i | x_{\i}), where p(x) is a Gaussian,
     // and all the elements of the vector x except x_i are
@@ -59,8 +59,8 @@ void conditional_gaussian_scalar(
     //   A_cond (MatrixXd): A matrix that takes the values
     //                      of x_{\i} and gives the mean x_i.
     
-    inv_var = (*C_inv)(idx, idx);
-    *A_cond = (-1./inv_var) * C_inv->row(idx);
+    inv_var = C_inv(idx, idx);
+    A_cond = (-1./inv_var) * C_inv.row(idx);
 }
 
 
@@ -88,9 +88,9 @@ const double pi_over_180 = 3.141592653589793238 / 180.;
 
 
 void distance_matrix_lonlat(
-        SharedVectord& lon,
-        SharedVectord& lat,
-        SharedMatrixXd& d2)
+        const std::vector<double>& lon,
+        const std::vector<double>& lat,
+        Eigen::MatrixXd& d2)
 {
     // Fills the matrix d2 with the pairwise squared angular
     // distances (in rad) between the given (lon, lat) pairs.
@@ -100,16 +100,16 @@ void distance_matrix_lonlat(
     // great-circle distances.
     
     // Convert (lon, lat) to (x, y, z)
-    uint32_t n_coords = lon->size();
+    uint32_t n_coords = lon.size();
     std::vector<double> xyz;
     xyz.reserve(3*n_coords);
     
     double cos_lon, cos_lat, sin_lon, sin_lat;
     for(int i=0; i<n_coords; i++) {
-        cos_lon = std::cos(pi_over_180*lon->at(i));
-        sin_lon = std::sin(pi_over_180*lon->at(i));
-        cos_lat = std::cos(pi_over_180*lat->at(i));
-        sin_lat = std::sin(pi_over_180*lat->at(i));
+        cos_lon = std::cos(pi_over_180*lon.at(i));
+        sin_lon = std::sin(pi_over_180*lon.at(i));
+        cos_lat = std::cos(pi_over_180*lat.at(i));
+        sin_lat = std::sin(pi_over_180*lat.at(i));
         
         xyz[3*i]   = cos_lon * cos_lat;
         xyz[3*i+1] = sin_lon * cos_lat;
@@ -124,19 +124,19 @@ void distance_matrix_lonlat(
             dy = (xyz[j+1] - xyz[k+1]);
             dz = (xyz[j+2] - xyz[k+2]);
             d2_tmp = dx*dx + dy*dy + dz*dz;
-            (*d2)(j,k) = d2_tmp;
-            (*d2)(k,j) = d2_tmp;
+            d2(j,k) = d2_tmp;
+            d2(k,j) = d2_tmp;
         }
     }
 }
 
 
 void inv_cov_lonlat(
-        SharedVectord& lon,
-        SharedVectord& lat,
-        SharedVectord& dist,
+        const std::vector<double>& lon,
+        const std::vector<double>& lat,
+        const std::vector<double>& dist,
         std::function<double(double)>& kernel,
-        std::vector<SharedMatrixXd>& inv_cov)
+        std::vector<UniqueMatrixXd>& inv_cov)
 {
     // Calculates a set of inverse covariance matrices - one per
     // distance. Each matrix gives the inverse covariance between
@@ -146,16 +146,17 @@ void inv_cov_lonlat(
     // covariance matrices are stored in inv_cov.
 
     // Calculate pairwise angular distances
-    SharedMatrixXd d2_mat = std::make_shared<Eigen::MatrixXd>();
+    Eigen::MatrixXd d2_mat;
     distance_matrix_lonlat(lon, lat, d2_mat);
     
     // Generate one covariance matrix per physical distance
-    for(double d : *dist) {
-        SharedMatrixXd C = std::make_shared<Eigen::MatrixXd>();
-        *C = d2_mat->unaryExpr([kernel, d](double d2) -> double {
+    for(double d : dist) {
+        //UniqueMatrixXd C = std::make_unique<Eigen::MatrixXd>();
+        UniqueMatrixXd C = std::unique_ptr<Eigen::MatrixXd>();
+        *C = d2_mat.unaryExpr([kernel, d](double d2) -> double {
             // Angular distance scaled by physical distance
             return kernel(d*d * d2); 
-        })->inverse();
-        inv_cov.push_back(C);
+        }).inverse();
+        inv_cov.push_back(std::move(C));
     }
 }

@@ -36,26 +36,27 @@
 
 //typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> MatrixXd;
 typedef std::shared_ptr<Eigen::MatrixXd> SharedMatrixXd;
-typedef std::shared_ptr<std::vector<double> > SharedVectord;
+typedef std::unique_ptr<Eigen::MatrixXd> UniqueMatrixXd;
+//typedef std::shared_ptr<std::vector<double> > SharedVectord;
 
 //void conditional_gaussian(MatrixXd& C11, MatrixXd& C12, MatrixXd& C22, MatrixXd& C11_cond, MatrixXd& A_cond);
 
 
 void conditional_gaussian_scalar(
-        SharedMatrixXd& C_inv, unsigned int idx,
-        double& inv_var, SharedMatrixXd& A_cond);
+        const Eigen::MatrixXd& C_inv, unsigned int idx,
+        double& inv_var, Eigen::MatrixXd& A_cond);
 
 void distance_matrix_lonlat(
-        SharedVectord& lon,
-        SharedVectord& lat,
-        SharedMatrixXd& d2);
+        const std::vector<double>& lon,
+        const std::vector<double>& lat,
+        Eigen::MatrixXd& d2);
 
 void inv_cov_lonlat(
-        SharedVectord& lon,
-        SharedVectord& lat,
-        SharedVectord& dist,
+        const std::vector<double>& lon,
+        const std::vector<double>& lat,
+        const std::vector<double>& dist,
         std::function<double(double)>& kernel,
-        std::vector<SharedMatrixXd>& inv_cov);
+        std::vector<UniqueMatrixXd>& inv_cov);
 
 
 #endif // __GAUSSIAN_PROCESS_H_
