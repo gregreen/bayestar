@@ -69,14 +69,11 @@ bool TStellarData::save(const std::string& fname, const std::string& group, cons
 
 	H5::Exception::dontPrint();
 
-	H5::H5File *file = H5Utils::openFile(fname);
-	if(file == NULL) { return false; }
+	std::unique_ptr<H5::H5File> file = H5Utils::openFile(fname);
+	if(!file) { return false; }
 
-	H5::Group *gp = H5Utils::openGroup(file, group);
-	if(gp == NULL) {
-		delete file;
-		return false;
-	}
+	std::unique_ptr<H5::Group> gp = H5Utils::openGroup(*file, group);
+	if(!gp) { return false; }
 
 	/*
 	 *  Photometry
@@ -161,8 +158,6 @@ bool TStellarData::save(const std::string& fname, const std::string& group, cons
 	file->close();
 
 	delete[] data;
-	delete gp;
-	delete file;
 
 	return true;
 }
@@ -199,14 +194,11 @@ void TStellarData::TMagnitudes::set(const TStellarData::TFileData& dat, double e
 
 bool TStellarData::load(const std::string& fname, const std::string& group, const std::string& dset,
 			double err_floor, double default_EBV) {
-	H5::H5File *file = H5Utils::openFile(fname);
-	if(file == NULL) { return false; }
+	std::unique_ptr<H5::H5File> file = H5Utils::openFile(fname);
+	if(!file) { return false; }
 
-	H5::Group *gp = H5Utils::openGroup(file, group);
-	if(gp == NULL) {
-		delete file;
-		return false;
-	}
+	std::unique_ptr<H5::Group> gp = H5Utils::openGroup(*file, group);
+	if(!gp) { return false; }
 
 	H5::DataSet dataset = gp->openDataSet(dset);
 
@@ -364,8 +356,6 @@ bool TStellarData::load(const std::string& fname, const std::string& group, cons
 	if((EBV <= 0.) || (EBV > default_EBV) || std::isnan(EBV)) { EBV = default_EBV; }
 
 	delete[] data_buf;
-	delete gp;
-	delete file;
 
 	return true;
 }
@@ -733,11 +723,9 @@ herr_t fetch_pixel_name(hid_t loc_id, const char *name, void *opdata) {
 }
 
 void get_input_pixels(std::string fname, std::vector<std::string> &pix_name) {
-	H5::H5File *file = H5Utils::openFile(fname, H5Utils::READ);
+	std::unique_ptr<H5::H5File> file = H5Utils::openFile(fname, H5Utils::READ);
 
 	file->iterateElems("/photometry/", NULL, fetch_pixel_name, reinterpret_cast<void*>(&pix_name));
-
-	delete file;
 }
 
 

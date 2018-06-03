@@ -138,12 +138,12 @@ int main(int argc, char **argv) {
 		if(!(opts.clobber)) {
 			bool process_pixel = false;
 
-			H5::H5File *out_file = H5Utils::openFile(
+			std::unique_ptr<H5::H5File> out_file = H5Utils::openFile(
 				opts.output_fname,
 				H5Utils::READ | H5Utils::WRITE | H5Utils::DONOTCREATE
 			);
 
-			if(out_file == NULL) {
+			if(!out_file) {
 				process_pixel = true;
 
 				//cout << "File does not exist" << endl;
@@ -153,40 +153,38 @@ int main(int argc, char **argv) {
 				//group_name << stellar_data.healpix_index;
 				//group_name << stellar_data.nside << "-" << stellar_data.healpix_index;
 
-				H5::Group *pix_group = H5Utils::openGroup(
-					out_file,
+				std::unique_ptr<H5::Group> pix_group = H5Utils::openGroup(
+					*out_file,
 					*it,
 					H5Utils::READ | H5Utils::WRITE | H5Utils::DONOTCREATE
 				);
 
-				if(pix_group == NULL) {
+				if(!pix_group) {
 					process_pixel = true;
 				} else {
 					//cout << "Group exists" << endl;
 
-					if(!H5Utils::dataset_exists("stellar chains", pix_group)) {
+					if(!H5Utils::dataset_exists("stellar chains", *pix_group)) {
 						process_pixel = true;
 					} else {
 						if(opts.save_surfs) {
-							if(!H5Utils::dataset_exists("stellar pdfs", pix_group)) {
+							if(!H5Utils::dataset_exists("stellar pdfs", *pix_group)) {
 								process_pixel = true;
 							}
 						}
 
 						if((!process_pixel) && (opts.N_clouds != 0)) {
-							if(!H5Utils::dataset_exists("clouds", pix_group)) {
+							if(!H5Utils::dataset_exists("clouds", *pix_group)) {
 								process_pixel = true;
 							}
 						}
 
 						if((!process_pixel) && (opts.N_regions != 0)) {
-							if(!H5Utils::dataset_exists("los", pix_group)) {
+							if(!H5Utils::dataset_exists("los", *pix_group)) {
 								process_pixel = true;
 							}
 						}
 					}
-
-					delete pix_group;
 
 					// If pixel is missing data, remove it, so that it can be regenerated
 					if(process_pixel) {
@@ -198,8 +196,6 @@ int main(int argc, char **argv) {
 						}
 					}
 				}
-
-				delete out_file;
 			}
 
 			if(!process_pixel) {
