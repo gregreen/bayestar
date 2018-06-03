@@ -139,58 +139,6 @@ struct TLOSMCMCParams {
 };
 
 
-class TNeighborPixels {
-    // Information on a set of nearby pixels
-private:
-    unsigned int n_pix, n_samples, n_dists;
-    double dm_min, dm_max;
-    
-    // shape = (pix, sample, dist)
-    std::vector<double> delta;
-    
-    // Prior stored for each neighbor
-    std::vector<double> prior;
-    
-    // (lon, lat) of neibhoring pixels
-    std::vector<double> lon, lat;
-    
-    // Inverse covariance matrix for each distance
-    std::vector<UniqueMatrixXd> inv_cov;
-    
-    std::vector<double> A_i_given_noti;
-    std::vector<double> inv_var; // shape = (pix, dist)
-    
-public:
-    // Constructor/destructor
-    TNeighborPixels();
-    ~TNeighborPixels();
-    
-    // Getters
-    double get_delta(
-            unsigned int pix,
-            unsigned int sample,
-            unsigned int dist) const;
-    
-    const std::vector<double> get_prior() const;
-    
-    unsigned int get_n_pix() const;
-    unsigned int get_n_samples() const;
-    unsigned int get_n_dists() const;
-    
-    // Setters
-    
-    // Calculate statistics
-    double get_inv_var(unsigned int pix,
-                       unsigned int dist) const;
-    double calc_mean(
-            unsigned int pix,
-            unsigned int dist,
-            const std::vector<uint32_t>& sample) const;
-    
-    // Misc
-    void init_covariance(double scale);
-};
-
 struct TDiscreteLosMcmcParams {
     TImgStack* img_stack;   // Stack of (distance, reddening) posteriors for stars
     double y_zero_idx;		// y-index corresponding to zero reddening
