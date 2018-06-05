@@ -32,6 +32,7 @@
 #include "sampler.h"
 #include "los_sampler.h"
 #include "star_exact.h"
+#include "neighbor_pixels.h"
 #include "bayestar_config.h"
 #include "program_opts.h"
 
@@ -348,6 +349,17 @@ int main(int argc, char **argv) {
 			}
 
 			if(opts.discrete_los) {
+                if((opts.neighbor_lookup_fname != "NONE") &&
+                   (opts.pixel_lookup_fname != "NONE")) {
+                    // Load information on neighboring pixels
+                    cout << "Loading information on neighboring pixels ..." << endl;
+                    TNeighborPixels neighbor_pixels(
+                        stellar_data.nside,
+                        stellar_data.healpix_index,
+                        opts.neighbor_lookup_fname,
+                        opts.pixel_lookup_fname,
+                        opts.output_fname_pattern);
+                }
 				cout << "Sampling line of sight discretely ..." << endl;
 	            TDiscreteLosMcmcParams discrete_los_params(&img_stack, 1, 1);
 				discrete_los_params.initialize_priors(

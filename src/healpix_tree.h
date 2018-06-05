@@ -28,6 +28,7 @@
 #define _HEALPIX_TREE_H__
 
 
+#include <iostream>
 #include <memory>
 #include <sstream>
 #include <vector>

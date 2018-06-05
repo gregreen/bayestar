@@ -74,6 +74,10 @@ TProgramOpts::TProgramOpts() {
     LF_fname = DATADIR "PSMrLF.dat";
     template_fname = DATADIR "PS1_2MASS_colors.dat";
     ext_model_fname = DATADIR "PS1_2MASS_Extinction.dat";
+    
+    neighbor_lookup_fname = "NONE";
+    pixel_lookup_fname = "NONE";
+    output_fname_pattern = "NONE";
 }
 
 
@@ -249,6 +253,17 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
 		("ext-file",
             po::value<string>(&(opts.ext_model_fname)),
             "File containing extinction coefficients.")
+		
+        ("neighbor-lookup-file",
+            po::value<string>(&(opts.neighbor_lookup_fname)),
+            "Lookup file that maps pixels -> neighboring pixels.")
+        ("pixel-lookup-file",
+            po::value<string>(&(opts.pixel_lookup_fname)),
+            "Lookup file that maps pixels -> files.")
+        ("output-fname-pattern",
+            po::value<string>(&(opts.output_fname_pattern)),
+            ("Filename pattern for previous iteration of \n"
+                "output files. E.g., output.@@@@@.h5."))
 	;
 
 	po::options_description gal_desc(

@@ -28,6 +28,7 @@
 #define _NEIGHBOR_PIXELS_H__
 
 
+#include <iostream>
 #include <string>
 #include <vector>
 #include <memory>
@@ -52,7 +53,7 @@ private:
     
     // Locations of neibhoring pixels
     std::vector<double> lon, lat;
-    std::vector<uint32_t> nside_pix_idx; // Pairs of (nside, pix_idx)
+    std::vector<uint32_t> nside, pix_idx; // Pairs of (nside, pix_idx)
     
     // Inverse covariance matrix for each distance
     std::vector<UniqueMatrixXd> inv_cov;
@@ -62,9 +63,11 @@ private:
     
 public:
     // Constructor/destructor
-    TNeighborPixels(uint32_t nside, uint32_t pix_idx,
+    TNeighborPixels(uint32_t nside_center,
+                    uint32_t pix_idx_center,
                     const std::string& neighbor_lookup_fname,
-                    const std::string& pixel_lookup_fname);
+                    const std::string& pixel_lookup_fname,
+                    const std::string& output_fname_pattern);
     ~TNeighborPixels();
     
     // Getters
@@ -90,9 +93,17 @@ public:
             const std::vector<uint32_t>& sample) const;
     
     // Initialization
-   bool load_neighbor_list(
-            uint32_t nside, uint32_t pix_idx,
+    bool load_neighbor_list(
+            uint32_t nside_center, uint32_t pix_idx_center,
             const std::string& neighbor_lookup_fname);
+    
+    bool lookup_pixel_files(
+            const std::string& pixel_lookup_fname,
+            std::vector<int32_t>& file_idx);
+    
+    bool load_neighbor_los(
+            const std::string& output_fname_pattern,
+            const std::vector<int32_t>& file_idx);
     
     void init_covariance(double scale);
 };

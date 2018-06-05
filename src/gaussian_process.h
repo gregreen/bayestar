@@ -30,6 +30,7 @@
 #include <iostream>
 #include <algorithm>
 #include <memory>
+#include <vector>
 #include <cmath>
 
 #include <Eigen/Dense>

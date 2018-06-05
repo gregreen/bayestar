@@ -50,18 +50,21 @@ void healpix_loc2digits(
     while(nside >>= 1) {
         n_levels++;
     }
+    //std::cerr << "n_levels = " << n_levels << std::endl;
     
     // Read off the digits, from last to first
     digits.resize(n_levels);
-    uint32_t d;
+    uint8_t d;
     
     for(int i=0; i<n_levels-1; i++) {
         d = pix_idx % 4;
+        //std::cerr << "d[" << n_levels-i-1 << "] = " << d << std::endl;
         digits[n_levels-i-1] = d;
         pix_idx = (pix_idx - d) / 4;
     }
     
     d = pix_idx % 12;
+    //std::cerr << "d[0] = " << d << std::endl;
     digits[0] = d;
 }
 
@@ -88,12 +91,15 @@ std::unique_ptr<H5::DataSet> healtree_get_dataset(
     // Find deepest group level present in file
     std::stringstream g;
     //for(; depth<digits.size()-1; depth++) {
-    for(uint8_t d : digits) {
-        g << "/" << d;
+    for(auto d : digits) {
+        //std::cerr << "digit = " << d << std::endl;
+        g << "/" << (uint32_t)d; // uint8_t interpreted by stringstream as char
         if(!H5Utils::group_exists(g.str(), file)) {
             break;
         }
     }
+    
+    std::cerr << "Looking for dataset: " << g.str() << std::endl;
     
     // Load dataset
     return H5Utils::openDataSet(file, g.str());

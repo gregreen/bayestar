@@ -81,6 +81,10 @@ struct TProgramOpts {
 
 	TGalStructParams gal_struct_params;
 
+    string neighbor_lookup_fname;
+    string pixel_lookup_fname;
+    string output_fname_pattern;
+
     TProgramOpts();
 };
 
