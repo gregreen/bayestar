@@ -19,12 +19,12 @@ rm -R CMakeFiles/
 #export LIBRARY_PATH="/n/sw/fasrcsw/apps/Comp/gcc/7.1.0-fasrc01/boost/1.63.0-fasrc01/lib:${LIBRARY_PATH}"
 cmake \
     -DBoost_NO_SYSTEM_PATHS=BOOL:ON \
-    -D_boost_TEST_VERSIONS=1.55 \
-    -DBOOST_ROOT:PATHNAME=/n/sw/fasrcsw/apps/Comp/gcc/4.8.2-fasrc01/boost/1.55.0-fasrc01/ \
-    -DBOOST_LIBRARYDIR=/n/sw/fasrcsw/apps/Comp/gcc/4.8.2-fasrc01/boost/1.55.0-fasrc01/lib/ \
-    -DBOOST_INCLUDEDIR=/n/sw/fasrcsw/apps/Comp/gcc/4.8.2-fasrc01/boost/1.55.0-fasrc01/include/ \
+    -D_boost_TEST_VERSIONS=1.63 \
+    -DBOOST_ROOT:PATHNAME=/n/sw/fasrcsw/apps/Comp/gcc/7.1.0-fasrc01/boost/1.63.0-fasrc01/ \
+    -DBOOST_LIBRARYDIR=/n/sw/fasrcsw/apps/Comp/gcc/7.1.0-fasrc01/boost/1.63.0-fasrc01/lib/ \
+    -DBOOST_INCLUDEDIR=/n/sw/fasrcsw/apps/Comp/gcc/7.1.0-fasrc01/boost/1.63.0-fasrc01/include/ \
     -DBoost_NO_BOOST_CMAKE=BOOL:ON \
-    -DADDITIONAL_LINK_DIRS=/n/sw/fasrcsw/apps/Comp/gcc/4.8.2-fasrc01/boost/1.55.0-fasrc01/lib \
+    -DADDITIONAL_LINK_DIRS=/n/sw/fasrcsw/apps/Comp/gcc/7.1.0-fasrc01/boost/1.63.0-fasrc01/lib \
     .
 
 make VERBOSE=1 -j
