@@ -2472,9 +2472,12 @@ bool discrete_proposal_valid(
 
 
 void sample_los_extinction_discrete(
-		const std::string& out_fname, const std::string& group_name,
-        TMCMCOptions& options, TDiscreteLosMcmcParams& params,
-        int verbosity) {
+		const std::string& out_fname,
+        const std::string& group_name,
+        TMCMCOptions& options,
+        TDiscreteLosMcmcParams& params,
+        int verbosity)
+{
     // Random number generator
     gsl_rng *r;
 	seed_gsl_rng(&r);

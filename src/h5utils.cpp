@@ -50,7 +50,10 @@ int H5Utils::DONOTCREATE = (1 << 2);
  * is returned.
  * 
  */
-std::unique_ptr<H5::H5File> H5Utils::openFile(const std::string& fname, int accessmode) {
+std::unique_ptr<H5::H5File> H5Utils::openFile(
+        const std::string& fname,
+        int accessmode)
+{
 	// Read/Write access
 	if((accessmode & H5Utils::READ) && (accessmode & H5Utils::WRITE)) {
 		try {
@@ -87,7 +90,11 @@ std::unique_ptr<H5::H5File> H5Utils::openFile(const std::string& fname, int acce
  * does not yet exist.
  * 
  */
-std::unique_ptr<H5::Group> H5Utils::openGroup(H5::H5File& file, const std::string& name, int accessmode) {
+std::unique_ptr<H5::Group> H5Utils::openGroup(
+        H5::H5File& file,
+        const std::string& name,
+        int accessmode)
+{
 	// User does not want to create group
 	if(accessmode & H5Utils::DONOTCREATE) {
 		try {
