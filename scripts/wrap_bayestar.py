@@ -2,7 +2,8 @@ import numpy as np, h5py, tempfile, subprocess
 
 def write_infile(filename, mag, err, maglimit,
                  parallax=None, parallax_err=None,
-                 l=90., b=10., EBV_guess=2., access_mode='a'):
+                 l=90., b=10., EBV_guess=2., access_mode='a',
+                 nside=512, pix_idx=1):
     # Prepare output for pixel
     n_stars = len(mag)
     
@@ -31,11 +32,9 @@ def write_infile(filename, mag, err, maglimit,
     
     f = h5py.File(filename, access_mode)
     
-    nside = 512
     nest = True
-    pixIdx = 1
     
-    ds_name = '/photometry/pixel %d-%d' % (nside, pixIdx)
+    ds_name = '/photometry/pixel %d-%d' % (nside, pix_idx)
     ds = f.create_dataset(ds_name, data.shape, data.dtype, chunks=True,
                           compression='gzip', compression_opts=9)
     ds[:] = data[:]
@@ -44,7 +43,7 @@ def write_infile(filename, mag, err, maglimit,
     
     EBV = EBV_guess
     att_f8 = np.array([EBV], dtype='f8')
-    att_u8 = np.array([pixIdx], dtype='u8')
+    att_u8 = np.array([pix_idx], dtype='u8')
     att_u4 = np.array([nside], dtype='u4')
     att_u1 = np.array([nest], dtype='u1')
     
@@ -59,7 +58,8 @@ def write_infile(filename, mag, err, maglimit,
 
 
 def write_true_params(filename, DM, EBV, Mr, FeH,
-                      l=90., b=10., access_mode='a'):
+                      l=90., b=10., access_mode='a',
+                      nside=512, pix_idx=1):
     # Prepare output for pixel
     n_stars = len(DM)
     
@@ -77,11 +77,9 @@ def write_true_params(filename, DM, EBV, Mr, FeH,
     
     f = h5py.File(filename, access_mode)
     
-    pixIdx = 1
-    nside = 512
     nest = True
     
-    ds_name = '/parameters/pixel %d-%d' % (nside, pixIdx)
+    ds_name = '/parameters/pixel %d-%d' % (nside, pix_idx)
     ds = f.create_dataset(ds_name, data.shape, data.dtype, chunks=True,
                           compression='gzip', compression_opts=9)
     ds[:] = data[:]
@@ -90,7 +88,7 @@ def write_true_params(filename, DM, EBV, Mr, FeH,
     
     EBV = 0.
     att_f8 = np.array([EBV], dtype='f8')
-    att_u8 = np.array([pixIdx], dtype='u8')
+    att_u8 = np.array([pix_idx], dtype='u8')
     att_u4 = np.array([nside], dtype='u4')
     att_u1 = np.array([nest], dtype='u1')
     

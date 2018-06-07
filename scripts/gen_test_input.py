@@ -30,6 +30,8 @@ from scipy.special import erf
 from scipy.interpolate import interp1d, InterpolatedUnivariateSpline
 from scipy.integrate import quad
 
+import healpy as hp
+
 import matplotlib.pyplot as plt
 import matplotlib as mplib
 
@@ -179,7 +181,7 @@ def draw_from_model(l, b, N, EBV_spread=0.02,
         if EBV_uniform:
             ret['EBV'][idx] += 2. * np.random.random(size=idx.size)
         else:
-            if EBV_of_mu != None:
+            if EBV_of_mu is not None:
                 ret['EBV'][idx] += EBV_of_mu(ret['DM'][idx]) #+ np.random.normal(scale=EBV_spread, size=size)
             ret['EBV'][idx] += EBV_spread * np.random.chisquare(1., size)
 
@@ -351,6 +353,8 @@ def main():
     parser.add_argument('-lb', '--gal-lb', type=float, nargs=2,
                         metavar='deg', default=(90., 10.),
                         help='Galactic latitude and longitude, in degrees.')
+    parser.add_argument('-hp', '--healpix', type=int, nargs=2,
+                        help='HEALPix (nside, pixel index).')
     parser.add_argument('-EBV', '--mean-EBV', type=float, default=0.02,
                         metavar='mags', help='Mean E(B-V) extinction.')
     parser.add_argument('--EBV-uniform', action='store_true',
@@ -390,19 +394,31 @@ def main():
 
     model_kwargs = {'fh':fh}
 
-    if LF_fname != None:
+    if LF_fname is not None:
         model_kwargs['LF_fname'] = LF_fname
+    
+    # Determine coordinates
+    if args.healpix is not None:
+        gal_lb = hp.pixelfunc.pix2ang(
+            args.healpix[0],
+            args.healpix[1],
+            nest=True,
+            lonlat=True)
+        nside, pix_idx = args.healpix
+    else:
+        gal_lb = args.gal_lb
+        nside, pix_idx = 512, 1
 
     # Determine number of stars to draw
     redraw = False
     N_stars = None
 
-    if args.N == None:
-        if args.radius == None:
+    if args.N is None:
+        if args.radius is None:
             print 'Either -N or -rad must be specified'
 
         model = TGalacticModel(**model_kwargs)
-        N_stars = model.tot_num_stars(args.gal_lb[0], args.gal_lb[1], args.radius)
+        N_stars = model.tot_num_stars(gal_lb[0], gal_lb[1], args.radius)
         N_stars = np.random.poisson(lam=N_stars)
     else:
         if args.radius is not None:
@@ -450,7 +466,7 @@ def main():
         #params = draw_flat(values.N, EBV_spread=args.mean_EBV,
         #                   r_max=values.max_r, EBV_of_mu=EBV_of_mu)
     else:
-        params = draw_from_model(args.gal_lb[0], args.gal_lb[1],
+        params = draw_from_model(gal_lb[0], gal_lb[1],
                                  N_stars, EBV_spread=args.mean_EBV,
                                  mag_lim=args.limiting_mag, EBV_of_mu=EBV_of_mu,
                                  EBV_uniform=args.EBV_uniform, redraw=redraw,
@@ -462,7 +478,7 @@ def main():
     #params['mag'][:,4] -= 0.05
 
     # Write Bayestar input file
-    if args.output != None:
+    if args.output is not None:
         mag_lim = np.array(args.limiting_mag)
         mag_lim.shape = (1, 8)
         mag_lim = np.repeat(mag_lim, len(params), axis=0)
@@ -474,13 +490,16 @@ def main():
             parallax_err = params['pi_err']
         write_infile(args.output, params['mag'], params['err'], mag_lim,
                      parallax=parallax, parallax_err=parallax_err,
-                     l=args.gal_lb[0], b=args.gal_lb[1],
-                     access_mode='w')
+                     l=gal_lb[0], b=gal_lb[1],
+                     #access_mode='w',
+                     nside=nside,
+                     pix_idx=pix_idx)
 
         # Write true parameter values
         write_true_params(args.output, params['DM'], params['EBV'],
                           params['Mr'], params['FeH'],
-                          l=args.gal_lb[0], b=args.gal_lb[1])
+                          l=gal_lb[0], b=gal_lb[1],
+                          nside=nside, pix_idx=pix_idx)
 
     header = '''# Format:
 # l  b
@@ -489,14 +508,14 @@ def main():
 # DM  E(B-V)  Mr  FeH
 # ...'''
     #print header
-    #print '%.3f  %.3f' % (args.gal_lb[0], args.gal_lb[1])
+    #print '%.3f  %.3f' % (gal_lb[0], gal_lb[1])
     #for p in params:
     #   print '%.3f  %.3f  %.3f  %.3f' % (p['DM'], p['EBV'], p['Mr'], p['FeH']), p['mag'], p['err']
 
     if args.show:
         model = TGalacticModel(**model_kwargs)
-        l = np.pi/180. * args.gal_lb[0]
-        b = np.pi/180. * args.gal_lb[1]
+        l = np.pi/180. * gal_lb[0]
+        b = np.pi/180. * gal_lb[1]
         cos_l, sin_l = np.cos(l), np.sin(l)
         cos_b, sin_b = np.cos(b), np.sin(b)
         dN_dDM = lambda mu: model.dn_dDM(mu, cos_l, sin_l, cos_b, sin_b)
