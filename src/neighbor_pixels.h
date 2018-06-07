@@ -33,6 +33,7 @@
 #include <vector>
 #include <memory>
 #include <cmath>
+#include <cassert>
 
 #include "gaussian_process.h"
 #include "healpix_tree.h"
@@ -83,6 +84,11 @@ public:
     unsigned int get_n_dists() const;
     
     // Setters
+    void set_delta(
+            double value,
+            unsigned int pix,
+            unsigned int sample,
+            unsigned int dist);
     
     // Calculate statistics
     double get_inv_var(unsigned int pix,
@@ -104,6 +110,16 @@ public:
     bool load_neighbor_los(
             const std::string& output_fname_pattern,
             const std::vector<int32_t>& file_idx);
+    
+    void apply_priors(
+            const std::vector<double>& mu,
+            const std::vector<double>& sigma,
+            double reddening_scale);
+    
+    void apply_priors(
+            const std::vector<double>& mu,
+            double sigma,
+            double reddening_scale);
     
     void init_covariance(double scale);
 };

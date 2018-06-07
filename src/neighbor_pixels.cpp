@@ -41,8 +41,13 @@ TNeighborPixels::TNeighborPixels(
         const std::string& pixel_lookup_fname,
         const std::string& output_fname_pattern)
 {
-    // TODO
-
+    // Initialize some variables to dummy values
+    n_pix = 0;
+    n_samples = 0;
+    n_dists = 0;
+    dm_min = -99.;
+    dm_max = -99.;
+    
     // Lookup neighboring pixels
     bool status;
     status = load_neighbor_list(
@@ -58,7 +63,8 @@ TNeighborPixels::TNeighborPixels(
     std::vector<int32_t> file_idx;
     status = lookup_pixel_files(pixel_lookup_fname, file_idx);
     if(!status) {
-        std::cerr << "Failed to load list of output files containing neighbors!"
+        std::cerr << "Failed to load list of output files "
+                  << "containing neighbors!"
                   << std::endl;
     }
 
@@ -239,8 +245,8 @@ bool TNeighborPixels::load_neighbor_los(
         const std::string& output_fname_pattern,
         const std::vector<int32_t>& file_idx)
 {
-    // Datatype
-    H5::DataType dtype = H5::PredType::NATIVE_DOUBLE;
+    // Set number of pixels
+    n_pix = file_idx.size();
     
     // Do an argsort of the file indices, so that all the pixels
     // that reside in the same file will be handled in a row
@@ -257,6 +263,8 @@ bool TNeighborPixels::load_neighbor_los(
     for(auto p : file_idx_sort) {
         int32_t fidx = p.first;
         int32_t i = p.second;
+        uint32_t nside_current = nside.at(i);
+        uint32_t pix_idx_current = pix_idx.at(i);
         
         if(fidx < 0) { continue; } // Ignore invalid file indices
         
@@ -279,9 +287,132 @@ bool TNeighborPixels::load_neighbor_los(
             }
             file_idx_current = fidx;
         }
+        
+        // Load l.o.s. dataset
+        std::stringstream dset_name;
+        dset_name << "/pixel " << nside_current << "-" << pix_idx_current
+                  << "/discrete-los";
+        std::unique_ptr<H5::DataSet> dataset = H5Utils::openDataSet(*f, dset_name.str());
+        if(!dataset) {
+            std::cerr << "Failed to open dataset "
+                      << dset_name.str()
+                      << " !" << std::endl;
+            return false;
+        }
+
+        // Dataspace
+        hsize_t dims[3]; // (null, GR best samples, prob distances)
+        H5::DataSpace dataspace = dataset->getSpace();
+        dataspace.getSimpleExtentDims(&(dims[0]));
+        hsize_t length = dims[0] * dims[1] * dims[2];
+        
+        // Set dimensions
+        if(n_samples == 0) {
+            n_samples = dims[1] - 2;
+        }
+        if(n_dists == 0) {
+            n_dists = dims[0] - 1;
+        }
+        
+        // Check dimensions
+        if(dims[0] != 1) {
+            std::cerr << "Dimension 0 of dataset " << dset_name.str()
+                      << " should be 1 (is " << dims[0] << ")!"
+                      << std::endl;
+            return false;
+        }
+        if(dims[1] < n_samples+2) {
+            std::cerr << "Not enough samples in dataset "
+                      << dset_name.str()
+                      << " !" << std::endl;
+            return false;
+        }
+        if(dims[2] < n_dists+1) {
+            std::cerr << "Not enough distance bins in dataset "
+                      << dset_name.str()
+                      << " !" << std::endl;
+            return false;
+        }
+        
+        // Read in dataset
+        float* buf = new float[length];
+        dataset->read(buf, H5::PredType::NATIVE_FLOAT);
+        
+        // Copy into class data structure
+        uint32_t buf_idx;
+        for(int sample=0; sample<n_samples; sample++) {
+            for(int dist=0; dist<n_dists; dist++) {
+                buf_idx = dims[2] * (sample+2) + (dist+1);
+                set_delta(buf[buf_idx], i, sample, dist);
+            }
+        }
     }
     
     return true;
+}
+
+
+void TNeighborPixels::apply_priors(
+        const std::vector<double>& mu,
+        const std::vector<double>& sigma,
+        double reddening_scale)
+{
+    // Transforms the stored deltas from raw cumulative reddenings,
+    // in units of pixels, to scores for the log-normal prior.
+    // First, cumulative reddenings are transformed into differential
+    // reddenings. Then, the log is taken, the mean of the log reddening
+    // is subtracted out, and the result is divided by sigma.
+
+    assert( mu.size() == sigma.size() );
+    assert( mu.size() == n_dists );
+    
+    double d;
+    double log_scale = log(reddening_scale);
+    
+    for(int dist=0; dist<n_dists; dist++) {
+        for(int pix=0; pix<n_pix; pix++) {
+            for(int sample=0; sample<n_samples; sample++) {
+                // Calculate the increase in reddening at this distance
+                d = get_delta(pix, sample, dist);
+                if(dist != 0) {
+                    d -= get_delta(pix, sample, dist-1);
+                }
+                
+                if((d < 1.e-5) && (mu.at(dist) < log_scale)) {
+                    // If the inferred reddening is zero, and the
+                    // prior on the mean of the log reddening is less
+                    // than one pixel, then no penalty.
+                    d = 0;
+                } else if(d < 1.e-5) {
+                    // If the inferred reddening is zero, but the
+                    // prior on the mean of the log reddening is greater
+                    // than one pixel, then impose a penalty that
+                    // increases smoothly. This essentially assumes that
+                    // the inferred reddening is one pixel.
+                    d = (log_scale - mu.at(dist)) / sigma.at(dist);
+                } else {
+                    // The normal case: inferred reddening is greater than
+                    // zero.
+                    d = (log_scale + log(d) - mu.at(dist)) / sigma.at(dist);
+                }
+                set_delta(d, pix, sample, dist);
+            }
+        }
+    }
+}
+
+
+void TNeighborPixels::apply_priors(
+            const std::vector<double>& mu,
+            double sigma,
+            double reddening_scale)
+{
+    std::vector<double> s;
+    s.reserve(mu.size());
+    for(int i=0; i<mu.size(); i++) {
+        s.push_back(sigma);
+    }
+    apply_priors(mu, s, reddening_scale);
 }
 
 
@@ -311,17 +442,25 @@ bool TNeighborPixels::load_neighbor_los(
 void TNeighborPixels::init_covariance(
         double scale)
 {
+    // For each distance, initializes the covariance matrix
+    // describing the correlations between neighboring pixels.
     //
-    std::vector<double> dist;
+    // Input:
+    //     scale: Correlation scale, in pc.
+
+    // Calculate the distances
+    std::vector<double> dist;   // In pc
 	double dmu = (dm_max - dm_min) / (double)(n_dists);
-    double mu;
+    double mu;  // Distance modulus, in mag
     for(int i=0; i<n_dists; i++) {
         mu = dm_min + i * dmu;
         dist.push_back(std::pow(10., 0.2*mu + 1.));
     }
     
     double scale_coeff = -1. / scale;
-    std::function<double(double)> kernel = [scale_coeff](double d2) -> double {
+    std::function<double(double)> kernel
+        = [scale_coeff](double d2) -> double
+    {
         return std::exp(scale_coeff * std::sqrt(d2));
     };
     
@@ -349,6 +488,9 @@ double TNeighborPixels::get_inv_var(
         unsigned int pix,
         unsigned int dist) const
 {
+    // Returns 1/sigma^2 for the specified (pixel, distance bin)
+    // combination.
+
     return inv_var[pix*n_dists + dist];
 }
 
@@ -362,11 +504,32 @@ double TNeighborPixels::get_delta(
 }
 
 
+void TNeighborPixels::set_delta(
+        double value,
+        unsigned int pix,
+        unsigned int sample,
+        unsigned int dist)
+{
+    delta[(pix*n_samples + sample)*n_dists + dist] = value;
+}
+
+
 double TNeighborPixels::calc_mean(
         unsigned int pix,
         unsigned int dist,
         const std::vector<uint32_t>& sample) const
 {
+    // Calculates the mean of the specified pixel, given that
+    // the specified samples are chosen for the other pixels.
+    //
+    // Inputs:
+    //     pix: index of pixel to compute mean for
+    //     dist: distance bin to compute mean for
+    //     sample: Which sample to choose for each pixel. Should
+    //             have the same length as the total number of
+    //             pixels. The pixel corresponding to `pix` will
+    //             be ignored.
+    
     double mu = 0.;
     for(int i=0; i<pix; i++) {
         mu += (*(inv_cov[dist]))(pix, i) * get_delta(i, sample[i], dist);

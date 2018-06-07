@@ -262,6 +262,8 @@ int main(int argc, char **argv) {
 		try {
 			H5Utils::add_watermark<uint32_t>(opts.output_fname, group_name.str(), "nside", stellar_data.nside);
 			H5Utils::add_watermark<uint64_t>(opts.output_fname, group_name.str(), "healpix_index", stellar_data.healpix_index);
+			H5Utils::add_watermark<double>(opts.output_fname, group_name.str(), "l", stellar_data.l);
+			H5Utils::add_watermark<double>(opts.output_fname, group_name.str(), "b", stellar_data.b);
 		} catch(H5::AttributeIException err_att_exists) { }
 
 		// Filter based on goodness-of-fit and convergence
@@ -350,7 +352,9 @@ int main(int argc, char **argv) {
 
 			if(opts.discrete_los) {
                 if((opts.neighbor_lookup_fname != "NONE") &&
-                   (opts.pixel_lookup_fname != "NONE")) {
+                   (opts.pixel_lookup_fname != "NONE") &&
+                   (opts.output_fname_pattern != "NONE"))
+                {
                     // Load information on neighboring pixels
                     cout << "Loading information on neighboring pixels ..." << endl;
                     TNeighborPixels neighbor_pixels(
