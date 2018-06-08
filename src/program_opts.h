@@ -17,69 +17,69 @@ using namespace std;
 
 
 struct TProgramOpts {
-	string input_fname;
-	string output_fname;
+    string input_fname;
+    string output_fname;
 
-	bool save_surfs;
+    bool save_surfs;
     bool save_gridstars;
 
-	double err_floor;  // in millimags
+    double err_floor;  // in millimags
 
-	bool synthetic;
+    bool synthetic;
     bool sample_stars;
-	unsigned int star_steps;
-	unsigned int star_samplers;
-	double star_p_replacement;
-	double min_EBV;    // in mags
-	bool star_priors;
+    unsigned int star_steps;
+    unsigned int star_samplers;
+    double star_p_replacement;
+    double min_EBV;    // in mags
+    bool star_priors;
     bool use_gaia;
 
-	double sigma_RV;
-	double mean_RV;
+    double sigma_RV;
+    double mean_RV;
 
-	//double smoothing_slope;
-	double smoothing_alpha_coeff[2];
-	double smoothing_beta_coeff[2];
-	double pct_smoothing_min;
-	double pct_smoothing_max;
+    //double smoothing_slope;
+    double smoothing_alpha_coeff[2];
+    double smoothing_beta_coeff[2];
+    double pct_smoothing_min;
+    double pct_smoothing_max;
 
-	bool discrete_los;
-	unsigned int discrete_steps;
+    bool discrete_los;
+    unsigned int discrete_steps;
 
-	unsigned int N_regions;
-	unsigned int los_steps;
-	unsigned int los_samplers;
-	double los_p_replacement;
+    unsigned int N_regions;
+    unsigned int los_steps;
+    unsigned int los_samplers;
+    double los_p_replacement;
 
-	unsigned int N_clouds;
-	unsigned int cloud_steps;
-	unsigned int cloud_samplers;
-	double cloud_p_replacement;
+    unsigned int N_clouds;
+    unsigned int cloud_steps;
+    unsigned int cloud_samplers;
+    double cloud_p_replacement;
 
-	bool disk_prior;
-	double log_Delta_EBV_floor;
-	double log_Delta_EBV_ceil;
+    bool disk_prior;
+    double log_Delta_EBV_floor;
+    double log_Delta_EBV_ceil;
 
-	bool SFD_prior;
-	bool SFD_subpixel;
-	double subpixel_max;
-	double ev_cut;
+    bool SFD_prior;
+    bool SFD_subpixel;
+    double subpixel_max;
+    double ev_cut;
     double chi2_cut;
 
-	unsigned int N_runs;
-	unsigned int N_threads;
+    unsigned int N_runs;
+    unsigned int N_threads;
 
-	bool clobber;
+    bool clobber;
 
-	bool test_mode;
+    bool test_mode;
 
-	int verbosity;
+    int verbosity;
 
-	string LF_fname;
-	string template_fname;
-	string ext_model_fname;
+    string LF_fname;
+    string template_fname;
+    string ext_model_fname;
 
-	TGalStructParams gal_struct_params;
+    TGalStructParams gal_struct_params;
 
     string neighbor_lookup_fname;
     string pixel_lookup_fname;
