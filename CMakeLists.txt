@@ -57,7 +57,7 @@ ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
 # Non-compiler-specific flags
 #
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11 ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++14 ")
 
 #
 # Standard revision, ABI, etc.
