@@ -93,6 +93,7 @@ public:
     // Calculate statistics
     double get_inv_var(unsigned int pix,
                        unsigned int dist) const;
+
     double calc_mean(
             unsigned int pix,
             unsigned int dist,
@@ -120,6 +121,18 @@ public:
             const std::vector<double>& mu,
             double sigma,
             double reddening_scale);
+
+    void apply_priors_indiv(
+            const std::vector<double>& mu,
+            const std::vector<double>& sigma,
+            double reddening_scale,
+            int pix,
+            int sample);
+    
+    void apply_priors_inner(
+            int pix, int sample, int dist,
+            double mu, double sigma,
+            double log_scale);
     
     void init_covariance(double scale);
 };

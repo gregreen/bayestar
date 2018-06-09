@@ -45,8 +45,8 @@ TNeighborPixels::TNeighborPixels(
     n_pix = 0;
     n_samples = 0;
     n_dists = 0;
-    dm_min = -99.;
-    dm_max = -99.;
+    dm_min = -9999.;
+    dm_max = -9999.;
     
     // Lookup neighboring pixels
     bool status;
@@ -167,7 +167,7 @@ bool TNeighborPixels::lookup_pixel_files(
         std::vector<int32_t>& file_idx)
 {
     // Load the lookup table for (nside, pix_idx) -> file_idx
-	std::unique_ptr<H5::H5File> f = H5Utils::openFile(
+    std::unique_ptr<H5::H5File> f = H5Utils::openFile(
             pixel_lookup_fname,
             H5Utils::READ);
     if(!f) {
@@ -184,7 +184,7 @@ bool TNeighborPixels::lookup_pixel_files(
     H5::DataType dtype = H5::PredType::NATIVE_INT32;
     
     // Loop through neighboring pixels
-    for(int i=0; i<nside.size(); i+=2) {
+    for(int i=0; i<nside.size(); i++) {
         std::unique_ptr<H5::DataSet> dataset = healtree_get_dataset(
                 *f, nside.at(i), pix_idx.at(i));
         if(!dataset) {
@@ -253,6 +253,7 @@ bool TNeighborPixels::load_neighbor_los(
     std::vector<std::pair<int32_t,int32_t> > file_idx_sort;
     for(int32_t i=0; i<file_idx.size(); i++) {
         file_idx_sort.push_back(std::make_pair(file_idx.at(i), i));
+        std::cerr << "file_idx[" << i << "] = " << file_idx.at(i) << std::endl;
     }
     std::sort(file_idx_sort.begin(), file_idx_sort.end());
     
@@ -266,6 +267,7 @@ bool TNeighborPixels::load_neighbor_los(
         uint32_t nside_current = nside.at(i);
         uint32_t pix_idx_current = pix_idx.at(i);
         
+        // TODO: Ignore invalid file indices before setting n_pix
         if(fidx < 0) { continue; } // Ignore invalid file indices
         
         // Only open a new file when necessary
@@ -287,11 +289,12 @@ bool TNeighborPixels::load_neighbor_los(
             }
             file_idx_current = fidx;
         }
-        
+
         // Load l.o.s. dataset
+        std::stringstream group_name;
+        group_name << "/pixel " << nside_current << "-" << pix_idx_current;
         std::stringstream dset_name;
-        dset_name << "/pixel " << nside_current << "-" << pix_idx_current
-                  << "/discrete-los";
+        dset_name << group_name.str() << "/discrete-los";
         std::unique_ptr<H5::DataSet> dataset = H5Utils::openDataSet(*f, dset_name.str());
         if(!dataset) {
             std::cerr << "Failed to open dataset "
@@ -311,7 +314,7 @@ bool TNeighborPixels::load_neighbor_los(
             n_samples = dims[1] - 2;
         }
         if(n_dists == 0) {
-            n_dists = dims[0] - 1;
+            n_dists = dims[2] - 1;
         }
         
         // Check dimensions
@@ -339,6 +342,10 @@ bool TNeighborPixels::load_neighbor_los(
         dataset->read(buf, H5::PredType::NATIVE_FLOAT);
         
         // Copy into class data structure
+        if(delta.size() == 0) {
+            delta.resize(n_pix * n_samples * n_dists);
+        }
+
         uint32_t buf_idx;
         for(int sample=0; sample<n_samples; sample++) {
             for(int dist=0; dist<n_dists; dist++) {
@@ -346,6 +353,29 @@ bool TNeighborPixels::load_neighbor_los(
                 set_delta(buf[buf_idx], i, sample, dist);
             }
         }
+        
+        std::cerr << "Loaded output from " << dset_name.str()
+                  << std::endl;
+
+        // Load attributes
+        if(dm_min < -99.) {
+            dm_min = H5Utils::read_attribute<double>(*dataset, "DM_min");
+        }
+        if(dm_max < -99.) {
+            dm_max = H5Utils::read_attribute<double>(*dataset, "DM_max");
+        }
+
+        double lon_tmp, lat_tmp;
+        H5::Group group = f->openGroup(group_name.str());
+        H5::Attribute att_lon = group.openAttribute("l");
+        att_lon.read(H5::PredType::NATIVE_DOUBLE, &lon_tmp);
+        H5::Attribute att_lat = group.openAttribute("b");
+        att_lat.read(H5::PredType::NATIVE_DOUBLE, &lat_tmp);
+        lon.push_back(lon_tmp);
+        lat.push_back(lat_tmp);
+        
+        std::cerr << "Loaded attributes related to " << dset_name.str()
+                  << std::endl;
     }
     
     return true;
@@ -366,39 +396,50 @@ void TNeighborPixels::apply_priors(
     assert( mu.size() == sigma.size() );
     assert( mu.size() == n_dists );
     
-    double d;
     double log_scale = log(reddening_scale);
     
-    for(int dist=0; dist<n_dists; dist++) {
+    for(int dist=n_dists-1; dist != -1; dist--) {
         for(int pix=0; pix<n_pix; pix++) {
             for(int sample=0; sample<n_samples; sample++) {
-                // Calculate the increase in reddening at this distance
-                d = get_delta(pix, sample, dist);
-                if(dist != 0) {
-                    d -= get_delta(pix, sample, dist-1);
-                }
-                
-                if((d < 1.e-5) && (mu.at(dist) < log_scale)) {
-                    // If the inferred reddening is zero, and the
-                    // prior on the mean of the log reddening is less
-                    // than one pixel, then no penalty.
-                    d = 0;
-                } else if(d < 1.e-5) {
-                    // If the inferred reddening is zero, but the
-                    // prior on the mean of the log reddening is greater
-                    // than one pixel, then impose a penalty that
-                    // increases smoothly. This essentially assumes that
-                    // the inferred reddening is one pixel.
-                    d = (log_scale - mu.at(dist)) / sigma.at(dist);
-                } else {
-                    // The normal case: inferred reddening is greater than
-                    // zero.
-                    d = (log_scale + log(d) - mu.at(dist)) / sigma.at(dist);
-                }
-                set_delta(d, pix, sample, dist);
+                apply_priors_inner(
+                    pix, sample, dist,
+                    mu.at(dist), sigma.at(dist),
+                    log_scale);
             }
         }
     }
+}
+
+
+void TNeighborPixels::apply_priors_inner(
+        int pix, int sample, int dist,
+        double mu, double sigma,
+        double log_scale)
+{
+    // Calculate the increase in reddening at this distance
+    double d = get_delta(pix, sample, dist);
+    if(dist != 0) {
+        d -= get_delta(pix, sample, dist-1);
+    }
+    
+    if((d < 1.e-5) && (mu < log_scale)) {
+        // If the inferred reddening is zero, and the
+        // prior on the mean of the log reddening is less
+        // than one pixel, then no penalty.
+        d = 0;
+    } else if(d < 1.e-5) {
+        // If the inferred reddening is zero, but the
+        // prior on the mean of the log reddening is greater
+        // than one pixel, then impose a penalty that
+        // increases smoothly. This essentially assumes that
+        // the inferred reddening is one pixel.
+        d = (log_scale - mu) / sigma;
+    } else {
+        // The normal case: inferred reddening is greater than
+        // zero.
+        d = (log_scale + log(d) - mu) / sigma;
+    }
+    set_delta(d, pix, sample, dist);
 }
 
 
@@ -413,6 +454,23 @@ void TNeighborPixels::apply_priors(
         s.push_back(sigma);
     }
     apply_priors(mu, s, reddening_scale);
+}
+
+
+void TNeighborPixels::apply_priors_indiv(
+        const std::vector<double>& mu,
+        const std::vector<double>& sigma,
+        double reddening_scale,
+        int pix,
+        int sample)
+{
+    double log_scale = log(reddening_scale);
+    for(int dist=n_dists-1; dist != -1; dist--) {
+        apply_priors_inner(
+            pix, sample, dist,
+            mu.at(dist), sigma.at(dist),
+            log_scale);
+    }
 }
 
 
@@ -449,13 +507,22 @@ void TNeighborPixels::init_covariance(
     //     scale: Correlation scale, in pc.
 
     // Calculate the distances
+    std::cerr << "Calculating distances ..." << std::endl;
+    
     std::vector<double> dist;   // In pc
-	double dmu = (dm_max - dm_min) / (double)(n_dists);
+    double dmu = (dm_max - dm_min) / (double)(n_dists);
     double mu;  // Distance modulus, in mag
+    std::cerr << "dm in (" << dm_min << ", " << dm_max << ")" << std::endl;
     for(int i=0; i<n_dists; i++) {
         mu = dm_min + i * dmu;
         dist.push_back(std::pow(10., 0.2*mu + 1.));
     }
+
+    std::cerr << std::endl << "(lon,lat) of neighbors:" << std::endl;
+    for(int i=0; i<lon.size(); i++) {
+        std::cerr << "(" << lon.at(i) << ", " << lat.at(i) << ")" << std::endl;
+    }
+    std::cerr << std::endl;
     
     double scale_coeff = -1. / scale;
     std::function<double(double)> kernel
@@ -464,8 +531,9 @@ void TNeighborPixels::init_covariance(
         return std::exp(scale_coeff * std::sqrt(d2));
     };
     
+    std::cerr << "Initializing covariance matrices ..." << std::endl;
+
     inv_cov.clear();
-    
     inv_cov_lonlat(lon, lat, dist, kernel, inv_cov);
     
     // TODO: Calculate A_cond for central and each neighbor,
@@ -474,6 +542,8 @@ void TNeighborPixels::init_covariance(
     //    SharedMatrixXd& C_inv, 0,
     //    inv_var, SharedMatrixXd& A_cond);
     
+    std::cerr << "Reading off inverse variances ..." << std::endl;
+
     inv_var.clear();
     inv_var.reserve(n_pix*n_dists);
     for(int pix=0; pix<n_pix; pix++) {
@@ -481,6 +551,8 @@ void TNeighborPixels::init_covariance(
             inv_var.push_back((*(inv_cov[dist]))(pix, pix));
         }
     }
+    
+    std::cerr << "Done initializing covariance matrices." << std::endl;
 }
 
 
@@ -530,6 +602,10 @@ double TNeighborPixels::calc_mean(
     //             pixels. The pixel corresponding to `pix` will
     //             be ignored.
     
+    //std::cerr << "(pix, dist) = (" << pix << ", " << dist << ")" << std::endl;
+    //std::cerr << "inv_cov[dist].shape = (" << inv_cov[dist]->rows()
+    //          << ", " << inv_cov[dist]->cols() << ")" << std::endl;
+
     double mu = 0.;
     for(int i=0; i<pix; i++) {
         mu += (*(inv_cov[dist]))(pix, i) * get_delta(i, sample[i], dist);
@@ -541,4 +617,18 @@ double TNeighborPixels::calc_mean(
     return mu;
 }
 
+
+unsigned int TNeighborPixels::get_n_pix() const {
+    return n_pix;
+}
+
+
+unsigned int TNeighborPixels::get_n_samples() const {
+    return n_samples;
+}
+
+
+unsigned int TNeighborPixels::get_n_dists() const {
+    return n_dists;
+}
 

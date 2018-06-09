@@ -85,6 +85,8 @@ struct TProgramOpts {
     string pixel_lookup_fname;
     string output_fname_pattern;
 
+    double correlation_scale;
+
     TProgramOpts();
 };
 

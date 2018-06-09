@@ -49,6 +49,23 @@ namespace H5Utils {
 	H5::Attribute openAttribute(H5::DataSet& dataset, const std::string& name, H5::DataType& dtype, H5::DataSpace& dspace);
 	H5::Attribute openAttribute(H5::Group& group, const std::string& name, H5::StrType& strtype, H5::DataSpace& dspace);
 	H5::Attribute openAttribute(H5::DataSet& dataset, const std::string& name, H5::StrType& strtype, H5::DataSpace& dspace);
+
+        // Read attribute from dataset
+        template<class T>
+        T read_attribute(H5::DataSet& dataset, const std::string& name);
+        
+        template<>
+        double read_attribute<double>(H5::DataSet& dataset, const std::string& name);
+        
+        template<>
+        float read_attribute<float>(H5::DataSet& dataset, const std::string& name);
+        
+        // Read attribute from group
+        template<class T>
+        T read_attribute(H5::DataSet& dataset, const std::string& name);
+        
+        template<class T>
+        T read_attribute(H5::Group& group, const std::string& name);
 	
 	bool group_exists(const std::string& name, H5::H5File& file);
 	bool group_exists(const std::string& name, H5::Group& group);
@@ -56,6 +73,7 @@ namespace H5Utils {
 	bool dataset_exists(const std::string& name, H5::H5File& file);
 	bool dataset_exists(const std::string& name, H5::Group& group);
 	
+        // Write attribute to group or dataset in file
 	template<class T>
 	bool add_watermark(const std::string& filename, const std::string& group_name, const std::string& attribute_name, const T& value);
 	
@@ -76,7 +94,6 @@ namespace H5Utils {
 	
 	template<>
 	bool add_watermark<std::string>(const std::string& filename, const std::string& group_name, const std::string& attribute_name, const std::string& value);
-	
 }
 
 #endif // _H5UTILS_H__

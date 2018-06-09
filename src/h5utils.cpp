@@ -324,3 +324,32 @@ bool H5Utils::add_watermark(const std::string& filename, const std::string& grou
 	// Unknown type
 	return false;
 }
+
+
+
+// Read attribute from dataset
+
+template<class T>
+T read_attribute_helper(H5::Attribute& attribute, H5::DataType& dtype) {
+    T value;
+    attribute.read(dtype, &value);
+    return value;
+}
+
+template<class T>
+T read_attribute_helper(H5::DataSet& dataset, const std::string& name, H5::DataType& dtype) {
+    H5::Attribute attribute = dataset.openAttribute(name);
+    return read_attribute_helper<T>(attribute, dtype);
+}
+
+template<>
+double H5Utils::read_attribute<double>(H5::DataSet& dataset, const std::string& name) {
+    H5::DataType dtype = H5::PredType::NATIVE_DOUBLE;
+    return read_attribute_helper<double>(dataset, name, dtype);
+}
+
+template<>
+float H5Utils::read_attribute<float>(H5::DataSet& dataset, const std::string& name) {
+    H5::DataType dtype = H5::PredType::NATIVE_FLOAT;
+    return read_attribute_helper<double>(dataset, name, dtype);
+}

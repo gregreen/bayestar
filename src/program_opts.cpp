@@ -78,6 +78,8 @@ TProgramOpts::TProgramOpts() {
     neighbor_lookup_fname = "NONE";
     pixel_lookup_fname = "NONE";
     output_fname_pattern = "NONE";
+
+    correlation_scale = 1.0; // in pc
 }
 
 
@@ -264,6 +266,12 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
             po::value<string>(&(opts.output_fname_pattern)),
             ("Filename pattern for previous iteration of \n"
                 "output files. E.g., output.@@@@@.h5."))
+        
+        ("correlation-scale",
+            po::value<double>(&(opts.correlation_scale)),
+            ("Dust log density correlation scale, in pc "
+                "(default: " +
+                to_string(opts.correlation_scale) + ")").c_str())
     ;
 
     po::options_description gal_desc(

@@ -37,6 +37,8 @@
 #include <numeric>
 #include <time.h>
 #include <memory>
+#include <random>
+#include <chrono>
 
 #include <stdint.h>
 
@@ -53,6 +55,7 @@
 #include "binner.h"
 
 #include "gaussian_process.h"
+#include "neighbor_pixels.h"
 
 
 // Parameters commonly passed to sampling routines
@@ -140,6 +143,11 @@ struct TLOSMCMCParams {
 
 
 struct TDiscreteLosMcmcParams {
+    // Information on neighboring pixels from previous iterations
+    std::unique_ptr<TNeighborPixels> neighbor_pixels;
+    std::vector<uint32_t> neighbor_sample; // Which sample to choose for each neighbor
+    std::vector<double> p_sample; // Workspace for storing sample probabilities
+
     TImgStack* img_stack;   // Stack of (distance, reddening) posteriors for stars
     double y_zero_idx;      // y-index corresponding to zero reddening
 
@@ -149,17 +157,23 @@ struct TDiscreteLosMcmcParams {
     unsigned int n_dists, n_E;  // # of distance and reddening pixels, respectively
     unsigned int N_runs;    // # of times to repeat inference (to check convergence)
     unsigned int N_threads; // # of threads (can be less than # of runs)
-    
 
+    // Random number generator
+    std::mt19937 r;
+    
     // Priors on Delta E in each distance bin
     double mu_log_dE, sigma_log_dE;
     double mu_log_dy, inv_sigma_log_dy;
     double inv_sigma_dy_neg;
 
+    std::vector<double> mu_log_dE_0, sigma_log_dE_0;
+
     // Distance-dependent priors on Delta E
     std::shared_ptr<cv::Mat> log_P_dy;
-
+    
+    // Constructor/destructor
     TDiscreteLosMcmcParams(TImgStack *_img_stack,
+                           std::unique_ptr<TNeighborPixels> _neighbor_pixels,
                            unsigned int _N_runs,
                            unsigned int _N_threads);
     ~TDiscreteLosMcmcParams();
@@ -249,11 +263,14 @@ struct TDiscreteLosMcmcParams {
             int verbosity=0);
     
     void update_priors_image(
-            const std::vector<double>& mu_log_Delta_EBV,
-            const std::vector<double>& sigma_log_Delta_EBV,
             double alpha_skew,
             int subsampling=10,
             int verbosity=0);
+
+    // Sample neighboring pixels
+    void randomize_neighbors();
+    void set_central_delta();
+    void neighbor_gibbs_step(int pix);
 };
 
 
@@ -336,9 +353,12 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
 
 
 // Sample discrete line-of-sight model
-void sample_los_extinction_discrete(const std::string& out_fname, const std::string& group_name,
-                           TMCMCOptions &options, TDiscreteLosMcmcParams &params,
-                           int verbosity);
+void sample_los_extinction_discrete(
+        const std::string& out_fname,
+        const std::string& group_name,
+        TMCMCOptions &options,
+        TDiscreteLosMcmcParams &params,
+        int verbosity);
 
 
 #endif // _LOS_SAMPLER_H__
