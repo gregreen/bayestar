@@ -1891,18 +1891,20 @@ void TDiscreteLosMcmcParams::initialize_priors(
         mu_log_dE_0.push_back(los_params.log_Delta_EBV_prior[i]);
         sigma_log_dE_0.push_back(los_params.sigma_log_Delta_EBV[i]);
     }
-
-    p_sample.resize(neighbor_pixels->get_n_samples());
-
-    // Scale reddening values in neighbor pixels
-    neighbor_pixels->apply_priors(
-        mu_log_dE_0,
-        sigma_log_dE_0,
-        img_stack->rect->dx[0]);
     
-    neighbor_sample.reserve(neighbor_pixels->get_n_pix());
-    randomize_neighbors();
-    neighbor_sample[0] = 0;
+    if(neighbor_pixels) {
+        p_sample.resize(neighbor_pixels->get_n_samples());
+
+        // Scale reddening values in neighbor pixels
+        neighbor_pixels->apply_priors(
+            mu_log_dE_0,
+            sigma_log_dE_0,
+            img_stack->rect->dx[0]);
+        
+        neighbor_sample.reserve(neighbor_pixels->get_n_pix());
+        randomize_neighbors();
+        neighbor_sample[0] = 0;
+    }
 
     update_priors_image(0, 10, verbosity);
 
@@ -2326,7 +2328,13 @@ void TDiscreteLosMcmcParams::guess_EBV_profile_discrete(int16_t *const y_idx_ret
 }
 
 
-void ascii_progressbar(int state, int max_state, int width, std::ostream& out) {
+void ascii_progressbar(
+        int state,
+        int max_state,
+        int width,
+        double t_elapsed,
+        std::ostream& out)
+{
     double pct = (double)state / (double)(max_state-1);
     int n_ticks = pct * width;
 
@@ -2340,7 +2348,11 @@ void ascii_progressbar(int state, int max_state, int width, std::ostream& out) {
     for(int i=n_ticks; i<width; i++) {
         out << " ";
     }
-    out << "| " << 100. * pct << " %" << std::endl;
+    
+    out << "| " << round(100. * pct) << " % "
+        << "| " << round(t_elapsed) << " s elapsed "
+        << "| " << round(t_elapsed * (1./pct - 1.)) << " s remaining"
+        << std::endl;
 }
 
 void discrete_los_ascii_art(int n_x, int n_y, int16_t *y_idx,
@@ -2642,8 +2654,13 @@ void sample_los_extinction_discrete(
     // }
 
     // Number of steps, samples to save, etc.
-    int n_steps = 0.5 * (options.steps * n_x);
+    int n_steps = options.steps * n_x;
     int n_burnin = 0.25 * n_steps;
+
+    int n_neighbor_steps = 250; // TODO: Make this adjustable?
+    int neighbor_step_every = n_steps / n_neighbor_steps;
+    int neighbor_step_in = neighbor_step_every;
+    
     int n_save = 1000;
     int save_every = n_steps / n_save;
     int save_in = save_every;
@@ -2692,18 +2709,29 @@ void sample_los_extinction_discrete(
     // uint64_t n_shift_steps = 0;
 
     DiscreteProposal proposal_type;
+    
+    auto t_start = std::chrono::steady_clock::now();
 
     for(int i = 0; i < n_steps + n_burnin; i++) {
         // Randomize neighbors
-        if(params.neighbor_pixels && (i % 10000 == 0)) {
+        if(params.neighbor_pixels && (--neighbor_step_in == 0)) {
+            neighbor_step_in = neighbor_step_every;
+
             //params.randomize_neighbors();
+
+            // Gibbs sample neighboring pixels
             params.set_central_delta();
-            for(int j=0; j<5; j++) {
+            for(int j=0; j<10; j++) {
                 for(int k=1; k<params.neighbor_pixels->get_n_pix(); k++) {
                     params.neighbor_gibbs_step(k);
                 }
             }
+
+            // Update the pre-computed priors image, in (E, DM)-pixel-space
             params.update_priors_image(0, 10, verbosity);
+
+            // Update log(prior) of current state
+            logPr = params.log_prior(y_idx);
         }
         
         // Smoothly ramp penalty on negative reddening steps up
@@ -2978,11 +3006,13 @@ void sample_los_extinction_discrete(
                       << log_Pr_tmp - logPr << " (difference)"
                       << std::endl << std::endl;
             
-            std::cerr << "neighbor samples:";
-            for(int j=0; j<params.neighbor_pixels->get_n_pix(); j++) {
-                std::cerr << " " << params.neighbor_sample[j];
+            if(params.neighbor_pixels) {
+                std::cerr << "neighbor samples:";
+                for(int j=0; j<params.neighbor_pixels->get_n_pix(); j++) {
+                    std::cerr << " " << params.neighbor_sample[j];
+                }
+                std::cerr << std::endl << std::endl;
             }
-            std::cerr << std::endl << std::endl;
 
             // std::vector<std::pair<int,double>> delta_line_int_true;
             // double delta_lnL_true = 0.;
@@ -3024,8 +3054,10 @@ void sample_los_extinction_discrete(
             //            << std::endl;
             // }
             // std::cerr << std::endl;
-
-            ascii_progressbar(i, n_steps+n_burnin, 50, std::cerr);
+            
+            auto t_now = std::chrono::steady_clock::now();
+            std::chrono::duration<double> t_elapsed = t_now - t_start;
+            ascii_progressbar(i, n_steps+n_burnin, 50, t_elapsed.count(), std::cerr);
             std::cerr << std::endl;
         }
     }
