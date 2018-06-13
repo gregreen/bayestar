@@ -78,6 +78,7 @@ public:
             unsigned int dist) const;
     
     const std::vector<double> get_prior() const;
+    double get_prior(unsigned int sample) const;
     
     unsigned int get_n_pix() const;
     unsigned int get_n_samples() const;

@@ -259,6 +259,9 @@ bool TNeighborPixels::load_neighbor_los(
     
     int32_t file_idx_current = -1;
     std::unique_ptr<H5::H5File> f = nullptr;
+
+    // Clear priors
+    prior.clear();
     
     // Loop through file indices
     for(auto p : file_idx_sort) {
@@ -346,12 +349,19 @@ bool TNeighborPixels::load_neighbor_los(
             delta.resize(n_pix * n_samples * n_dists);
         }
 
+        prior.reserve(n_samples);
+
         uint32_t buf_idx;
         for(int sample=0; sample<n_samples; sample++) {
+            // Line-of-sight reddening
             for(int dist=0; dist<n_dists; dist++) {
                 buf_idx = dims[2] * (sample+2) + (dist+1);
                 set_delta(buf[buf_idx], i, sample, dist);
             }
+
+            // Prior
+            buf_idx = dims[2] * (sample+2);
+            prior.push_back(buf[buf_idx]);
         }
         
         std::cerr << "Loaded output from " << dset_name.str()
@@ -464,6 +474,14 @@ void TNeighborPixels::apply_priors_indiv(
         int pix,
         int sample)
 {
+    //if(pix == 0) {
+    //    std::cerr << "0 : " << get_delta(pix, sample, 0) << std::endl;
+    //    for(int dist=1; dist<n_dists; dist++) {
+    //        std::cerr << dist << " : "
+    //                  << get_delta(pix, sample, dist) - get_delta(pix, sample, dist-1)
+    //                  << std::endl;
+    //    }
+    //}
     double log_scale = log(reddening_scale);
     for(int dist=n_dists-1; dist != -1; dist--) {
         apply_priors_inner(
@@ -471,6 +489,14 @@ void TNeighborPixels::apply_priors_indiv(
             mu.at(dist), sigma.at(dist),
             log_scale);
     }
+    //if(pix == 0) {
+    //    std::cerr << "-->" << std::endl;
+    //    for(int dist=0; dist<n_dists; dist++) {
+    //        std::cerr << dist << " : "
+    //                  << get_delta(pix, sample, dist)
+    //                  << std::endl;
+    //    }
+    //}
 }
 
 
@@ -606,15 +632,33 @@ double TNeighborPixels::calc_mean(
     //std::cerr << "inv_cov[dist].shape = (" << inv_cov[dist]->rows()
     //          << ", " << inv_cov[dist]->cols() << ")" << std::endl;
 
+    //std::cerr << "Calculating mean of (pix, dist) = ("
+    //          << pix << ", " << dist << ")" << std::endl;
+
     double mu = 0.;
     for(int i=0; i<pix; i++) {
+        //std::cerr << "  pix = " << i << ":"
+        //          << " inv_cov = " << (*(inv_cov[dist]))(pix, i) << ","
+        //          << " delta = " << get_delta(i, sample[i], dist)
+        //          << std::endl;
         mu += (*(inv_cov[dist]))(pix, i) * get_delta(i, sample[i], dist);
     }
     for(int i=pix+1; i<n_pix; i++) {
+        //std::cerr << "  pix = " << i << ":"
+        //          << " inv_cov = " << (*(inv_cov[dist]))(pix, i) << ","
+        //          << " delta = " << get_delta(i, sample[i], dist) << std::endl;
         mu += (*(inv_cov[dist]))(pix, i) * get_delta(i, sample[i], dist);
     }
     mu *= -1. / get_inv_var(pix, dist);
+
+    //std::cerr << " --> mu = " << mu << std::endl;
+
     return mu;
+}
+
+
+double TNeighborPixels::get_prior(unsigned int sample) const {
+    return prior[sample];
 }
 
 

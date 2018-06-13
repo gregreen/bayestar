@@ -147,6 +147,7 @@ struct TDiscreteLosMcmcParams {
     std::unique_ptr<TNeighborPixels> neighbor_pixels;
     std::vector<uint32_t> neighbor_sample; // Which sample to choose for each neighbor
     std::vector<double> p_sample; // Workspace for storing sample probabilities
+    std::vector<int> gibbs_order; // Workspace for storing order of Gibbs sampling
 
     TImgStack* img_stack;   // Stack of (distance, reddening) posteriors for stars
     double y_zero_idx;      // y-index corresponding to zero reddening
@@ -170,6 +171,7 @@ struct TDiscreteLosMcmcParams {
 
     // Distance-dependent priors on Delta E
     std::shared_ptr<cv::Mat> log_P_dy;
+    unsigned int priors_subsampling;
     
     // Constructor/destructor
     TDiscreteLosMcmcParams(TImgStack *_img_stack,
@@ -269,7 +271,7 @@ struct TDiscreteLosMcmcParams {
 
     // Sample neighboring pixels
     void randomize_neighbors();
-    void set_central_delta();
+    void set_central_delta(int16_t* y_idx);
     void neighbor_gibbs_step(int pix);
 };
 

@@ -1772,11 +1772,13 @@ TDiscreteLosMcmcParams::TDiscreteLosMcmcParams(
     y_zero_idx = -img_stack->rect->min[0] / img_stack->rect->dx[0];
 
     // Priors
-    mu_log_dE = -15.;
-    sigma_log_dE = 1.0;
+    mu_log_dE = -10.;
+    sigma_log_dE = 0.75; // TODO: Make this configurable
     mu_log_dy = mu_log_dE - log(img_stack->rect->dx[0]);
     inv_sigma_log_dy = 1. / sigma_log_dE;
     inv_sigma_dy_neg = 1. / 0.1;
+
+    priors_subsampling = 3; //10;
     
     log_P_dy = std::make_shared<cv::Mat>();
 
@@ -1806,10 +1808,13 @@ void TDiscreteLosMcmcParams::randomize_neighbors() {
 }
 
 
-void TDiscreteLosMcmcParams::set_central_delta() {
+void TDiscreteLosMcmcParams::set_central_delta(int16_t* y_idx) {
+    //std::cerr << "y_idx:";
     for(int i=0; i<n_dists; i++) {
-        neighbor_pixels->set_delta((double)(E_pix_idx[i]), 0, 0, i);
+        //std::cerr << " " << y_idx[i];
+        neighbor_pixels->set_delta((double)(y_idx[i]), 0, 0, i);
     }
+    //std::cerr << std::endl;
     neighbor_pixels->apply_priors_indiv(
         mu_log_dE_0,
         sigma_log_dE_0,
@@ -1835,7 +1840,28 @@ void TDiscreteLosMcmcParams::neighbor_gibbs_step(int pix) {
             // Add to chi^2
             dx = neighbor_pixels->get_delta(pix, sample, dist) - mu;
             p_sample[sample] += ivar * dx*dx;
+
+            //if(pix == 1) {
+            //    std::cerr << "d = " << dist << std::endl
+            //              << "     delta =";
+            //    for(int k=0; k<neighbor_pixels->get_n_pix(); k++) {
+            //        int s = neighbor_sample[k];
+            //        std::cerr  << " " << neighbor_pixels->get_delta(k, s, dist);
+            //    }
+            //    std::cerr << std::endl
+            //              << "         x = " << mu << " +- " << 1./std::sqrt(ivar)
+            //                                 << std::endl
+            //              << "  delta[1] = " << neighbor_pixels->get_delta(1, sample, dist)
+            //                                 << std::endl
+            //              << "        dx = " << dx
+            //                                 << std::endl
+            //              << "     chi^2 = " << ivar * dx*dx
+            //                                 << std::endl;
+            //}
         }
+
+        // Prior term
+        p_sample[sample] += 2. * neighbor_pixels->get_prior(sample);
     }
     
     // Turn chi^2 into probability
@@ -1853,7 +1879,23 @@ void TDiscreteLosMcmcParams::neighbor_gibbs_step(int pix) {
     std::discrete_distribution<> d(p_sample.begin(), p_sample.end());
     neighbor_sample[pix] = d(r);
 
-    //std::vector<double> p = d.probabilities();
+    //if(pix == 1) {
+    //    std::vector<double> p = d.probabilities();
+    //    std::sort(p.begin(), p.end());
+
+    //    //std::cerr << "Probabilities:";
+    //    //for(int i=p.size()-1; (i>0) && (i>p.size()-10); i--) {
+    //    //    std::cerr << " " << p.at(i);
+    //    //}
+    //    //std::cerr << std::endl;
+
+    //    double P_tot = 0;
+    //    int n_eff = 1;
+    //    for(auto pp = p.rbegin(); (pp != p.rend()) && (P_tot < 0.99); ++pp, ++n_eff) {
+    //        P_tot += *pp;
+    //    }
+    //    std::cerr << "n_eff(" << pix << ") = " << n_eff << std::endl;
+    //}
     //for(auto n : p)
     //    std::cerr << n << " ";
     //std::cerr << std::endl;
@@ -1881,7 +1923,7 @@ void TDiscreteLosMcmcParams::initialize_priors(
         log_Delta_EBV_floor,
         log_Delta_EBV_ceil,
         0.,
-        0.5,
+        sigma_log_dE,
         verbosity
     );
 
@@ -1904,9 +1946,14 @@ void TDiscreteLosMcmcParams::initialize_priors(
         neighbor_sample.reserve(neighbor_pixels->get_n_pix());
         randomize_neighbors();
         neighbor_sample[0] = 0;
+        
+        gibbs_order.reserve(neighbor_pixels->get_n_pix()-1);
+        for(int i=1; i<neighbor_pixels->get_n_pix(); i++) {
+            gibbs_order.push_back(i);
+        }
     }
 
-    update_priors_image(0, 10, verbosity);
+    update_priors_image(0, priors_subsampling, verbosity);
 
     std::cerr << "Done initializing discrete l.o.s. priors ..." << std::endl;
 }
@@ -2333,10 +2380,16 @@ void ascii_progressbar(
         int max_state,
         int width,
         double t_elapsed,
-        std::ostream& out)
+        std::ostream& out,
+        bool terminate=true,
+        bool rollback=false)
 {
     double pct = (double)state / (double)(max_state-1);
     int n_ticks = pct * width;
+
+    if(rollback) {
+        out << '\r';
+    }
 
     out << "|";
     for(int i=0; i<n_ticks-1; i++) {
@@ -2351,8 +2404,10 @@ void ascii_progressbar(
     
     out << "| " << round(100. * pct) << " % "
         << "| " << round(t_elapsed) << " s elapsed "
-        << "| " << round(t_elapsed * (1./pct - 1.)) << " s remaining"
-        << std::endl;
+        << "| " << round(t_elapsed * (1./pct - 1.)) << " s remaining";
+    if(terminate) {
+        out << std::endl;
+    }
 }
 
 void discrete_los_ascii_art(int n_x, int n_y, int16_t *y_idx,
@@ -2675,7 +2730,23 @@ void sample_los_extinction_discrete(
             n_proposals_valid[] = {0, 0, 0, 0, 0, 0};
 
     // Chain
-    TChain chain(n_x, 1.1*n_save+5);
+    int n_save_buffered = 1.1*n_save + 5; // Number to save, + some margin
+    TChain chain(n_x, n_save_buffered);
+
+    // Quantities needed for calculation of marginal probabilities
+    std::vector<double> logL_chain, logPr_chain;
+    std::vector<int16_t> y_idx_chain;
+    std::vector<int16_t> neighbor_sample_chain;
+    int n_neighbors = 0;
+
+    if(params.neighbor_pixels) {
+        n_neighbors = params.neighbor_pixels->get_n_pix() - 1;
+
+        logL_chain.reserve(n_save_buffered);
+        logPr_chain.reserve(n_save_buffered);
+        y_idx_chain.reserve(n_x*n_save_buffered);
+        neighbor_sample_chain.reserve(n_neighbors*n_save_buffered);
+    }
 
     // std::cerr << std::endl
     //        << "##################################" << std::endl
@@ -2718,17 +2789,24 @@ void sample_los_extinction_discrete(
             neighbor_step_in = neighbor_step_every;
 
             //params.randomize_neighbors();
+            //params.neighbor_sample[0] = 0;
 
             // Gibbs sample neighboring pixels
-            params.set_central_delta();
+            params.set_central_delta(y_idx);
             for(int j=0; j<10; j++) {
-                for(int k=1; k<params.neighbor_pixels->get_n_pix(); k++) {
+                // Randomize Gibbs step order
+                std::shuffle(params.gibbs_order.begin(),
+                             params.gibbs_order.end(),
+                             params.r);
+
+                // Take a Gibbs step in each neighbor pixel
+                for(auto k : params.gibbs_order) {
                     params.neighbor_gibbs_step(k);
                 }
             }
 
             // Update the pre-computed priors image, in (E, DM)-pixel-space
-            params.update_priors_image(0, 10, verbosity);
+            params.update_priors_image(0, params.priors_subsampling, verbosity);
 
             // Update log(prior) of current state
             logPr = params.log_prior(y_idx);
@@ -2971,7 +3049,23 @@ void sample_los_extinction_discrete(
             for(int k=0; k<n_x; k++) {
                 y_idx_dbl[k] = (double)y_idx[k];
             }
-            chain.add_point(y_idx_dbl, log_p, 1.);
+            chain.add_point(y_idx_dbl, logPr, 1.);//log_p, 1.);
+
+            // Save info needed to calculate marginal probabilities
+            if(params.neighbor_pixels) {
+                logL_chain.push_back(logL);
+                logPr_chain.push_back(logPr);
+                neighbor_sample_chain.insert(
+                    neighbor_sample_chain.end(),
+                    ++(params.neighbor_sample.begin()),
+                    params.neighbor_sample.end()
+                );
+                for(int k=0; k<n_x; k++) {
+                    y_idx_chain.push_back(y_idx[k]);
+                }
+            }
+
+            // Reset save counter
             save_in = save_every;
         }
 
@@ -3099,6 +3193,45 @@ void sample_los_extinction_discrete(
 
     // Add final state to chain
     // chain.add_point(y_idx_dbl, log_p, (double)w);
+
+    // Estimate marginal probabilities
+    if(params.neighbor_pixels) {
+        std::cerr << std::endl << "Estimating marginals ..." << std::endl;
+        auto t_start_marg = std::chrono::steady_clock::now();
+
+        int16_t* chain_ptr = y_idx_chain.data();
+        int chain_len = logL_chain.size();
+        std::vector<double> prior_avg(chain_len, 0.);
+
+        // For each set of neighbor pixels
+        for(int i=0; i<chain_len; i++) {
+            // Set the neighbor pixel indices
+            for(int k=1; k<n_neighbors; k++) {
+                params.neighbor_sample[k] = neighbor_sample_chain[n_neighbors*i+k-1];
+            }
+
+            // Update the pre-computed priors image, in (E, DM)-pixel-space
+            params.update_priors_image(0, params.priors_subsampling, verbosity);
+
+            // Calculate the log(prior) of each point in chain
+            for(int k=0; k<chain_len; k++) {
+                prior_avg[k] += params.log_prior(chain_ptr + n_x*k);
+            }
+
+            if(i % 10 == 0) {
+                auto t_now = std::chrono::steady_clock::now();
+                std::chrono::duration<double> t_elapsed = t_now - t_start_marg;
+                ascii_progressbar(i, chain_len, 50, t_elapsed.count(), std::cerr, false, true);
+            }
+        }
+
+        std::cerr << std::endl << std::endl;
+        
+        for(unsigned int i=0; i<chain_len; i++) {
+            // Set log(p) of chain to prior_avg
+            chain.set_L(i, prior_avg[i] / chain_len);
+        }
+    }
 
     // Save the chain
     // chain.save(out_fname, group_name, "")
