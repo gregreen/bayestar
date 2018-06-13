@@ -107,6 +107,10 @@ double TChain::get_L(unsigned int i) const {
 	return L[i];
 }
 
+void TChain::set_L(unsigned int i, double L_i) {
+	L[i] = L_i;
+}
+
 double TChain::get_w(unsigned int i) const {
 	return w[i];
 }
