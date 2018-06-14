@@ -1823,7 +1823,7 @@ void TDiscreteLosMcmcParams::set_central_delta(int16_t* y_idx) {
 }
 
 
-void TDiscreteLosMcmcParams::neighbor_gibbs_step(int pix) {
+void TDiscreteLosMcmcParams::neighbor_gibbs_step(int pix, double beta) {
     // Takes a Gibbs step in one of the neighboring pixels, choosing
     // a sample at random, weighted by the Gaussian process prior.
     
@@ -1859,19 +1859,24 @@ void TDiscreteLosMcmcParams::neighbor_gibbs_step(int pix) {
             //                                 << std::endl;
             //}
         }
+        
+        p_sample[sample] *= -0.5;
 
         // Prior term
-        p_sample[sample] += 2. * neighbor_pixels->get_prior(sample);
+        p_sample[sample] -= neighbor_pixels->get_prior(pix, sample);
+        
+        // Apply sampling temperature
+        p_sample[sample] *= beta;
     }
     
     // Turn chi^2 into probability
     //std::cerr << "p_sample.size() = " << p_sample.size() << std::endl;
-    double p_min = *std::min_element(p_sample.begin(), p_sample.end());
+    double p_max = *std::max_element(p_sample.begin(), p_sample.end());
     //std::cerr << std::endl
     //          << "p_min = " << p_min << std::endl;
     for(int sample=0; sample<neighbor_pixels->get_n_samples(); sample++) {
         //std::cerr << p_sample[sample] << " ";
-        p_sample[sample] = std::exp(-0.5 * (p_sample[sample] - p_min));
+        p_sample[sample] = std::exp(p_sample[sample] - p_max);
     }
     //std::cerr << std::endl << std::endl;
 
@@ -1883,21 +1888,19 @@ void TDiscreteLosMcmcParams::neighbor_gibbs_step(int pix) {
     //    std::vector<double> p = d.probabilities();
     //    std::sort(p.begin(), p.end());
 
-    //    //std::cerr << "Probabilities:";
-    //    //for(int i=p.size()-1; (i>0) && (i>p.size()-10); i--) {
-    //    //    std::cerr << " " << p.at(i);
-    //    //}
-    //    //std::cerr << std::endl;
+    //    std::cerr << "Probabilities:";
+    //    for(int i=p.size()-1; (i>0) && (i>p.size()-10); i--) {
+    //        std::cerr << " " << p.at(i);
+    //    }
+    //    std::cerr << std::endl;
 
     //    double P_tot = 0;
-    //    int n_eff = 1;
+    //    int n_eff = 0;
     //    for(auto pp = p.rbegin(); (pp != p.rend()) && (P_tot < 0.99); ++pp, ++n_eff) {
     //        P_tot += *pp;
     //    }
     //    std::cerr << "n_eff(" << pix << ") = " << n_eff << std::endl;
     //}
-    //for(auto n : p)
-    //    std::cerr << n << " ";
     //std::cerr << std::endl;
 }
 
@@ -2388,7 +2391,7 @@ void ascii_progressbar(
     int n_ticks = pct * width;
 
     if(rollback) {
-        out << '\r';
+        out << ' ' << '\r';
     }
 
     out << "|";
@@ -2720,6 +2723,8 @@ void sample_los_extinction_discrete(
     int save_every = n_steps / n_save;
     int save_in = save_every;
 
+    double beta = 1.0; // Sampling temperature (1 = sample unmodified pdf)
+
     // How often to recalculate exact line integrals
     int recalculate_every = 100;
     int recalculate_in = recalculate_every;
@@ -2801,7 +2806,7 @@ void sample_los_extinction_discrete(
 
                 // Take a Gibbs step in each neighbor pixel
                 for(auto k : params.gibbs_order) {
-                    params.neighbor_gibbs_step(k);
+                    params.neighbor_gibbs_step(k, beta);
                 }
             }
 
@@ -2941,6 +2946,7 @@ void sample_los_extinction_discrete(
 
             // Acceptance probability
             alpha = dlogL + dlogPr;
+            //alpha = dlogPr;
 
             if(proposal_type.absolute) {
                 alpha += ln_proposal_factor;
@@ -3057,7 +3063,7 @@ void sample_los_extinction_discrete(
                 logPr_chain.push_back(logPr);
                 neighbor_sample_chain.insert(
                     neighbor_sample_chain.end(),
-                    ++(params.neighbor_sample.begin()),
+                    params.neighbor_sample.begin()+1,
                     params.neighbor_sample.end()
                 );
                 for(int k=0; k<n_x; k++) {
@@ -3201,7 +3207,9 @@ void sample_los_extinction_discrete(
 
         int16_t* chain_ptr = y_idx_chain.data();
         int chain_len = logL_chain.size();
-        std::vector<double> prior_avg(chain_len, 0.);
+        std::vector<double> prior_chain; // shape = (chain sample, neighbor sample)
+        prior_chain.resize(chain_len*chain_len);
+        //std::vector<double> prior_avg(chain_len, 0.);
 
         // For each set of neighbor pixels
         for(int i=0; i<chain_len; i++) {
@@ -3215,7 +3223,7 @@ void sample_los_extinction_discrete(
 
             // Calculate the log(prior) of each point in chain
             for(int k=0; k<chain_len; k++) {
-                prior_avg[k] += params.log_prior(chain_ptr + n_x*k);
+                prior_chain[chain_len*k+i] = params.log_prior(chain_ptr + n_x*k);
             }
 
             if(i % 10 == 0) {
@@ -3227,9 +3235,26 @@ void sample_los_extinction_discrete(
 
         std::cerr << std::endl << std::endl;
         
+        double log_chain_len = std::log((double)chain_len);
+        std::vector<double> log_p_tmp;
+        log_p_tmp.reserve(chain_len);
+
         for(unsigned int i=0; i<chain_len; i++) {
             // Set log(p) of chain to prior_avg
-            chain.set_L(i, prior_avg[i] / chain_len);
+            auto it_0 = prior_chain.begin() + i*chain_len;
+            auto it_1 = it_0 + (chain_len-1);
+            double log_p_max = *std::max_element(it_0, it_1);
+            double p = std::accumulate(it_0, it_1, 0.,
+                [log_p_max](double a, double b) { return a + std::exp(b-log_p_max); }
+            );
+            p = log_p_max + std::log(p) - log_chain_len;
+            log_p_tmp.push_back(p);
+            //chain.set_L(i, p);
+        }
+        
+        double log_p0 = *std::max_element(log_p_tmp.begin(), log_p_tmp.end());
+        for(unsigned int i=0; i<chain_len; i++) {
+            chain.set_L(i, log_p_tmp.at(i) - log_p0);
         }
     }
 

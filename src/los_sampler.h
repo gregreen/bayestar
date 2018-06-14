@@ -272,7 +272,7 @@ struct TDiscreteLosMcmcParams {
     // Sample neighboring pixels
     void randomize_neighbors();
     void set_central_delta(int16_t* y_idx);
-    void neighbor_gibbs_step(int pix);
+    void neighbor_gibbs_step(int pix, double beta=1.);
 };
 
 
