@@ -348,8 +348,10 @@ bool TNeighborPixels::load_neighbor_los(
         if(delta.size() == 0) {
             delta.resize(n_pix * n_samples * n_dists);
         }
-
-        prior.reserve(n_samples);
+        
+        if(prior.size() == 0) {
+            prior.resize(n_pix*n_samples);
+        }
 
         uint32_t buf_idx;
         for(int sample=0; sample<n_samples; sample++) {
@@ -361,7 +363,8 @@ bool TNeighborPixels::load_neighbor_los(
 
             // Prior
             buf_idx = dims[2] * (sample+2);
-            prior.push_back(buf[buf_idx]);
+            prior.at(n_samples*i + sample) = buf[buf_idx];
+            //prior.push_back(buf[buf_idx]);
         }
         
         std::cerr << "Loaded output from " << dset_name.str()
@@ -657,8 +660,8 @@ double TNeighborPixels::calc_mean(
 }
 
 
-double TNeighborPixels::get_prior(unsigned int sample) const {
-    return prior[sample];
+double TNeighborPixels::get_prior(unsigned int pix, unsigned int sample) const {
+    return prior[n_samples*pix + sample];
 }
 
 
