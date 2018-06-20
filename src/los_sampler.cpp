@@ -1796,7 +1796,9 @@ TDiscreteLosMcmcParams::~TDiscreteLosMcmcParams() {
 }
 
 
-void TDiscreteLosMcmcParams::randomize_neighbors() {
+void TDiscreteLosMcmcParams::randomize_neighbors(
+        std::vector<uint32_t>& neighbor_sample)
+{
     // Choose random neighbor samples
     if(neighbor_pixels) {
         std::uniform_int_distribution<int> u(0, neighbor_pixels->get_n_samples());
@@ -1823,7 +1825,11 @@ void TDiscreteLosMcmcParams::set_central_delta(int16_t* y_idx) {
 }
 
 
-void TDiscreteLosMcmcParams::neighbor_gibbs_step(int pix, double beta) {
+double TDiscreteLosMcmcParams::neighbor_gibbs_step(
+        int pix,
+        std::vector<uint32_t>& neighbor_sample,
+        double beta)
+{
     // Takes a Gibbs step in one of the neighboring pixels, choosing
     // a sample at random, weighted by the Gaussian process prior.
     
@@ -1831,7 +1837,7 @@ void TDiscreteLosMcmcParams::neighbor_gibbs_step(int pix, double beta) {
 
     // Determine chi^2 of each sample
     for(int sample=0; sample<neighbor_pixels->get_n_samples(); sample++) {
-        p_sample[sample] = 0.;
+        log_p_sample[sample] = 0.;
         for(int dist=0; dist<n_dists; dist++) {
             // Calculate mean, sigma of pixel
             mu = neighbor_pixels->calc_mean(pix, dist, neighbor_sample);
@@ -1839,7 +1845,7 @@ void TDiscreteLosMcmcParams::neighbor_gibbs_step(int pix, double beta) {
 
             // Add to chi^2
             dx = neighbor_pixels->get_delta(pix, sample, dist) - mu;
-            p_sample[sample] += ivar * dx*dx;
+            log_p_sample[sample] += ivar * dx*dx;
 
             //if(pix == 1) {
             //    std::cerr << "d = " << dist << std::endl
@@ -1860,29 +1866,27 @@ void TDiscreteLosMcmcParams::neighbor_gibbs_step(int pix, double beta) {
             //}
         }
         
-        p_sample[sample] *= -0.5;
+        log_p_sample[sample] *= -0.5;
 
         // Prior term
-        p_sample[sample] -= neighbor_pixels->get_prior(pix, sample);
-        
-        // Apply sampling temperature
-        p_sample[sample] *= beta;
+        log_p_sample[sample] -= neighbor_pixels->get_prior(pix, sample);
     }
     
     // Turn chi^2 into probability
     //std::cerr << "p_sample.size() = " << p_sample.size() << std::endl;
-    double p_max = *std::max_element(p_sample.begin(), p_sample.end());
+    double log_p_max = *std::max_element(log_p_sample.begin(), log_p_sample.end());
     //std::cerr << std::endl
     //          << "p_min = " << p_min << std::endl;
     for(int sample=0; sample<neighbor_pixels->get_n_samples(); sample++) {
         //std::cerr << p_sample[sample] << " ";
-        p_sample[sample] = std::exp(p_sample[sample] - p_max);
+        p_sample[sample] = std::exp(beta * (log_p_sample[sample] - log_p_max));
     }
     //std::cerr << std::endl << std::endl;
 
     // Choose a sample at random, weighted by the probabilities
     std::discrete_distribution<> d(p_sample.begin(), p_sample.end());
-    neighbor_sample[pix] = d(r);
+    int idx = d(r);
+    neighbor_sample[pix] = idx;
 
     //if(pix == 1) {
     //    std::vector<double> p = d.probabilities();
@@ -1902,6 +1906,8 @@ void TDiscreteLosMcmcParams::neighbor_gibbs_step(int pix, double beta) {
     //    std::cerr << "n_eff(" << pix << ") = " << n_eff << std::endl;
     //}
     //std::cerr << std::endl;
+    
+    return log_p_sample[idx];
 }
 
 
@@ -1939,30 +1945,26 @@ void TDiscreteLosMcmcParams::initialize_priors(
     
     if(neighbor_pixels) {
         p_sample.resize(neighbor_pixels->get_n_samples());
+        log_p_sample.resize(neighbor_pixels->get_n_samples());
 
         // Scale reddening values in neighbor pixels
         neighbor_pixels->apply_priors(
             mu_log_dE_0,
             sigma_log_dE_0,
             img_stack->rect->dx[0]);
-        
-        neighbor_sample.reserve(neighbor_pixels->get_n_pix());
-        randomize_neighbors();
-        neighbor_sample[0] = 0;
-        
-        gibbs_order.reserve(neighbor_pixels->get_n_pix()-1);
-        for(int i=1; i<neighbor_pixels->get_n_pix(); i++) {
-            gibbs_order.push_back(i);
-        }
     }
 
-    update_priors_image(0, priors_subsampling, verbosity);
+    if(!neighbor_pixels) {
+        std::vector<uint32_t> neighbors_sample_tmp;
+        update_priors_image(neighbors_sample_tmp, 0., priors_subsampling, verbosity);
+    }
 
     std::cerr << "Done initializing discrete l.o.s. priors ..." << std::endl;
 }
 
 
 void TDiscreteLosMcmcParams::update_priors_image(
+        std::vector<uint32_t>& neighbor_sample,
         double alpha_skew,
         int subsampling,
         int verbosity)
@@ -2715,15 +2717,13 @@ void sample_los_extinction_discrete(
     int n_steps = options.steps * n_x;
     int n_burnin = 0.25 * n_steps;
 
-    int n_neighbor_steps = 250; // TODO: Make this adjustable?
+    int n_neighbor_steps = 100; // TODO: Make this adjustable?
     int neighbor_step_every = n_steps / n_neighbor_steps;
-    int neighbor_step_in = neighbor_step_every;
+    int neighbor_step_in = 1;
     
     int n_save = 1000;
     int save_every = n_steps / n_save;
     int save_in = save_every;
-
-    double beta = 1.0; // Sampling temperature (1 = sample unmodified pdf)
 
     // How often to recalculate exact line integrals
     int recalculate_every = 100;
@@ -2738,10 +2738,43 @@ void sample_los_extinction_discrete(
     int n_save_buffered = 1.1*n_save + 5; // Number to save, + some margin
     TChain chain(n_x, n_save_buffered);
 
+    // Neighboring pixels
+    unsigned int n_temperatures = 4;
+    double beta_spacing = 0.50; // Spacing of sampling temperatures (0<x<1. 1 = degenerate)
+    unsigned int steps_per_swap = 2;
+    unsigned int n_swaps = 50;
+    // For each temperature, which sample to select for each neighboring pix
+    std::vector<std::unique_ptr<std::vector<uint32_t>>> neighbor_sample;
+    std::vector<double> beta; // Temperature of each neighbor sampler
+    std::vector<int> gibbs_order; // Order in which to update neighboring pixels
+    std::vector<double> log_p_neighbor;
+    int64_t n_swaps_proposed = 0;
+    int64_t n_swaps_accepted = 0;
+
+    if(params.neighbor_pixels) {
+        double b = 1.0;
+        beta.reserve(n_temperatures);
+        log_p_neighbor.resize(n_temperatures);
+
+        for(int t=0; t<n_temperatures; t++, b*=beta_spacing) {
+            neighbor_sample.push_back(std::make_unique<std::vector<uint32_t>>());
+            neighbor_sample.at(t)->reserve(params.neighbor_pixels->get_n_pix());
+            params.randomize_neighbors(*neighbor_sample.at(t));
+            (*(neighbor_sample.at(t)))[0] = 0;
+
+            beta.push_back(b);
+        }
+        
+        gibbs_order.reserve(params.neighbor_pixels->get_n_pix()-1);
+        for(int i=1; i<params.neighbor_pixels->get_n_pix(); i++) {
+            gibbs_order.push_back(i);
+        }
+    }
+
     // Quantities needed for calculation of marginal probabilities
     std::vector<double> logL_chain, logPr_chain;
     std::vector<int16_t> y_idx_chain;
-    std::vector<int16_t> neighbor_sample_chain;
+    std::vector<uint32_t> neighbor_sample_chain;
     int n_neighbors = 0;
 
     if(params.neighbor_pixels) {
@@ -2785,6 +2818,8 @@ void sample_los_extinction_discrete(
     // uint64_t n_shift_steps = 0;
 
     DiscreteProposal proposal_type;
+
+    std::uniform_real_distribution<> uniform_dist(0., 1.0);
     
     auto t_start = std::chrono::steady_clock::now();
 
@@ -2793,25 +2828,64 @@ void sample_los_extinction_discrete(
         if(params.neighbor_pixels && (--neighbor_step_in == 0)) {
             neighbor_step_in = neighbor_step_every;
 
-            //params.randomize_neighbors();
-            //params.neighbor_sample[0] = 0;
+            //params.randomize_neighbors(neighbor_sample);
+            //neighbor_sample[0] = 0;
 
             // Gibbs sample neighboring pixels
             params.set_central_delta(y_idx);
-            for(int j=0; j<10; j++) {
-                // Randomize Gibbs step order
-                std::shuffle(params.gibbs_order.begin(),
-                             params.gibbs_order.end(),
-                             params.r);
+            for(int t=1; t<n_temperatures; t++) {
+                for(int k=0; k<neighbor_sample[0]->size(); k++) {
+                    (*(neighbor_sample[t]))[k] = (*(neighbor_sample[0]))[k];
+                }
+            }
 
-                // Take a Gibbs step in each neighbor pixel
-                for(auto k : params.gibbs_order) {
-                    params.neighbor_gibbs_step(k, beta);
+            for(int j=0; j<n_swaps; j++) {
+                for(int t=0; t<n_temperatures; t++) {
+                    for(int l=0; l<steps_per_swap; l++) {
+                        // Randomize Gibbs step order
+                        std::shuffle(gibbs_order.begin(),
+                                     gibbs_order.end(),
+                                     params.r);
+
+                        // Take a Gibbs step in each neighbor pixel
+                        for(auto k : gibbs_order) {
+                            log_p_neighbor[t] = params.neighbor_gibbs_step(
+                                k,
+                                *(neighbor_sample[t]),
+                                beta.at(t));
+                        }
+                    }
+                }
+
+                // Take a swap step between temperatures
+                for(int t=1; t<n_temperatures; t++) {
+                    // Try to swap t and t-1
+                    n_swaps_proposed++;
+
+                    double lnp_swap = (
+                        (beta[t]-beta[t-1]) *
+                        (log_p_neighbor[t-1]-log_p_neighbor[t])
+                    );
+                    
+                    if(t == 1) {
+                        std::cerr << "p_swap = " << std::exp(lnp_swap) << std::endl;
+                    }
+
+                    if(std::log(uniform_dist(params.r)) < lnp_swap) {
+                        //std::cerr << "swap " << t-1 << " <-> " << t << std::endl;
+                        neighbor_sample[t].swap(neighbor_sample[t-1]);
+                        n_swaps_accepted++;
+                    } else {
+                        //std::cerr << "no swap " << t-1 << " <-> " << t << std::endl;
+                    }
                 }
             }
 
             // Update the pre-computed priors image, in (E, DM)-pixel-space
-            params.update_priors_image(0, params.priors_subsampling, verbosity);
+            params.update_priors_image(
+                *(neighbor_sample.at(0)), 0.,
+                params.priors_subsampling,
+                verbosity);
 
             // Update log(prior) of current state
             logPr = params.log_prior(y_idx);
@@ -3063,8 +3137,8 @@ void sample_los_extinction_discrete(
                 logPr_chain.push_back(logPr);
                 neighbor_sample_chain.insert(
                     neighbor_sample_chain.end(),
-                    params.neighbor_sample.begin()+1,
-                    params.neighbor_sample.end()
+                    neighbor_sample.at(0)->begin()+1,
+                    neighbor_sample.at(0)->end()
                 );
                 for(int k=0; k<n_x; k++) {
                     y_idx_chain.push_back(y_idx[k]);
@@ -3109,7 +3183,7 @@ void sample_los_extinction_discrete(
             if(params.neighbor_pixels) {
                 std::cerr << "neighbor samples:";
                 for(int j=0; j<params.neighbor_pixels->get_n_pix(); j++) {
-                    std::cerr << " " << params.neighbor_sample[j];
+                    std::cerr << " " << neighbor_sample.at(0)->at(j);
                 }
                 std::cerr << std::endl << std::endl;
             }
@@ -3185,6 +3259,12 @@ void sample_los_extinction_discrete(
                       << " *    valid : " << 100. * p_valid << " %" << std::endl
                       << " * accepted : " << 100. * p_accept << " %" << std::endl;
         }
+
+        if(params.neighbor_pixels) {
+            double p_accept = (double)n_swaps_accepted / (double)n_swaps_proposed;
+            std::cerr << "Swap propsals: " << 100. * p_accept << " % accepted"
+                      << std::endl;
+        }
     }
 
     // std::cerr << std::endl
@@ -3215,11 +3295,14 @@ void sample_los_extinction_discrete(
         for(int i=0; i<chain_len; i++) {
             // Set the neighbor pixel indices
             for(int k=1; k<n_neighbors; k++) {
-                params.neighbor_sample[k] = neighbor_sample_chain[n_neighbors*i+k-1];
+                (*(neighbor_sample.at(0)))[k] = neighbor_sample_chain[n_neighbors*i+k-1];
             }
 
             // Update the pre-computed priors image, in (E, DM)-pixel-space
-            params.update_priors_image(0, params.priors_subsampling, verbosity);
+            params.update_priors_image(
+                *(neighbor_sample.at(0)), 0.,
+                params.priors_subsampling,
+                verbosity);
 
             // Calculate the log(prior) of each point in chain
             for(int k=0; k<chain_len; k++) {

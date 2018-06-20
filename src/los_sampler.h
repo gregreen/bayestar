@@ -145,9 +145,10 @@ struct TLOSMCMCParams {
 struct TDiscreteLosMcmcParams {
     // Information on neighboring pixels from previous iterations
     std::unique_ptr<TNeighborPixels> neighbor_pixels;
-    std::vector<uint32_t> neighbor_sample; // Which sample to choose for each neighbor
+    //std::vector<uint32_t> neighbor_sample; // Which sample to choose for each neighbor
+    std::vector<double> log_p_sample; // Workspace for storing log sample probabilities
     std::vector<double> p_sample; // Workspace for storing sample probabilities
-    std::vector<int> gibbs_order; // Workspace for storing order of Gibbs sampling
+    //std::vector<int> gibbs_order; // Workspace for storing order of Gibbs sampling
 
     TImgStack* img_stack;   // Stack of (distance, reddening) posteriors for stars
     double y_zero_idx;      // y-index corresponding to zero reddening
@@ -265,14 +266,17 @@ struct TDiscreteLosMcmcParams {
             int verbosity=0);
     
     void update_priors_image(
+            std::vector<uint32_t>& neighbor_sample,
             double alpha_skew,
             int subsampling=10,
             int verbosity=0);
 
     // Sample neighboring pixels
-    void randomize_neighbors();
+    void randomize_neighbors(std::vector<uint32_t>& neighbor_sample);
     void set_central_delta(int16_t* y_idx);
-    void neighbor_gibbs_step(int pix, double beta=1.);
+    double neighbor_gibbs_step(int pix,
+                             std::vector<uint32_t>& neighbor_sample,
+                             double beta=1.);
 };
 
 
