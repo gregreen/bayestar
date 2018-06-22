@@ -39,7 +39,8 @@ TNeighborPixels::TNeighborPixels(
         uint32_t nside_center, uint32_t pix_idx_center,
         const std::string& neighbor_lookup_fname,
         const std::string& pixel_lookup_fname,
-        const std::string& output_fname_pattern)
+        const std::string& output_fname_pattern,
+        int n_samples_max)
 {
     // Initialize some variables to dummy values
     n_pix = 0;
@@ -69,7 +70,7 @@ TNeighborPixels::TNeighborPixels(
     }
 
     // Load in neighboring pixels
-    status = load_neighbor_los(output_fname_pattern, file_idx);
+    status = load_neighbor_los(output_fname_pattern, file_idx, n_samples_max);
     if(!status) {
         std::cerr << "Failed to load neighboring sightline data!"
                   << std::endl;
@@ -243,7 +244,8 @@ bool TNeighborPixels::lookup_pixel_files(
 
 bool TNeighborPixels::load_neighbor_los(
         const std::string& output_fname_pattern,
-        const std::vector<int32_t>& file_idx)
+        const std::vector<int32_t>& file_idx,
+        int n_samples_max)
 {
     // Set number of pixels
     n_pix = file_idx.size();
@@ -315,6 +317,9 @@ bool TNeighborPixels::load_neighbor_los(
         // Set dimensions
         if(n_samples == 0) {
             n_samples = dims[1] - 2;
+            if((n_samples_max > 0) && (n_samples > n_samples_max)) {
+                n_samples = n_samples_max;
+            }
         }
         if(n_dists == 0) {
             n_dists = dims[2] - 1;
@@ -555,8 +560,9 @@ void TNeighborPixels::init_covariance(
     
     double scale_coeff = -1. / scale;
     std::function<double(double)> kernel
-        = [scale_coeff](double d2) -> double
+        = [scale, scale_coeff](double d2) -> double
     {
+        if(d2 > 1.e-8) { d2 += 0.25*scale*scale; } // TODO: Set softening?
         return std::exp(scale_coeff * std::sqrt(d2));
     };
     
@@ -582,6 +588,41 @@ void TNeighborPixels::init_covariance(
     }
     
     std::cerr << "Done initializing covariance matrices." << std::endl;
+}
+
+
+void TNeighborPixels::init_dominant_dist() {
+    // For each sample of each pixel, calculates distance with largest deviation
+    // from priors.
+    
+    dominant_dist.clear();
+    dominant_dist.reserve(n_pix*n_samples);
+
+    double delta_max, delta_tmp;
+    uint16_t dist_max;
+    
+    for(int pix=0; pix<n_pix; pix++) {
+        for(int samp=0; samp<n_samples; samp++) {
+            delta_max = -1;
+            for(int dist=0; dist<n_dists; dist++) {
+                delta_tmp = std::fabs(get_delta(pix, samp, dist));
+
+                if(delta_tmp > delta_max) {
+                    dist_max = dist;
+                    delta_max = delta_tmp;
+                }
+            }
+            dominant_dist.push_back(dist_max);
+        }
+    }
+}
+
+
+uint16_t TNeighborPixels::get_dominant_dist(
+        unsigned int pix,
+        unsigned int sample) const
+{
+    return dominant_dist[n_samples*pix + sample];
 }
 
 
@@ -618,7 +659,7 @@ void TNeighborPixels::set_delta(
 double TNeighborPixels::calc_mean(
         unsigned int pix,
         unsigned int dist,
-        const std::vector<uint32_t>& sample) const
+        const std::vector<uint16_t>& sample) const
 {
     // Calculates the mean of the specified pixel, given that
     // the specified samples are chosen for the other pixels.
@@ -657,6 +698,38 @@ double TNeighborPixels::calc_mean(
     //std::cerr << " --> mu = " << mu << std::endl;
 
     return mu;
+}
+
+double TNeighborPixels::calc_lnprob(const std::vector<uint16_t>& sample) const {
+    double p = 0.;
+    unsigned int s0, s1;
+
+    for(int pix0=0; pix0<n_pix; pix0++) {
+        s0 = sample[pix0];
+
+        for(int pix1=pix0+1; pix1<n_pix; pix1++) {
+            s1 = sample[pix1];
+
+            for(int dist=0; dist<n_dists; dist++) {
+                p += (*(inv_cov[dist]))(pix0, pix1)
+                     * get_delta(pix0, s0, dist)
+                     * get_delta(pix1, s1, dist);
+            }
+        }
+
+        for(int dist=0; dist<n_dists; dist++) {
+            p += 0.5 * (*(inv_cov[dist]))(pix0, pix0)
+                 * get_delta(pix0, s0, dist)
+                 * get_delta(pix0, s0, dist);
+            //std::cerr << get_delta(pix0, s0, dist) << std::endl;
+        }
+
+        p -= get_prior(pix0, s1);
+        //std::cerr << std::endl;
+    }
+    //std::cerr << std::endl;
+
+    return -1. * p;
 }
 
 

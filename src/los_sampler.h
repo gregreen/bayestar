@@ -56,6 +56,7 @@
 
 #include "gaussian_process.h"
 #include "neighbor_pixels.h"
+#include "bridging_sampler.h"
 
 
 // Parameters commonly passed to sampling routines
@@ -266,18 +267,30 @@ struct TDiscreteLosMcmcParams {
             int verbosity=0);
     
     void update_priors_image(
-            std::vector<uint32_t>& neighbor_sample,
+            std::vector<uint16_t>& neighbor_sample,
             double alpha_skew,
             int subsampling=10,
             int verbosity=0);
 
-    // Sample neighboring pixels
-    void randomize_neighbors(std::vector<uint32_t>& neighbor_sample);
     void set_central_delta(int16_t* y_idx);
-    double neighbor_gibbs_step(int pix,
-                             std::vector<uint32_t>& neighbor_sample,
-                             double beta=1.);
 };
+
+
+// Sample neighboring pixels
+double neighbor_gibbs_step(
+        int pix,
+        TNeighborPixels& neighbor_pixels,
+        std::vector<uint16_t>& neighbor_sample,
+        std::vector<double>& log_p_sample_ws,
+        std::vector<double>& p_sample_ws,
+        std::mt19937& r,
+        double beta=1.);
+
+
+void randomize_neighbors(
+        TNeighborPixels& neighbor_pixels,
+        std::vector<uint16_t>& neighbor_sample,
+        std::mt19937& r);
 
 
 // Transform from log(DeltaEBV) to cumulative EBV for piecewise-linear l.o.s. fit
@@ -365,6 +378,21 @@ void sample_los_extinction_discrete(
         TMCMCOptions &options,
         TDiscreteLosMcmcParams &params,
         int verbosity);
+
+
+// Sample combinations of neighboring pixels using parallel tempering
+void sample_neighbors_pt(
+    TNeighborPixels& neighbors,
+    int verbosity);
+
+
+// Sample combinations of neighboring pixels using the bridging sampler
+void sample_neighbors(
+    TNeighborPixels& neighbors,
+    int verbosity);
+
+
+void seed_prng(std::mt19937& r);
 
 
 #endif // _LOS_SAMPLER_H__

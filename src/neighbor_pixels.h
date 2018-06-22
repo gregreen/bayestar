@@ -61,6 +61,9 @@ private:
     
     std::vector<double> A_i_given_noti;
     std::vector<double> inv_var; // shape = (pix, dist)
+
+    // Dominant distance for each (pix, sample)
+    std::vector<uint16_t> dominant_dist;
     
 public:
     // Constructor/destructor
@@ -68,7 +71,8 @@ public:
                     uint32_t pix_idx_center,
                     const std::string& neighbor_lookup_fname,
                     const std::string& pixel_lookup_fname,
-                    const std::string& output_fname_pattern);
+                    const std::string& output_fname_pattern,
+                    int n_samples_max=-1);
     ~TNeighborPixels();
     
     // Getters
@@ -77,6 +81,10 @@ public:
             unsigned int sample,
             unsigned int dist) const;
     
+    uint16_t get_dominant_dist(
+            unsigned int pix,
+            unsigned int sample) const;
+
     const std::vector<double> get_prior() const;
     double get_prior(unsigned int pix, unsigned int sample) const;
     
@@ -98,7 +106,9 @@ public:
     double calc_mean(
             unsigned int pix,
             unsigned int dist,
-            const std::vector<uint32_t>& sample) const;
+            const std::vector<uint16_t>& sample) const;
+    
+    double calc_lnprob(const std::vector<uint16_t>& sample) const;
     
     // Initialization
     bool load_neighbor_list(
@@ -111,7 +121,8 @@ public:
     
     bool load_neighbor_los(
             const std::string& output_fname_pattern,
-            const std::vector<int32_t>& file_idx);
+            const std::vector<int32_t>& file_idx,
+            int n_samples_max);
     
     void apply_priors(
             const std::vector<double>& mu,
@@ -136,6 +147,8 @@ public:
             double log_scale);
     
     void init_covariance(double scale);
+
+    void init_dominant_dist();
 };
 
 

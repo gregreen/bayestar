@@ -365,11 +365,11 @@ int main(int argc, char **argv) {
                         stellar_data.healpix_index,
                         opts.neighbor_lookup_fname,
                         opts.pixel_lookup_fname,
-                        opts.output_fname_pattern);
+                        opts.output_fname_pattern,
+                        50);
                     neighbor_pixels->init_covariance(opts.correlation_scale);
                 }
                 
-                cout << "Sampling line of sight discretely ..." << endl;
                 TDiscreteLosMcmcParams discrete_los_params(
                     &img_stack,
                     std::move(neighbor_pixels),
@@ -380,6 +380,20 @@ int main(int argc, char **argv) {
                     opts.log_Delta_EBV_ceil,
                     opts.verbosity
                 );
+                
+                if(discrete_los_params.neighbor_pixels) {
+                    cout << "Initializing dominant distances ..." << endl;
+                    discrete_los_params.neighbor_pixels->init_dominant_dist();
+
+                    cout << "Resampling neighboring pixels ..." << endl;
+                    //sample_neighbors(*(discrete_los_params.neighbor_pixels), opts.verbosity);
+                    sample_neighbors_pt(
+                        *(discrete_los_params.neighbor_pixels),
+                        opts.verbosity
+                    );
+                }
+
+                cout << "Sampling line of sight discretely ..." << endl;
                 sample_los_extinction_discrete(
                     opts.output_fname,
                     *it,
