@@ -287,6 +287,17 @@ double neighbor_gibbs_step(
         double beta=1.);
 
 
+double neighbor_gibbs_step_shifted(
+        const int pix,
+        TNeighborPixels& neighbor_pixels,
+        std::vector<uint16_t>& neighbor_sample,
+        std::vector<double>& log_p_sample_ws,
+        std::vector<double>& p_sample_ws,
+        std::mt19937& r,
+        const double beta,
+        const double shift_weight);
+
+
 void randomize_neighbors(
         TNeighborPixels& neighbor_pixels,
         std::vector<uint16_t>& neighbor_sample,
@@ -377,18 +388,21 @@ void sample_los_extinction_discrete(
         const std::string& group_name,
         TMCMCOptions &options,
         TDiscreteLosMcmcParams &params,
+        const std::vector<uint16_t>& neighbor_sample,
         int verbosity);
 
 
 // Sample combinations of neighboring pixels using parallel tempering
 void sample_neighbors_pt(
     TNeighborPixels& neighbors,
+    std::vector<uint16_t>& chain,
     int verbosity);
 
 
 // Sample combinations of neighboring pixels using the bridging sampler
 void sample_neighbors(
     TNeighborPixels& neighbors,
+    std::vector<uint16_t>& chain,
     int verbosity);
 
 

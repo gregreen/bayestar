@@ -1839,10 +1839,16 @@ double neighbor_gibbs_step(
     
     double mu, ivar, dx;
 
+    int n_samples = neighbor_pixels.get_n_samples();
+    int n_dists = neighbor_pixels.get_n_dists();
+
+    log_p_sample_ws.resize(n_samples);
+
     // Determine chi^2 of each sample
-    for(int sample=0; sample<neighbor_pixels.get_n_samples(); sample++) {
+    for(int sample=0; sample<n_samples; sample++) {
         log_p_sample_ws[sample] = 0.;
-        for(int dist=0; dist<neighbor_pixels.get_n_dists(); dist++) {
+        
+        for(int dist=1; dist<n_dists-1; dist++) {
             // Calculate mean, sigma of pixel
             mu = neighbor_pixels.calc_mean(pix, dist, neighbor_sample);
             ivar = neighbor_pixels.get_inv_var(pix, dist);
@@ -1881,7 +1887,7 @@ double neighbor_gibbs_step(
     double log_p_max = *std::max_element(log_p_sample_ws.begin(), log_p_sample_ws.end());
     //std::cerr << std::endl
     //          << "p_min = " << p_min << std::endl;
-    for(int sample=0; sample<neighbor_pixels.get_n_samples(); sample++) {
+    for(int sample=0; sample<n_samples; sample++) {
         //std::cerr << p_sample[sample] << " ";
         p_sample_ws[sample] = std::exp(beta * (log_p_sample_ws[sample] - log_p_max));
     }
@@ -1912,6 +1918,290 @@ double neighbor_gibbs_step(
     //std::cerr << std::endl;
     
     return log_p_sample_ws[idx];
+}
+
+
+double neighbor_gibbs_step_shifted(
+        const int pix,
+        TNeighborPixels& neighbor_pixels,
+        std::vector<uint16_t>& neighbor_sample,
+        std::vector<double>& log_p_sample_ws,
+        std::vector<double>& p_sample_ws,
+        std::mt19937& r,
+        const double beta,
+        const double shift_weight)
+{
+    // Takes a Gibbs step in one of the neighboring pixels, choosing
+    // a sample at random, weighted by the Gaussian process prior.
+    
+    double mu, ivar, dx;
+
+    int n_samples = neighbor_pixels.get_n_samples();
+    int n_dists = neighbor_pixels.get_n_dists();
+
+    log_p_sample_ws.resize(n_samples);
+
+    // Determine chi^2 of each sample
+    for(int sample=0; sample<n_samples; sample++) {
+        log_p_sample_ws[sample] = 0.;
+        
+        for(int dist=0; dist<n_dists; dist++) {
+            // Calculate mean, sigma of pixel
+            mu = neighbor_pixels.calc_mean_shifted(
+                pix,
+                dist,
+                neighbor_sample,
+                shift_weight
+            );
+            ivar = neighbor_pixels.get_inv_var(pix, dist);
+
+            // Add to chi^2
+            dx = neighbor_pixels.get_delta(pix, sample, dist) - mu;
+            log_p_sample_ws[sample] += ivar * dx*dx;
+
+            //if(pix == 1) {
+            //    std::cerr << "d = " << dist << std::endl
+            //              << "     delta =";
+            //    for(int k=0; k<neighbor_pixels->get_n_pix(); k++) {
+            //        int s = neighbor_sample[k];
+            //        std::cerr  << " " << neighbor_pixels->get_delta(k, s, dist);
+            //    }
+            //    std::cerr << std::endl
+            //              << "         x = " << mu << " +- " << 1./std::sqrt(ivar)
+            //                                 << std::endl
+            //              << "  delta[1] = " << neighbor_pixels->get_delta(1, sample, dist)
+            //                                 << std::endl
+            //              << "        dx = " << dx
+            //                                 << std::endl
+            //              << "     chi^2 = " << ivar * dx*dx
+            //                                 << std::endl;
+            //}
+        }
+        
+        log_p_sample_ws[sample] *= -0.5;
+
+        // Prior term
+        log_p_sample_ws[sample] -= neighbor_pixels.get_prior(pix, sample);
+    }
+    
+    // Turn chi^2 into probability
+    //std::cerr << "p_sample.size() = " << p_sample.size() << std::endl;
+    double log_p_max = *std::max_element(log_p_sample_ws.begin(), log_p_sample_ws.end());
+    //std::cerr << std::endl
+    //          << "p_min = " << p_min << std::endl;
+    for(int sample=0; sample<n_samples; sample++) {
+        //std::cerr << p_sample[sample] << " ";
+        p_sample_ws[sample] = std::exp(beta * (log_p_sample_ws[sample] - log_p_max));
+    }
+    //std::cerr << std::endl << std::endl;
+
+    // Choose a sample at random, weighted by the probabilities
+    int idx_old = neighbor_sample[pix];
+    std::discrete_distribution<> d(p_sample_ws.begin(), p_sample_ws.end());
+    int idx = d(r);
+    neighbor_sample[pix] = idx;
+
+    //if(pix == 2) {
+    //    std::vector<double> p = d.probabilities();
+
+    //    int p_max_idx = std::distance(
+    //        p.begin(),
+    //        std::max_element(p.begin(), p.end())
+    //    );
+
+    //    std::sort(p.begin(), p.end());
+
+    //    std::cerr << "Probabilities:";
+    //    for(int i=p.size()-1; (i>0) && (i>p.size()-10); i--) {
+    //        std::cerr << " " << p.at(i);
+    //    }
+    //    std::cerr << std::endl;
+
+    //    std::cerr << "Index of max. prob.: " << p_max_idx << std::endl;
+
+    //    double P_tot = 0;
+    //    int n_eff = 0;
+    //    for(auto pp = p.rbegin(); (pp != p.rend()) && (P_tot < 0.99); ++pp, ++n_eff) {
+    //        P_tot += *pp;
+    //    }
+    //    std::cerr << "n_eff(" << pix << ") = " << n_eff << std::endl;
+    //}
+    //std::cerr << std::endl;
+    
+    return log_p_sample_ws[idx] - log_p_sample_ws[idx_old];
+}
+
+
+
+double neighbor_gibbs_step_shifted_2(
+        int pix,
+        TNeighborPixels& neighbor_pixels,
+        std::vector<uint16_t>& neighbor_sample,
+        double log_w_shift,
+        std::vector<double>& log_p_sample_ws,
+        std::vector<double>& p_sample_ws,
+        std::mt19937& r,
+        double beta)
+{
+    // Takes a Gibbs step in one of the neighboring pixels, choosing
+    // a sample at random, weighted by the Gaussian process prior.
+    
+    double mu, ivar, dx;
+
+    int n_samples = neighbor_pixels.get_n_samples();
+    int n_dists = neighbor_pixels.get_n_dists();
+
+    log_p_sample_ws.resize(n_samples*3);
+
+    // Determine chi^2 of each sample
+    for(int sample=0; sample<n_samples; sample++) {
+        log_p_sample_ws[sample] = 0.;
+        log_p_sample_ws[sample+n_samples] = 0.;     // -1 distance bin
+        log_p_sample_ws[sample+2*n_samples] = 0.;   // +1 distance bin
+
+        for(int dist=1; dist<n_dists-1; dist++) {
+            // Calculate mean, sigma of pixel
+            mu = neighbor_pixels.calc_mean(pix, dist, neighbor_sample);
+            ivar = neighbor_pixels.get_inv_var(pix, dist);
+
+            // Add to chi^2
+            dx = neighbor_pixels.get_delta(pix, sample, dist) - mu;
+            log_p_sample_ws[sample] += ivar * dx*dx;
+            
+            //if((pix == 2) && (sample == 55)) {
+            //    std::cerr << "dist = " << dist << std::endl;
+            //    std::cerr << "log_p_sample_ws[sample]             += " << ivar*dx*dx << std::endl;
+            //}
+
+            dx = neighbor_pixels.get_delta(pix, sample, dist-1) - mu;
+            log_p_sample_ws[sample+n_samples] += ivar * dx*dx;
+
+            //if((pix == 2) && (sample == 55)) {
+            //    std::cerr << "log_p_sample_ws[sample+n_samples]   += " << ivar*dx*dx << std::endl;
+            //}
+
+            dx = neighbor_pixels.get_delta(pix, sample, dist+1) - mu;
+            log_p_sample_ws[sample+2*n_samples] += ivar * dx*dx;
+            
+            //if((pix == 2) && (sample == 55)) {
+            //    std::cerr << "log_p_sample_ws[sample+2*n_samples] += " << ivar*dx*dx << std::endl;
+            //    std::cerr << std::endl;
+            //}
+        }
+
+        // First distance bin
+        mu = neighbor_pixels.calc_mean(pix, 0, neighbor_sample);
+        ivar = neighbor_pixels.get_inv_var(pix, 0);
+
+        dx = neighbor_pixels.get_delta(pix, sample, 0) - mu;
+        log_p_sample_ws[sample] += ivar * dx*dx;
+        
+        dx = neighbor_pixels.get_delta(pix, sample, 1) - mu;
+        log_p_sample_ws[sample+2*n_samples] += ivar * dx*dx;
+
+        // Last distance bin
+        mu = neighbor_pixels.calc_mean(pix, n_dists-1, neighbor_sample);
+        ivar = neighbor_pixels.get_inv_var(pix, 0);
+
+        dx = neighbor_pixels.get_delta(pix, sample, n_dists-1) - mu;
+        log_p_sample_ws[sample] += ivar * dx*dx;
+        
+        dx = neighbor_pixels.get_delta(pix, sample, n_dists-2) - mu;
+        log_p_sample_ws[sample+n_samples] += ivar * dx*dx;
+
+        // Multiply chi^2 by -0.5
+        log_p_sample_ws[sample] *= -0.5;
+        log_p_sample_ws[sample+n_samples] *= -0.5;
+        log_p_sample_ws[sample+2*n_samples] *= -0.5;
+
+        // Subtract log(prior)
+        log_p_sample_ws[sample] -= neighbor_pixels.get_prior(pix, sample);
+        log_p_sample_ws[sample+n_samples] -= neighbor_pixels.get_prior(pix, sample);
+        log_p_sample_ws[sample+2*n_samples] -= neighbor_pixels.get_prior(pix, sample);
+    }
+    
+    // Turn chi^2 into probability
+    double log_p_max = *std::max_element(log_p_sample_ws.begin(), log_p_sample_ws.end());
+    //double log_p_max_sample, log_p_sample_tmp, p_sample_tmp;
+    double xi, zeta;
+
+    double log_a = 0.;          // log(weight) for no shift
+    double log_b = log_w_shift; // log(weight) for shift of +-1 distance bin
+
+    for(int sample=0; sample<n_samples; sample++) {
+        //p_sample_ws[sample] = std::exp(beta * (log_p_sample_ws[sample] - log_p_max));
+    
+        //log_p_max_sample = std::max(log_p_sample_ws[sample]+log_a, log_p_sample_ws[sample+n_samples]+log_b);
+        //log_p_max_sample = std::max(log_p_max_sample, log_p_sample_ws[sample+2*n_samples]+log_b);
+        //
+        //log_p_sample_tmp = beta * (log_p_max_sample-log_p_max);
+        //p_sample_ws[sample] = std::exp(log_p_sample_tmp);
+
+        //p_sample_tmp = std::exp(log_p_sample_ws[sample] + log_a - log_p_max_sample);
+        //p_sample_tmp += std::exp(log_p_sample_ws[sample+n_samples] + log_b - log_p_max_sample);
+        //p_sample_tmp += std::exp(log_p_sample_ws[sample+2*n_samples] + log_b - log_p_max_sample);
+        //
+        //if((pix == 2) && (sample == 55)) {
+        //    std::cerr << std::endl;
+        //    std::cerr << "beta = " << beta << std::endl;
+        //    std::cerr << "log_p_sample_ws[sample] = " << log_p_sample_ws[sample] << std::endl;
+        //    std::cerr << "log_p_sample_ws[sample+n_samples] = " << log_p_sample_ws[sample+n_samples] << std::endl;
+        //    std::cerr << "log_p_sample_ws[sample+2*n_samples] = " << log_p_sample_ws[sample+2*n_samples] << std::endl;
+        //    std::cerr << "log_p_max_sample = " << log_p_max_sample << std::endl;
+        //    std::cerr << "log_p_sample_tmp = " << log_p_sample_tmp << std::endl;
+        //    std::cerr << "p_sample_tmp = " << p_sample_tmp << std::endl;
+        //    std::cerr << std::endl;
+        //}
+
+        //p_sample_ws[sample] *= std::pow(p_sample_tmp, beta);
+        //log_p_sample_ws[sample] = log_p_sample_tmp + beta * std::log(p_sample_tmp);
+        
+        //
+        log_p_sample_ws[sample] += log_a - log_p_max;
+        log_p_sample_ws[sample+n_samples] += log_b - log_p_max;
+        log_p_sample_ws[sample+2*n_samples] += log_b - log_p_max;
+        
+        // The maximum log(p_sample) + log(weight) - log(p_max) for the three shifts
+        xi = std::max(log_p_sample_ws[sample], log_p_sample_ws[sample+n_samples]);
+        xi = std::max(xi, log_p_sample_ws[sample+2*n_samples]);
+    
+        // Should be of order unity, but > 1.
+        zeta =   std::exp(log_p_sample_ws[sample] - xi)
+               + std::exp(log_p_sample_ws[sample+n_samples] - xi)
+               + std::exp(log_p_sample_ws[sample+2*n_samples] - xi);
+
+        log_p_sample_ws[sample] = beta * (xi + std::log(zeta));
+        p_sample_ws[sample] = log_p_sample_ws[sample];
+    }
+    //std::cerr << std::endl << std::endl;
+
+    // Choose a sample at random, weighted by the probabilities
+    int idx_old = neighbor_sample[pix];
+
+    std::discrete_distribution<> d(p_sample_ws.begin(), p_sample_ws.end());
+    int idx = d(r);
+    neighbor_sample[pix] = idx;
+
+    //if(pix == 1) {
+    //    std::vector<double> p = d.probabilities();
+    //    std::sort(p.begin(), p.end());
+
+    //    std::cerr << "Probabilities (beta = " << beta << "):";
+    //    for(int i=p.size()-1; (i>0) && (i>p.size()-10); i--) {
+    //        std::cerr << " " << p.at(i);
+    //    }
+    //    std::cerr << std::endl;
+
+    //    double P_tot = 0;
+    //    int n_eff = 0;
+    //    for(auto pp = p.rbegin(); (pp != p.rend()) && (P_tot < 0.99); ++pp, ++n_eff) {
+    //        P_tot += *pp;
+    //    }
+    //    std::cerr << "n_eff(" << pix << ") = " << n_eff << std::endl;
+    //}
+    //std::cerr << std::endl;
+    
+    return (log_p_sample_ws[idx] - log_p_sample_ws[idx_old]) / beta;
 }
 
 
@@ -2657,6 +2947,7 @@ void sample_los_extinction_discrete(
         const std::string& group_name,
         TMCMCOptions& options,
         TDiscreteLosMcmcParams& params,
+        const std::vector<uint16_t>& neighbor_sample,
         int verbosity)
 {
     std::cerr << "Beginning to sample discrete l.o.s. model ..." << std::endl;
@@ -2721,11 +3012,11 @@ void sample_los_extinction_discrete(
     int n_steps = options.steps * n_x;
     int n_burnin = 0.25 * n_steps;
 
-    int n_neighbor_steps = 100; // TODO: Make this adjustable?
+    int n_neighbor_steps = 500; // TODO: Make this adjustable?
     int neighbor_step_every = n_steps / n_neighbor_steps;
     int neighbor_step_in = 1;
     
-    int n_save = 1000;
+    int n_save = 500;
     int save_every = n_steps / n_save;
     int save_in = save_every;
 
@@ -2748,35 +3039,38 @@ void sample_los_extinction_discrete(
     unsigned int steps_per_swap = 2;
     unsigned int n_swaps = 50;
     // For each temperature, which sample to select for each neighboring pix
-    std::vector<std::unique_ptr<std::vector<uint16_t>>> neighbor_sample;
-    std::vector<double> beta; // Temperature of each neighbor sampler
-    std::vector<int> gibbs_order; // Order in which to update neighboring pixels
+    //std::vector<std::unique_ptr<std::vector<uint16_t>>> neighbor_sample;
+    //std::vector<double> beta; // Temperature of each neighbor sampler
+    //std::vector<int> gibbs_order; // Order in which to update neighboring pixels
     std::vector<double> log_p_neighbor;
     int64_t n_swaps_proposed = 0;
     int64_t n_swaps_accepted = 0;
+    
+    //if(params.neighbor_pixels) {
+        //double b = 1.0;
+        //beta.reserve(n_temperatures);
+        //log_p_neighbor.resize(n_temperatures);
 
-    if(params.neighbor_pixels) {
-        double b = 1.0;
-        beta.reserve(n_temperatures);
-        log_p_neighbor.resize(n_temperatures);
+        //for(int t=0; t<n_temperatures; t++, b*=beta_spacing) {
+        //    neighbor_sample.push_back(std::make_unique<std::vector<uint16_t>>());
+        //    neighbor_sample.at(t)->reserve(params.neighbor_pixels->get_n_pix());
+        //    randomize_neighbors(
+        //        *(params.neighbor_pixels),
+        //        *neighbor_sample.at(t),
+        //        params.r);
+        //    (*(neighbor_sample.at(t)))[0] = 0;
 
-        for(int t=0; t<n_temperatures; t++, b*=beta_spacing) {
-            neighbor_sample.push_back(std::make_unique<std::vector<uint16_t>>());
-            neighbor_sample.at(t)->reserve(params.neighbor_pixels->get_n_pix());
-            randomize_neighbors(
-                *(params.neighbor_pixels),
-                *neighbor_sample.at(t),
-                params.r);
-            (*(neighbor_sample.at(t)))[0] = 0;
-
-            beta.push_back(b);
-        }
+        //    beta.push_back(b);
+        //}
         
-        gibbs_order.reserve(params.neighbor_pixels->get_n_pix()-1);
-        for(int i=1; i<params.neighbor_pixels->get_n_pix(); i++) {
-            gibbs_order.push_back(i);
-        }
-    }
+        //gibbs_order.reserve(params.neighbor_pixels->get_n_pix()-1);
+        //for(int i=1; i<params.neighbor_pixels->get_n_pix(); i++) {
+        //    gibbs_order.push_back(i);
+        //}
+    //}
+
+    std::vector<uint16_t> neighbor_idx;
+    std::vector<uint16_t> neighbor_sample_ws;
 
     // Quantities needed for calculation of marginal probabilities
     std::vector<double> logL_chain, logPr_chain;
@@ -2791,7 +3085,13 @@ void sample_los_extinction_discrete(
         logPr_chain.reserve(n_save_buffered);
         y_idx_chain.reserve(n_x*n_save_buffered);
         neighbor_sample_chain.reserve(n_neighbors*n_save_buffered);
+        neighbor_sample_ws.reserve(params.neighbor_pixels->get_n_pix());
     }
+
+    std::uniform_int_distribution<int> r_neighbor(
+        0,
+        neighbor_sample.size()/(n_neighbors+1) - 1
+    );
 
     // std::cerr << std::endl
     //        << "##################################" << std::endl
@@ -2834,67 +3134,82 @@ void sample_los_extinction_discrete(
         // Randomize neighbors
         if(params.neighbor_pixels && (--neighbor_step_in == 0)) {
             neighbor_step_in = neighbor_step_every;
-
+            
             //params.randomize_neighbors(neighbor_sample);
             //neighbor_sample[0] = 0;
 
             // Gibbs sample neighboring pixels
-            params.set_central_delta(y_idx);
-            for(int t=1; t<n_temperatures; t++) {
-                for(int k=0; k<neighbor_sample[0]->size(); k++) {
-                    (*(neighbor_sample[t]))[k] = (*(neighbor_sample[0]))[k];
-                }
-            }
+            //params.set_central_delta(y_idx);
+            //for(int t=1; t<n_temperatures; t++) {
+            //    for(int k=0; k<neighbor_sample[0]->size(); k++) {
+            //        (*(neighbor_sample[t]))[k] = (*(neighbor_sample[0]))[k];
+            //    }
+            //}
 
-            for(int j=0; j<n_swaps; j++) {
-                for(int t=0; t<n_temperatures; t++) {
-                    for(int l=0; l<steps_per_swap; l++) {
-                        // Randomize Gibbs step order
-                        std::shuffle(gibbs_order.begin(),
-                                     gibbs_order.end(),
-                                     params.r);
+            //for(int j=0; j<n_swaps; j++) {
+            //    for(int t=0; t<n_temperatures; t++) {
+            //        for(int l=0; l<steps_per_swap; l++) {
+            //            // Randomize Gibbs step order
+            //            std::shuffle(gibbs_order.begin(),
+            //                         gibbs_order.end(),
+            //                         params.r);
 
-                        // Take a Gibbs step in each neighbor pixel
-                        for(auto k : gibbs_order) {
-                            log_p_neighbor[t] = neighbor_gibbs_step(
-                                k,
-                                *(params.neighbor_pixels),
-                                *(neighbor_sample[t]),
-                                params.log_p_sample,
-                                params.p_sample,
-                                params.r,
-                                beta.at(t));
-                        }
-                    }
-                }
+            //            // Take a Gibbs step in each neighbor pixel
+            //            for(auto k : gibbs_order) {
+            //                log_p_neighbor[t] = neighbor_gibbs_step(
+            //                    k,
+            //                    *(params.neighbor_pixels),
+            //                    *(neighbor_sample[t]),
+            //                    params.log_p_sample,
+            //                    params.p_sample,
+            //                    params.r,
+            //                    beta.at(t));
+            //            }
+            //        }
+            //    }
 
-                // Take a swap step between temperatures
-                for(int t=1; t<n_temperatures; t++) {
-                    // Try to swap t and t-1
-                    n_swaps_proposed++;
+            //    // Take a swap step between temperatures
+            //    for(int t=1; t<n_temperatures; t++) {
+            //        // Try to swap t and t-1
+            //        n_swaps_proposed++;
 
-                    double lnp_swap = (
-                        (beta[t]-beta[t-1]) *
-                        (log_p_neighbor[t-1]-log_p_neighbor[t])
-                    );
-                    
-                    //if(t == 1) {
-                    //    std::cerr << "p_swap = " << std::exp(lnp_swap) << std::endl;
-                    //}
+            //        double lnp_swap = (
+            //            (beta[t]-beta[t-1]) *
+            //            (log_p_neighbor[t-1]-log_p_neighbor[t])
+            //        );
+            //        
+            //        //if(t == 1) {
+            //        //    std::cerr << "p_swap = " << std::exp(lnp_swap) << std::endl;
+            //        //}
 
-                    if(std::log(uniform_dist(params.r)) < lnp_swap) {
-                        //std::cerr << "swap " << t-1 << " <-> " << t << std::endl;
-                        neighbor_sample[t].swap(neighbor_sample[t-1]);
-                        n_swaps_accepted++;
-                    } else {
-                        //std::cerr << "no swap " << t-1 << " <-> " << t << std::endl;
-                    }
-                }
-            }
+            //        if(std::log(uniform_dist(params.r)) < lnp_swap) {
+            //            //std::cerr << "swap " << t-1 << " <-> " << t << std::endl;
+            //            neighbor_sample[t].swap(neighbor_sample[t-1]);
+            //            n_swaps_accepted++;
+            //        } else {
+            //            //std::cerr << "no swap " << t-1 << " <-> " << t << std::endl;
+            //        }
+            //    }
+            //}
 
             // Update the pre-computed priors image, in (E, DM)-pixel-space
+            //params.update_priors_image(
+            //    *(neighbor_sample.at(0)), 0.,
+            //    params.priors_subsampling,
+            //    verbosity);
+            
+            int idx = r_neighbor(params.r);
+            neighbor_idx.push_back(idx);
+
+            neighbor_sample_ws.clear();
+            neighbor_sample_ws.insert(
+                neighbor_sample_ws.end(),
+                neighbor_sample.begin() + (n_neighbors+1)*idx,
+                neighbor_sample.begin() + (n_neighbors+1)*(idx+1)
+            );
+
             params.update_priors_image(
-                *(neighbor_sample.at(0)), 0.,
+                neighbor_sample_ws, 0.,
                 params.priors_subsampling,
                 verbosity);
 
@@ -3148,8 +3463,8 @@ void sample_los_extinction_discrete(
                 logPr_chain.push_back(logPr);
                 neighbor_sample_chain.insert(
                     neighbor_sample_chain.end(),
-                    neighbor_sample.at(0)->begin()+1,
-                    neighbor_sample.at(0)->end()
+                    neighbor_sample_ws.begin()+1,
+                    neighbor_sample_ws.end()
                 );
                 for(int k=0; k<n_x; k++) {
                     y_idx_chain.push_back(y_idx[k]);
@@ -3194,7 +3509,7 @@ void sample_los_extinction_discrete(
             if(params.neighbor_pixels) {
                 std::cerr << "neighbor samples:";
                 for(int j=0; j<params.neighbor_pixels->get_n_pix(); j++) {
-                    std::cerr << " " << neighbor_sample.at(0)->at(j);
+                    std::cerr << " " << neighbor_sample_ws.at(j);
                 }
                 std::cerr << std::endl << std::endl;
             }
@@ -3306,12 +3621,12 @@ void sample_los_extinction_discrete(
         for(int i=0; i<chain_len; i++) {
             // Set the neighbor pixel indices
             for(int k=1; k<n_neighbors; k++) {
-                (*(neighbor_sample.at(0)))[k] = neighbor_sample_chain[n_neighbors*i+k-1];
+                neighbor_sample_ws[k] = neighbor_sample_chain[n_neighbors*i+k-1];
             }
 
             // Update the pre-computed priors image, in (E, DM)-pixel-space
             params.update_priors_image(
-                *(neighbor_sample.at(0)), 0.,
+                neighbor_sample_ws, 0.,
                 params.priors_subsampling,
                 verbosity);
 
@@ -3385,17 +3700,43 @@ void sample_los_extinction_discrete(
 }
 
 
+//void propose_neighbor_dominant_dist_swap(
+//    TNeighborPixels& neighbor_pixels,
+//    const std::vector<uint16_t>& samples,
+//    std::vector<uint16_t>& prop_samples,
+//    int verbosity)
+//{
+//    // Look up dominant distance of each pixel
+//    std::vector<uint16_t> d_curr;
+//    d_curr.reserve(n_pix);
+//    for(int pix=0; pix<n_pix; pix++) {
+//        d_curr[pix] = neighbor_pixels.get_dominant_dist(pix, samples[pix]);
+//    }
+//
+//    // Find # of shared dominant distances in each distance
+//    int dist_max;
+//    int n_shared_max = -1;
+//    for(int dist=0; dist<n_dists; dist++) {
+//        for(int pix=0; pix<n_pix; pix++) {
+//            if(
+//        }
+//    }
+//}
+
+
 void sample_neighbors_pt(
     TNeighborPixels& neighbor_pixels,
+    std::vector<uint16_t>& chain,
     int verbosity)
 {
     // Sampling parameters
     unsigned int n_temperatures = 5;
     double beta_spacing = 0.5; // Spacing of sampling temperatures (0<x<1. 1 = degenerate)
     unsigned int steps_per_swap = 10;
-    unsigned int n_swaps = 1000;
-    double burnin_frac = 0.0;
-    unsigned int n_save = 500;
+    unsigned int n_swaps = 100;
+    double burnin_frac = 0.3;
+    unsigned int n_save = 200;
+    double log_shift_weight = -1.;
 
     int n_steps = n_swaps * steps_per_swap;
     int save_every = n_steps / n_save;
@@ -3403,6 +3744,8 @@ void sample_neighbors_pt(
     
     int n_swaps_burnin = burnin_frac * n_swaps;
     int n_swaps_tot = n_swaps_burnin + n_swaps;
+
+    double shift_weight = std::exp(log_shift_weight);
 
     // Pseudo-random number generator
     std::mt19937 r;
@@ -3426,13 +3769,26 @@ void sample_neighbors_pt(
     for(int t=0; t<n_temperatures; t++, b*=beta_spacing) {
         neighbor_sample.push_back(std::make_unique<std::vector<uint16_t>>());
         neighbor_sample.at(t)->reserve(neighbor_pixels.get_n_pix());
-        randomize_neighbors(
-            neighbor_pixels,
-            *neighbor_sample.at(t),
-            r);
-        (*(neighbor_sample.at(t)))[0] = 0;
+
+        if(t == 0) {
+            randomize_neighbors(
+                neighbor_pixels,
+                *neighbor_sample.at(0),
+                r
+            );
+        } else {
+            std::copy(
+                neighbor_sample.at(0)->begin(),
+                neighbor_sample.at(0)->end(),
+                std::back_inserter(*(neighbor_sample.at(t)))
+            );
+        }
+
+        //(*(neighbor_sample.at(t)))[0] = 0;
 
         beta.push_back(b);
+
+        log_p_neighbor.at(t) = 0.;
     }
     
     // Initialize Gibbs sampling order
@@ -3466,8 +3822,15 @@ void sample_neighbors_pt(
     log_p_sample_ws.resize(n_samples);
     p_sample_ws.resize(n_samples);
     
+    // Clear output chain
+    chain.clear();
+    
     // Sample
     for(int j=0; j<n_swaps_tot; j++) {
+        if(verbosity >= 2) {
+            std::cerr << "Swap " << j+1 << " of " << n_swaps_tot << std::endl;
+        }
+
         for(int t=0; t<n_temperatures; t++) {
             for(int l=0; l<steps_per_swap; l++) {
                 // Randomize Gibbs step order
@@ -3477,16 +3840,24 @@ void sample_neighbors_pt(
 
                 // Take a Gibbs step in each neighbor pixel
                 for(auto k : gibbs_order) {
-                    log_p_neighbor[t] = neighbor_gibbs_step(
+                    log_p_neighbor[t] += neighbor_gibbs_step_shifted(
                         k,
                         neighbor_pixels,
                         *(neighbor_sample[t]),
                         log_p_sample_ws,
                         p_sample_ws,
                         r,
-                        beta.at(t));
+                        beta.at(t),
+                        shift_weight
+                    );
                 }
             }
+
+            // Recalculate log(p) of this temperature
+            log_p_neighbor[t] = neighbor_pixels.calc_lnprob_shifted(
+                *(neighbor_sample.at(t)),
+                shift_weight
+            );
         }
 
         // Randomize temperature swap order
@@ -3504,13 +3875,18 @@ void sample_neighbors_pt(
                 (log_p_neighbor[t-1]-log_p_neighbor[t])
             );
             
-            //if(t == 1) {
-            //    std::cerr << "p_swap = " << std::exp(lnp_swap) << std::endl;
-            //}
+            if(t == 1) {
+                std::cerr << "p_swap = " << std::exp(lnp_swap) << std::endl;
+            }
 
             if(std::log(uniform_dist(r)) < lnp_swap) {
                 //std::cerr << "swap " << t-1 << " <-> " << t << std::endl;
                 neighbor_sample[t].swap(neighbor_sample[t-1]);
+
+                double tmp = log_p_neighbor[t-1];
+                log_p_neighbor[t-1] = log_p_neighbor[t];
+                log_p_neighbor[t] = tmp;
+
                 n_swaps_accepted.at(t-1)++;
             } else {
                 //std::cerr << "no swap " << t-1 << " <-> " << t << std::endl;
@@ -3521,8 +3897,13 @@ void sample_neighbors_pt(
             save_in = save_every;
 
             // Save point
-            sample_chain.insert(
-                sample_chain.end(),
+            //sample_chain.insert(
+            //    sample_chain.end(),
+            //    neighbor_sample.at(0)->begin(),
+            //    neighbor_sample.at(0)->end()
+            //);
+            chain.insert(
+                chain.end(),
                 neighbor_sample.at(0)->begin(),
                 neighbor_sample.at(0)->end()
             );
@@ -3585,6 +3966,7 @@ void sample_neighbors_pt(
     //    false   // subsample
     //);
     //chain_write_buffer.write(out_fname, group_name, "neighbor_samples");
+    
 }
 
 

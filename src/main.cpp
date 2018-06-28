@@ -366,7 +366,7 @@ int main(int argc, char **argv) {
                         opts.neighbor_lookup_fname,
                         opts.pixel_lookup_fname,
                         opts.output_fname_pattern,
-                        50);
+                        1000);
                     neighbor_pixels->init_covariance(opts.correlation_scale);
                 }
                 
@@ -381,6 +381,8 @@ int main(int argc, char **argv) {
                     opts.verbosity
                 );
                 
+                std::vector<uint16_t> neighbor_sample;
+
                 if(discrete_los_params.neighbor_pixels) {
                     cout << "Initializing dominant distances ..." << endl;
                     discrete_los_params.neighbor_pixels->init_dominant_dist();
@@ -389,6 +391,7 @@ int main(int argc, char **argv) {
                     //sample_neighbors(*(discrete_los_params.neighbor_pixels), opts.verbosity);
                     sample_neighbors_pt(
                         *(discrete_los_params.neighbor_pixels),
+                        neighbor_sample,
                         opts.verbosity
                     );
                 }
@@ -399,6 +402,7 @@ int main(int argc, char **argv) {
                     *it,
                     discrete_los_options,
                     discrete_los_params,
+                    neighbor_sample,
                     opts.verbosity
                 );
                 cout << "Done with discrete sampling." << endl;

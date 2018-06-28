@@ -562,7 +562,7 @@ void TNeighborPixels::init_covariance(
     std::function<double(double)> kernel
         = [scale, scale_coeff](double d2) -> double
     {
-        if(d2 > 1.e-8) { d2 += 0.25*scale*scale; } // TODO: Set softening?
+        if(d2 > 1.e-8) { d2 += 0.5*0.5*scale*scale; } // TODO: Set softening?
         return std::exp(scale_coeff * std::sqrt(d2));
     };
     
@@ -598,6 +598,13 @@ void TNeighborPixels::init_dominant_dist() {
     dominant_dist.clear();
     dominant_dist.reserve(n_pix*n_samples);
 
+    n_dominant_dist_samples.resize(n_pix*n_dists);
+    std::fill(
+        n_dominant_dist_samples.begin(),
+        n_dominant_dist_samples.end(),
+        0.
+    );
+
     double delta_max, delta_tmp;
     uint16_t dist_max;
     
@@ -613,7 +620,44 @@ void TNeighborPixels::init_dominant_dist() {
                 }
             }
             dominant_dist.push_back(dist_max);
+            n_dominant_dist_samples.at(n_dists*pix + dist_max)++;
         }
+    }
+    
+    std::cout << std::endl
+              << "Dominant distance histograms:"
+              << std::endl << std::endl;
+    
+    int h_max = 20;
+    for(int pix=0; pix<n_pix; pix++) {
+        std::string msg(h_max*(n_dists+1), ' ');
+
+        for(int j=0; j<h_max; j++) {
+            msg[(j+1)*(n_dists+1) - 1] = '\n';
+        }
+
+        for(int dist=0; dist<n_dists; dist++) {
+            int h = n_dominant_dist_samples[n_dists*pix + dist]/2;
+            if(h > h_max) { h = h_max; }
+            
+            int base = (h_max-1)*(n_dists+1) + dist;
+
+            for(int j=0; j<h; j++) {
+                int idx = base - j*(n_dists+1);
+                msg[idx] = '*';
+            }
+        }
+        std::cout << msg;
+
+        for(int dist=0; dist<n_dists; dist++) {
+            std::cout << "-";
+        }
+        std::cout << std::endl;
+
+        for(int dist=0; dist<n_dists; dist++) {
+            std::cout << (dist % 10 ? ' ' : '|');
+        }
+        std::cout << std::endl << std::endl;
     }
 }
 
@@ -623,6 +667,14 @@ uint16_t TNeighborPixels::get_dominant_dist(
         unsigned int sample) const
 {
     return dominant_dist[n_samples*pix + sample];
+}
+
+
+uint16_t TNeighborPixels::get_n_dominant_dist_samples(
+        unsigned int pix,
+        unsigned int dist) const
+{
+    return dominant_dist[n_dists*pix + dist];
 }
 
 
@@ -700,6 +752,71 @@ double TNeighborPixels::calc_mean(
     return mu;
 }
 
+
+double TNeighborPixels::calc_mean_shifted(
+        unsigned int pix,
+        unsigned int dist,
+        const std::vector<uint16_t>& sample,
+        const double shift_weight) const
+{
+    // Calculates the mean of the specified pixel, given that
+    // the specified samples are chosen for the other pixels.
+    //
+    // An additional "shift" term is added into the inverse covariance
+    // matrix, which couples a given distance of the central pixel
+    // with the neighboring distances of the neighboring pixels.
+    // Neighboring distances of the central pixel are not coupled.
+    // This shift term deforms the prior, encouraging transitions between
+    // states in which a reddening jump occurs in neighboring distances.
+    // Taking <shift_weight> to zero recovers the unmodified prior.
+    //
+    // Inputs:
+    //     pix: index of pixel to compute mean for
+    //     dist: distance bin to compute mean for
+    //     sample: Which sample to choose for each pixel. Should
+    //             have the same length as the total number of
+    //             pixels. The pixel corresponding to `pix` will
+    //             be ignored.
+    //     shift_weight: A small positive constant (<< 1) which
+    //                   parameterizes the strength of the coupling
+    //                   between neighboring distances.
+    
+    double mu = 0.;
+    for(int i=0; i<pix; i++) {
+        mu += (*(inv_cov[dist]))(pix, i) * get_delta(i, sample[i], dist);
+    }
+    for(int i=pix+1; i<n_pix; i++) {
+        mu += (*(inv_cov[dist]))(pix, i) * get_delta(i, sample[i], dist);
+    }
+
+    if(dist != 0) {
+        for(int i=0; i<pix; i++) {
+            mu += shift_weight
+                  * (*(inv_cov[dist-1]))(pix, i) * get_delta(i, sample[i], dist-1);
+        }
+        for(int i=pix+1; i<n_pix; i++) {
+            mu += shift_weight
+                  * (*(inv_cov[dist-1]))(pix, i) * get_delta(i, sample[i], dist-1);
+        }
+    }
+
+    if(dist != n_dists-1) {
+        for(int i=0; i<pix; i++) {
+            mu += shift_weight
+                  * (*(inv_cov[dist+1]))(pix, i) * get_delta(i, sample[i], dist+1);
+        }
+        for(int i=pix+1; i<n_pix; i++) {
+            mu += shift_weight
+                  * (*(inv_cov[dist+1]))(pix, i) * get_delta(i, sample[i], dist+1);
+        }
+    }
+
+    mu *= -1. / get_inv_var(pix, dist);
+
+    return mu;
+}
+
+
 double TNeighborPixels::calc_lnprob(const std::vector<uint16_t>& sample) const {
     double p = 0.;
     unsigned int s0, s1;
@@ -721,6 +838,61 @@ double TNeighborPixels::calc_lnprob(const std::vector<uint16_t>& sample) const {
             p += 0.5 * (*(inv_cov[dist]))(pix0, pix0)
                  * get_delta(pix0, s0, dist)
                  * get_delta(pix0, s0, dist);
+            //std::cerr << get_delta(pix0, s0, dist) << std::endl;
+        }
+
+        p -= get_prior(pix0, s1);
+        //std::cerr << std::endl;
+    }
+    //std::cerr << std::endl;
+
+    return -1. * p;
+}
+
+
+double TNeighborPixels::calc_lnprob_shifted(
+        const std::vector<uint16_t>& sample,
+        const double shift_weight) const
+{
+    double p = 0.;
+    unsigned int s0, s1;
+
+    for(int pix0=0; pix0<n_pix; pix0++) {
+        s0 = sample[pix0];
+
+        for(int pix1=pix0+1; pix1<n_pix; pix1++) {
+            s1 = sample[pix1];
+
+            for(int dist=0; dist<n_dists; dist++) {
+                p += (*(inv_cov[dist]))(pix0, pix1)
+                     * get_delta(pix0, s0, dist)
+                     * get_delta(pix1, s1, dist);
+            }
+
+            // Cross-distance terms
+            for(int dist=1; dist<n_dists; dist++) {
+                p += shift_weight * (
+
+                        (*(inv_cov[dist]))(pix0, pix1)
+                         * get_delta(pix0, s0, dist)
+                         * get_delta(pix1, s1, dist-1)
+
+                      + (*(inv_cov[dist]))(pix0, pix1)
+                         * get_delta(pix0, s0, dist-1)
+                         * get_delta(pix1, s1, dist)
+
+                );
+            }
+        }
+
+        for(int dist=0; dist<n_dists; dist++) {
+            p += 0.5 * (*(inv_cov[dist]))(pix0, pix0)
+                 * get_delta(pix0, s0, dist)
+                 * get_delta(pix0, s0, dist);
+            // Introducing cross-distance terms between the same pixel would
+            // cause each pixel to be a correlated multivariate Gaussian, instead
+            // of an uncorrelated multivariate Gaussian.
+            
             //std::cerr << get_delta(pix0, s0, dist) << std::endl;
         }
 

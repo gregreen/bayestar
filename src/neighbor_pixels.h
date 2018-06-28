@@ -64,7 +64,10 @@ private:
 
     // Dominant distance for each (pix, sample)
     std::vector<uint16_t> dominant_dist;
-    
+
+    // # of samples in given pix with dominant distance at given dist
+    std::vector<uint16_t> n_dominant_dist_samples; // shape = (pix, dist)
+
 public:
     // Constructor/destructor
     TNeighborPixels(uint32_t nside_center,
@@ -84,6 +87,10 @@ public:
     uint16_t get_dominant_dist(
             unsigned int pix,
             unsigned int sample) const;
+
+    uint16_t get_n_dominant_dist_samples(
+            unsigned int pix,
+            unsigned int dist) const;
 
     const std::vector<double> get_prior() const;
     double get_prior(unsigned int pix, unsigned int sample) const;
@@ -108,7 +115,17 @@ public:
             unsigned int dist,
             const std::vector<uint16_t>& sample) const;
     
+    double calc_mean_shifted(
+            unsigned int pix,
+            unsigned int dist,
+            const std::vector<uint16_t>& sample,
+            const double shift_weight) const;
+    
     double calc_lnprob(const std::vector<uint16_t>& sample) const;
+
+    double calc_lnprob_shifted(
+            const std::vector<uint16_t>& sample,
+            const double shift_weight) const;
     
     // Initialization
     bool load_neighbor_list(
