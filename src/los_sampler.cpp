@@ -2265,9 +2265,22 @@ void TDiscreteLosMcmcParams::update_priors_image(
 {
     // Evaluate the probability mass for each (reddening jump, distance)
     *log_P_dy = cv::Mat::zeros(n_E, n_dists, CV_FLOATING_TYPE);
-    // std::cerr <<
+
     double dE0, dE, P_dist;
+    
+    // Cache value of log(dE) for each dE
+    std::vector<double> log_dE_cache;
+    log_dE_cache.reserve(n_E * subsampling);
+    for(int y=0; y<n_E; y++) {
+        dE0 = y * img_stack->rect->dx[0];
+        for(int k=0; k<subsampling; k++) {
+            dE = dE0 + (double)k / (double)subsampling * img_stack->rect->dx[0];
+            log_dE_cache.push_back(std::log(dE));
+        }
+    }
+    
     for(int x=0; x<n_dists; x++) {
+        // Calculate <log(dE)> and sigma_{log(dE)} at this distance
         double mu, inv_sigma;
         if(neighbor_pixels) {
             inv_sigma = std::sqrt(neighbor_pixels->get_inv_var(0, x));
@@ -2283,14 +2296,17 @@ void TDiscreteLosMcmcParams::update_priors_image(
         mu *= sigma_0;
         mu += mu_log_dE_0.at(x);
         inv_sigma /= sigma_0;
-
+        
+        // Calculate the probability of each reddening jump at this distance
         P_dist = 0.;
         for(int y=0; y<n_E; y++) {
             dE0 = y * img_stack->rect->dx[0];
             for(int k=0; k<subsampling; k++) {
                 dE = dE0 + (double)k / (double)subsampling * img_stack->rect->dx[0];
-                if(dE > 0) {
-                    double score = (log(dE) - mu) * inv_sigma;
+                double log_dE = log_dE_cache[y*subsampling+k];
+                if(std::isfinite(log_dE)) {//dE > 0) {
+                    //double score = (log(dE) - mu) * inv_sigma;
+                    double score = (log_dE - mu) * inv_sigma;
                     double P_tmp = exp(-0.5 * score * score);
                     P_tmp *= 1. + erf(alpha_skew * score * INV_SQRT2);
                     P_tmp /= dE;
@@ -2311,7 +2327,7 @@ void TDiscreteLosMcmcParams::update_priors_image(
                 log_P_dy->at<floating_t>(y, x) = -100. - 0.01 * y*y;
             }
         }
-
+        
         if(log_P_dy->at<floating_t>(0, x) <= -99.999) {
             log_P_dy->at<floating_t>(0, x) = 0.;
         }
@@ -3340,8 +3356,12 @@ void sample_los_extinction_discrete(
             // Change in likelihood
             if(dlogPr != -std::numeric_limits<double>::infinity()) {
                 for(int k = 0; k < n_stars; k++) {
-                    // TODO: optimize this for small delta_line_int[k] / (line_int[k] + epsilon)?
-                    dlogL += log(1.0 + delta_line_int[k] / (line_int[k]+epsilon));
+                    double zeta = delta_line_int[k] / (line_int[k]+epsilon);
+                    if(std::fabs(zeta) < 1.e-2) {
+                        dlogL += zeta - 0.5 * zeta*zeta + 0.33333333*zeta*zeta*zeta; // Taylor expansion of log(1+zeta) for zeta << 1.
+                    } else {
+                        dlogL += std::log(1.0 + zeta);
+                    }
                 }
             }
 
@@ -3354,7 +3374,7 @@ void sample_los_extinction_discrete(
             }
 
             // Accept proposal?
-            if((alpha > 0) || ((alpha > -10.) && (exp(alpha) > gsl_rng_uniform(r)))) {
+            if((alpha > 0) || ((alpha > -10.) && (std::exp(alpha) > gsl_rng_uniform(r)))) {
                 // if((dlogPr < -10000) || (dlogPr > 10000)) {
                 //  std::cerr << "dlogPr = " << dlogPr << std::endl
                 //            << "  proposal_type = " << proposal_type << std::endl
