@@ -3340,6 +3340,7 @@ void sample_los_extinction_discrete(
             // Change in likelihood
             if(dlogPr != -std::numeric_limits<double>::infinity()) {
                 for(int k = 0; k < n_stars; k++) {
+                    // TODO: optimize this for small delta_line_int[k] / (line_int[k] + epsilon)?
                     dlogL += log(1.0 + delta_line_int[k] / (line_int[k]+epsilon));
                 }
             }
@@ -3353,7 +3354,7 @@ void sample_los_extinction_discrete(
             }
 
             // Accept proposal?
-            if((alpha > 1) || (exp(alpha) > gsl_rng_uniform(r))) {
+            if((alpha > 0) || ((alpha > -10.) && (exp(alpha) > gsl_rng_uniform(r)))) {
                 // if((dlogPr < -10000) || (dlogPr > 10000)) {
                 //  std::cerr << "dlogPr = " << dlogPr << std::endl
                 //            << "  proposal_type = " << proposal_type << std::endl
@@ -3879,7 +3880,7 @@ void sample_neighbors_pt(
                 std::cerr << "p_swap = " << std::exp(lnp_swap) << std::endl;
             }
 
-            if(std::log(uniform_dist(r)) < lnp_swap) {
+            if((lnp_swap > 0) || ((lnp_swap > -10.) && (uniform_dist(r) < std::exp(lnp_swap)))) {
                 //std::cerr << "swap " << t-1 << " <-> " << t << std::endl;
                 neighbor_sample[t].swap(neighbor_sample[t-1]);
 

@@ -782,32 +782,56 @@ double TNeighborPixels::calc_mean_shifted(
     //                   between neighboring distances.
     
     double mu = 0.;
-    for(int i=0; i<pix; i++) {
-        mu += (*(inv_cov[dist]))(pix, i) * get_delta(i, sample[i], dist);
-    }
-    for(int i=pix+1; i<n_pix; i++) {
-        mu += (*(inv_cov[dist]))(pix, i) * get_delta(i, sample[i], dist);
-    }
-
-    if(dist != 0) {
+    
+    Eigen::MatrixXd& inv_cov_0 = *(inv_cov[dist]);
+    
+    if(dist == 0) {
+        Eigen::MatrixXd& inv_cov_p1 = *(inv_cov[dist+1]);
+        
         for(int i=0; i<pix; i++) {
-            mu += shift_weight
-                  * (*(inv_cov[dist-1]))(pix, i) * get_delta(i, sample[i], dist-1);
+            mu += inv_cov_0(pix, i) * get_delta(i, sample[i], dist)
+                  + shift_weight * (
+                        inv_cov_p1(pix, i) * get_delta(i, sample[i], dist+1)
+                    );
         }
         for(int i=pix+1; i<n_pix; i++) {
-            mu += shift_weight
-                  * (*(inv_cov[dist-1]))(pix, i) * get_delta(i, sample[i], dist-1);
+            mu += inv_cov_0(pix, i) * get_delta(i, sample[i], dist)
+                  + shift_weight * (
+                        inv_cov_p1(pix, i) * get_delta(i, sample[i], dist+1)
+                    );
         }
-    }
-
-    if(dist != n_dists-1) {
+    } else if(dist == n_dists-1) {
+        Eigen::MatrixXd& inv_cov_m1 = *(inv_cov[dist-1]);
+        
         for(int i=0; i<pix; i++) {
-            mu += shift_weight
-                  * (*(inv_cov[dist+1]))(pix, i) * get_delta(i, sample[i], dist+1);
+            mu += inv_cov_0(pix, i) * get_delta(i, sample[i], dist)
+                  + shift_weight * (
+                        inv_cov_m1(pix, i) * get_delta(i, sample[i], dist-1)
+                    );
         }
         for(int i=pix+1; i<n_pix; i++) {
-            mu += shift_weight
-                  * (*(inv_cov[dist+1]))(pix, i) * get_delta(i, sample[i], dist+1);
+            mu += inv_cov_0(pix, i) * get_delta(i, sample[i], dist)
+                  + shift_weight * (
+                        inv_cov_m1(pix, i) * get_delta(i, sample[i], dist-1)
+                    );
+        }
+    } else {
+        Eigen::MatrixXd& inv_cov_m1 = *(inv_cov[dist-1]);
+        Eigen::MatrixXd& inv_cov_p1 = *(inv_cov[dist+1]);
+
+        for(int i=0; i<pix; i++) {
+            mu += inv_cov_0(pix, i) * get_delta(i, sample[i], dist)
+                  + shift_weight * (
+                        inv_cov_m1(pix, i) * get_delta(i, sample[i], dist-1)
+                      + inv_cov_p1(pix, i) * get_delta(i, sample[i], dist+1)
+                    );
+        }
+        for(int i=pix+1; i<n_pix; i++) {
+            mu += inv_cov_0(pix, i) * get_delta(i, sample[i], dist)
+                  + shift_weight * (
+                        inv_cov_m1(pix, i) * get_delta(i, sample[i], dist-1)
+                      + inv_cov_p1(pix, i) * get_delta(i, sample[i], dist+1)
+                    );
         }
     }
 
