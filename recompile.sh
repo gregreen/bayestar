@@ -25,6 +25,9 @@ cmake \
     -DBOOST_INCLUDEDIR=/n/sw/fasrcsw/apps/Comp/gcc/7.1.0-fasrc01/boost/1.63.0-fasrc01/include/ \
     -DBoost_NO_BOOST_CMAKE=BOOL:ON \
     -DADDITIONAL_LINK_DIRS=/n/sw/fasrcsw/apps/Comp/gcc/7.1.0-fasrc01/boost/1.63.0-fasrc01/lib \
+    -DCMAKE_BUILD_TYPE=RELEASE \
+    -DPROFILING_GEN=FALSE \
+    -DPROFILING_USE=FALSE \
     .
 
 make VERBOSE=1 -j
