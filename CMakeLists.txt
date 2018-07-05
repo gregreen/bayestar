@@ -48,17 +48,11 @@ include_directories("${PROJECT_BINARY_DIR}/src")
 #
 IF(CMAKE_COMPILER_IS_GNUCXX)
 	IF(PROFILING_GEN)
-        #add_definitions(-fprofile-generate)
 		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-generate=prof -lgcov ")
-		#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fprofile-generate ")
-		#set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS} -fprofile-generate ")
-		#set(LDFLAGS "${LDFLAGS} -fprofile-generate ")
-        #set(LINKER_FLAGS "${LINKER_FLAGS} -fprofile-generate ")
 		MESSAGE( STATUS "Setting flags to generate profiling information." )
 	ENDIF(PROFILING_GEN)
 	IF(PROFILING_USE)
 		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-use=prof ")
-		#set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS} -fprofile-use=profiling/ ")
 		MESSAGE( STATUS "Setting flags to use profiling information." )
 	ENDIF(PROFILING_USE)
 ENDIF(CMAKE_COMPILER_IS_GNUCXX)
@@ -72,19 +66,6 @@ ELSE(NOT CMAKE_COMPILER_IS_GNUCXX)
 	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3 -march=native ")
 	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O1 -g ")
 ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
-
-#
-# Profile-driven optimization build types
-#
-#SET(CMAKE_CXX_FLAGS_PROFGEN "${CMAKE_CXX_FLAGS} -O3 -march=native -fprofile-generate" CACHE STRING
-#    "Flags used by the C++ compiler during maintainer builds."
-#    FORCE)
-#SET(CMAKE_EXE_LINKER_FLAGS_PROFGEN "${CMAKE_EXE_LINKER_FLAGS} -fprofile-generate")
-#MARK_AS_ADVANCED(CMAKE_CXX_FLAGS_PROFGEN
-#                 LINKER_FLAGS_PROFGEN)
-#SET(CMAKE_BUILD_TYPE "${CMAKE_BUILD_TYPE}" CACHE STRING
-#    "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel ProfGen."
-#    FORCE)
 
 #
 # Non-compiler-specific flags
