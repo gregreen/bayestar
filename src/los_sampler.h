@@ -57,6 +57,7 @@
 #include "gaussian_process.h"
 #include "neighbor_pixels.h"
 #include "bridging_sampler.h"
+#include "lru_cache.h"
 
 
 // Parameters commonly passed to sampling routines
