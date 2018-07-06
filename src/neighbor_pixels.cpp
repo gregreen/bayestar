@@ -920,7 +920,7 @@ double TNeighborPixels::calc_lnprob_shifted(
             //std::cerr << get_delta(pix0, s0, dist) << std::endl;
         }
 
-        p -= get_prior(pix0, s1);
+        p += get_prior(pix0, s0);
         //std::cerr << std::endl;
     }
     //std::cerr << std::endl;
