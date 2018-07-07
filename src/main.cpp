@@ -387,13 +387,13 @@ int main(int argc, char **argv) {
                     cout << "Initializing dominant distances ..." << endl;
                     discrete_los_params.neighbor_pixels->init_dominant_dist();
 
-                    cout << "Resampling neighboring pixels ..." << endl;
+                    //cout << "Resampling neighboring pixels ..." << endl;
                     //sample_neighbors(*(discrete_los_params.neighbor_pixels), opts.verbosity);
-                    sample_neighbors_pt(
-                        *(discrete_los_params.neighbor_pixels),
-                        neighbor_sample,
-                        opts.verbosity
-                    );
+                    //sample_neighbors_pt(
+                    //    *(discrete_los_params.neighbor_pixels),
+                    //    neighbor_sample,
+                    //    opts.verbosity
+                    //);
                 }
 
                 cout << "Sampling line of sight discretely ..." << endl;

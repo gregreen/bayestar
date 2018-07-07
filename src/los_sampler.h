@@ -192,8 +192,18 @@ struct TDiscreteLosMcmcParams {
                                double *const line_int_ret);
 
     // Prior on line-of-sight dust distribution
-    floating_t log_dy_prior(const int16_t x_idx, const int16_t dy); // Indiv. dist.
-    floating_t log_prior(const int16_t *const y_idx);   // Entire profile
+    floating_t log_dy_prior(
+            const int16_t x_idx,
+            const int16_t dy); // Indiv. dist.
+    floating_t log_prior(const int16_t *const y_idx); // Entire profile
+    
+    floating_t log_dy_prior(
+            const int16_t x_idx,
+            const int16_t dy,
+            const cv::Mat& lnP_dy); // Indiv. dist.
+    floating_t log_prior(
+            const int16_t *const y_idx,
+            const cv::Mat& lnP_dy); // Entire profile
 
     // Step proposal
     void los_integral_diff_step(
@@ -206,6 +216,11 @@ struct TDiscreteLosMcmcParams {
             const int16_t x_idx,
             const int16_t *const y_idx_los_old,
             const int16_t y_idx_new);
+    floating_t log_prior_diff_step(
+            const int16_t x_idx,
+            const int16_t *const y_idx_los_old,
+            const int16_t y_idx_new,
+            const cv::Mat& lnP_dy);
 
     // Swap proposal
     void los_integral_diff_swap(
@@ -213,6 +228,10 @@ struct TDiscreteLosMcmcParams {
             const int16_t *const y_idx,
             double *const delta_line_int_ret);
 
+    floating_t log_prior_diff_swap(
+            const int16_t x0_idx,
+            const int16_t *const y_idx_los_old,
+            const cv::Mat& lnP_dy);
     floating_t log_prior_diff_swap(
             const int16_t x0_idx,
             const int16_t *const y_idx_los_old);
@@ -232,6 +251,11 @@ struct TDiscreteLosMcmcParams {
     floating_t log_prior_diff_shift_r(
             const int16_t x_idx,
             const int16_t dy,
+            const int16_t *const y_idx_los_old,
+            const cv::Mat& lnP_dy);
+    floating_t log_prior_diff_shift_r(
+            const int16_t x_idx,
+            const int16_t dy,
             const int16_t *const y_idx_los_old);
 
     // Shift-left proposal
@@ -246,6 +270,11 @@ struct TDiscreteLosMcmcParams {
             const int16_t *const y_idx_old,
             double *const delta_line_int_ret);
 
+    floating_t log_prior_diff_shift_l(
+            const int16_t x_idx,
+            const int16_t dy,
+            const int16_t *const y_idx_los_old,
+            const cv::Mat& lnP_dy);
     floating_t log_prior_diff_shift_l(
             const int16_t x_idx,
             const int16_t dy,
@@ -271,6 +300,15 @@ struct TDiscreteLosMcmcParams {
             std::vector<uint16_t>& neighbor_sample,
             double alpha_skew,
             int subsampling=10,
+            const double shift_weight=-1.,
+            int verbosity=0);
+
+    void update_priors_image(
+            cv::Mat& img,
+            std::vector<uint16_t>& neighbor_sample,
+            double alpha_skew,
+            int subsampling=10,
+            const double shift_weight=-1.,
             int verbosity=0);
 
     void set_central_delta(int16_t* y_idx);

@@ -2308,7 +2308,13 @@ void TDiscreteLosMcmcParams::initialize_priors(
 
     if(!neighbor_pixels) {
         std::vector<uint16_t> neighbors_sample_tmp;
-        update_priors_image(neighbors_sample_tmp, 0., priors_subsampling, verbosity);
+        update_priors_image(
+            neighbors_sample_tmp,
+            0.,
+            priors_subsampling,
+            -1.,
+            verbosity
+        );
     }
 
     std::cerr << "Done initializing discrete l.o.s. priors ..." << std::endl;
@@ -2319,10 +2325,30 @@ void TDiscreteLosMcmcParams::update_priors_image(
         std::vector<uint16_t>& neighbor_sample,
         double alpha_skew,
         int subsampling,
+        const double shift_weight,
+        int verbosity)
+{
+    update_priors_image(
+        *log_P_dy,
+        neighbor_sample,
+        alpha_skew,
+        subsampling,
+        shift_weight,
+        verbosity
+    );
+}
+
+
+void TDiscreteLosMcmcParams::update_priors_image(
+        cv::Mat& img,
+        std::vector<uint16_t>& neighbor_sample,
+        double alpha_skew,
+        int subsampling,
+        const double shift_weight,
         int verbosity)
 {
     // Evaluate the probability mass for each (reddening jump, distance)
-    *log_P_dy = cv::Mat::zeros(n_E, n_dists, CV_FLOATING_TYPE);
+    img = cv::Mat::zeros(n_E, n_dists, CV_FLOATING_TYPE);
 
     double dE0, dE, P_dist;
     
@@ -2342,7 +2368,13 @@ void TDiscreteLosMcmcParams::update_priors_image(
         double mu, inv_sigma;
         if(neighbor_pixels) {
             inv_sigma = std::sqrt(neighbor_pixels->get_inv_var(0, x));
-            mu = neighbor_pixels->calc_mean(0, x, neighbor_sample);
+
+            if(shift_weight > 0.) {
+                mu = neighbor_pixels->calc_mean_shifted(
+                    0, x, neighbor_sample, shift_weight);
+            } else {
+                mu = neighbor_pixels->calc_mean(0, x, neighbor_sample);
+            }
             //std::cerr << "x = " << x << std::endl
             //          << "  * mu = " << mu << std::endl
             //          << "  * sigma = " << 1./inv_sigma << std::endl;
@@ -2368,26 +2400,26 @@ void TDiscreteLosMcmcParams::update_priors_image(
                     double P_tmp = exp(-0.5 * score * score);
                     P_tmp *= 1. + erf(alpha_skew * score * INV_SQRT2);
                     P_tmp /= dE;
-                    log_P_dy->at<floating_t>(y, x) += P_tmp;
+                    img.at<floating_t>(y, x) += P_tmp;
                 }
             }
             // P_dy->at<floating_t>(y, x) /= subsampling;
-            P_dist += log_P_dy->at<floating_t>(y, x);
+            P_dist += img.at<floating_t>(y, x);
         }
 
         // Normalize total probability at this distance to unity
         for(int y=0; y<n_E; y++) {
             if(P_dist > 0) {
-                log_P_dy->at<floating_t>(y, x) /= P_dist;
+                img.at<floating_t>(y, x) /= P_dist;
             }
-            log_P_dy->at<floating_t>(y, x) = log(log_P_dy->at<floating_t>(y, x));
-            if(log_P_dy->at<floating_t>(y, x) < -100.) {
-                log_P_dy->at<floating_t>(y, x) = -100. - 0.01 * y*y;
+            img.at<floating_t>(y, x) = log(img.at<floating_t>(y, x));
+            if(img.at<floating_t>(y, x) < -100.) {
+                img.at<floating_t>(y, x) = -100. - 0.01 * y*y;
             }
         }
         
-        if(log_P_dy->at<floating_t>(0, x) <= -99.999) {
-            log_P_dy->at<floating_t>(0, x) = 0.;
+        if(img.at<floating_t>(0, x) <= -99.999) {
+            img.at<floating_t>(0, x) = 0.;
         }
     }
 
@@ -2397,11 +2429,11 @@ void TDiscreteLosMcmcParams::update_priors_image(
     //              << "==========" << std::endl;
     //    for(int x=0; x<n_dists; x+=5) {
     //        for(int y=0; y<10; y++) {
-    //            std::cerr << log_P_dy->at<floating_t>(y, x) << "  ";
+    //            std::cerr << img.at<floating_t>(y, x) << "  ";
     //        }
     //        std::cerr << "... ";
     //        for(int y=15; y<=30; y+=5) {
-    //            std::cerr << log_P_dy->at<floating_t>(y, x) << "  ";
+    //            std::cerr << img.at<floating_t>(y, x) << "  ";
     //        }
     //        std::cerr << std::endl;
     //    }
@@ -2477,8 +2509,10 @@ void TDiscreteLosMcmcParams::los_integral_diff_step(
 }
 
 
-floating_t TDiscreteLosMcmcParams::log_dy_prior(const int16_t x_idx,
-                                           const int16_t dy)
+floating_t TDiscreteLosMcmcParams::log_dy_prior(
+    const int16_t x_idx,
+    const int16_t dy,
+    const cv::Mat& lnP_dy)
 {
     // if(dy > 0) {
     //     float dxi = inv_sigma_log_dy * (log((float)dy) - mu_log_dy);
@@ -2490,31 +2524,48 @@ floating_t TDiscreteLosMcmcParams::log_dy_prior(const int16_t x_idx,
     //     float dxi = inv_sigma_dy_neg * (float)dy;
     //     return -0.5 * dxi*dxi;
     // }
-    if((dy < 0) || (dy >= log_P_dy->cols)) {
+    if((dy < 0) || (dy >= lnP_dy.cols)) {
         return -std::numeric_limits<floating_t>::infinity();
     } else {
-        return log_P_dy->at<floating_t>(dy, x_idx);
+        return lnP_dy.at<floating_t>(dy, x_idx);
     }
 }
 
 
-floating_t TDiscreteLosMcmcParams::log_prior(const int16_t *const y_idx) {
+floating_t TDiscreteLosMcmcParams::log_dy_prior(
+    const int16_t x_idx,
+    const int16_t dy)
+{
+    return log_dy_prior(x_idx, dy, *log_P_dy);
+}
+
+
+floating_t TDiscreteLosMcmcParams::log_prior(
+    const int16_t *const y_idx,
+    const cv::Mat& lnP_dy)
+{
     floating_t dy = y_idx[0] - (int)y_zero_idx;
-    floating_t log_p = log_dy_prior(0, dy);
+    floating_t log_p = log_dy_prior(0, dy, lnP_dy);
 
     for(int x=1; x<n_dists; x++) {
         dy = y_idx[x] - y_idx[x-1];
-        log_p += log_dy_prior(x, dy);
+        log_p += log_dy_prior(x, dy, lnP_dy);
     }
 
     return log_p;
 }
 
 
+floating_t TDiscreteLosMcmcParams::log_prior(const int16_t *const y_idx) {
+    return log_prior(y_idx, *log_P_dy);
+}
+
+
 floating_t TDiscreteLosMcmcParams::log_prior_diff_step(
         const int16_t x_idx,
         const int16_t *const y_idx_los_old,
-        const int16_t y_idx_new)
+        const int16_t y_idx_new,
+        const cv::Mat& lnP_dy)
 {
     // Left side
     int16_t dy_old = y_idx_los_old[x_idx];
@@ -2528,16 +2579,47 @@ floating_t TDiscreteLosMcmcParams::log_prior_diff_step(
         dy_new -= (int)y_zero_idx;
     }
 
-    floating_t dlog_prior = log_dy_prior(x_idx, dy_new) - log_dy_prior(x_idx, dy_old);
+    floating_t dlog_prior = log_dy_prior(x_idx, dy_new, lnP_dy)
+                          - log_dy_prior(x_idx, dy_old, lnP_dy);
 
     // Right side
     if(x_idx != n_dists-1) {
         dy_old = y_idx_los_old[x_idx+1] - y_idx_los_old[x_idx];
         dy_new = y_idx_los_old[x_idx+1] - y_idx_new;
 
-        dlog_prior += log_dy_prior(x_idx+1, dy_new) - log_dy_prior(x_idx+1, dy_old);
+        dlog_prior += log_dy_prior(x_idx+1, dy_new, lnP_dy)
+                    - log_dy_prior(x_idx+1, dy_old, lnP_dy);
     }
 
+    return dlog_prior;
+}
+
+
+floating_t TDiscreteLosMcmcParams::log_prior_diff_step(
+        const int16_t x_idx,
+        const int16_t *const y_idx_los_old,
+        const int16_t y_idx_new)
+{
+    return log_prior_diff_step(x_idx, y_idx_los_old, y_idx_new, *log_P_dy);
+}
+
+
+floating_t TDiscreteLosMcmcParams::log_prior_diff_swap(
+        const int16_t x0_idx,
+        const int16_t *const y_idx_los_old,
+        const cv::Mat& lnP_dy)
+{
+    floating_t y_left = y_idx_los_old[x0_idx-1];
+    floating_t y0 = y_idx_los_old[x0_idx];
+    floating_t y_right = y_idx_los_old[x0_idx+1];
+    floating_t dy_left = y0 - y_left;
+    floating_t dy_right = y_right - y0;
+
+    floating_t dlog_prior = log_dy_prior(x0_idx, dy_right, lnP_dy)
+                     + log_dy_prior(x0_idx+1, dy_left, lnP_dy)
+                     - log_dy_prior(x0_idx, dy_left, lnP_dy)
+                     - log_dy_prior(x0_idx+1, dy_right, lnP_dy);
+    // return 0.;
     return dlog_prior;
 }
 
@@ -2546,20 +2628,8 @@ floating_t TDiscreteLosMcmcParams::log_prior_diff_swap(
         const int16_t x0_idx,
         const int16_t *const y_idx_los_old)
 {
-    floating_t y_left = y_idx_los_old[x0_idx-1];
-    floating_t y0 = y_idx_los_old[x0_idx];
-    floating_t y_right = y_idx_los_old[x0_idx+1];
-    floating_t dy_left = y0 - y_left;
-    floating_t dy_right = y_right - y0;
-
-    floating_t dlog_prior = log_dy_prior(x0_idx, dy_right)
-                     + log_dy_prior(x0_idx+1, dy_left)
-                     - log_dy_prior(x0_idx, dy_left)
-                     - log_dy_prior(x0_idx+1, dy_right);
-    // return 0.;
-    return dlog_prior;
+    return log_prior_diff_swap(x0_idx, y_idx_los_old, *log_P_dy);
 }
-
 
 // Calculates the change to the line integrals for a step that swaps the
 // values of E in two neighboring distance bins.
@@ -2688,23 +2758,36 @@ void TDiscreteLosMcmcParams::los_integral_diff_shift_compare_operations(
 floating_t TDiscreteLosMcmcParams::log_prior_diff_shift_l(
         const int16_t x_idx,
         const int16_t dy,
-        const int16_t *const y_idx_los_old) {
+        const int16_t *const y_idx_los_old,
+        const cv::Mat& lnP_dy)
+{
     // Prior changes at x-index of shift and at x=0
     int16_t dy_old = y_idx_los_old[x_idx+1] - y_idx_los_old[x_idx];
 
-    floating_t dlog_prior = log_dy_prior(x_idx+1, dy_old-dy)
-                          - log_dy_prior(x_idx+1, dy_old)
-                          + log_dy_prior(0, y_idx_los_old[0]+dy)
-                          - log_dy_prior(0, y_idx_los_old[0]);
+    floating_t dlog_prior = log_dy_prior(x_idx+1, dy_old-dy, lnP_dy)
+                          - log_dy_prior(x_idx+1, dy_old, lnP_dy)
+                          + log_dy_prior(0, y_idx_los_old[0]+dy, lnP_dy)
+                          - log_dy_prior(0, y_idx_los_old[0], lnP_dy);
 
     return dlog_prior;
+}
+
+
+floating_t TDiscreteLosMcmcParams::log_prior_diff_shift_l(
+        const int16_t x_idx,
+        const int16_t dy,
+        const int16_t *const y_idx_los_old)
+{
+    return log_prior_diff_shift_l(x_idx, dy, y_idx_los_old, *log_P_dy);
 }
 
 
 floating_t TDiscreteLosMcmcParams::log_prior_diff_shift_r(
         const int16_t x_idx,
         const int16_t dy,
-        const int16_t *const y_idx_los_old) {
+        const int16_t *const y_idx_los_old,
+        const cv::Mat& lnP_dy)
+{
     // Prior only changes at x-index of shift
     int16_t dy_old = y_idx_los_old[x_idx];
 
@@ -2714,9 +2797,19 @@ floating_t TDiscreteLosMcmcParams::log_prior_diff_shift_r(
         dy_old -= (int)y_zero_idx;
     }
 
-    floating_t dlog_prior = log_dy_prior(x_idx, dy_old+dy) - log_dy_prior(x_idx, dy_old);
+    floating_t dlog_prior = log_dy_prior(x_idx, dy_old+dy, lnP_dy)
+                          - log_dy_prior(x_idx, dy_old, lnP_dy);
 
     return dlog_prior;
+}
+
+
+floating_t TDiscreteLosMcmcParams::log_prior_diff_shift_r(
+        const int16_t x_idx,
+        const int16_t dy,
+        const int16_t *const y_idx_los_old)
+{
+    return log_prior_diff_shift_r(x_idx, dy, y_idx_los_old, *log_P_dy);
 }
 
 
@@ -3025,26 +3118,114 @@ void sample_los_extinction_discrete(
         int verbosity)
 {
     std::cerr << "Beginning to sample discrete l.o.s. model ..." << std::endl;
+    
+    //
+    // Parallel tempering parameters
+    //
 
-    // Random number generator
-    gsl_rng *r;
-    seed_gsl_rng(&r);
-
+    unsigned int n_temperatures = 4;
+    // Spacing of sampling temperatures:
+    //   0 < beta_spacing < 1
+    //   1 -> degenerate
+    //   0 -> maximal spacing
+    double beta_spacing = 0.85; 
+    // # of steps to take in central pixel per update
+    int central_steps_per_update = 10; // times # of distances
+    // # of neighbor steps to take per update
+    int neighbor_steps_per_update = 5; // times # of neighbors
+    // # of update cycles per swap
+    int updates_per_swap = 5;
+    // # of swaps to attempt
+    int n_swaps = 100;
+    // Fraction of sampling to use as burn-in
+    double burnin_frac = 0.3;
+    // # of samples to save
+    unsigned int n_save = 100;
+    // Deformation of prior to correlate neighboring distances
+    double log_shift_weight = -1.;
+    
+    //
+    // Stellar PDF image parameters
+    //
     int n_x = params.img_stack->rect->N_bins[1];    // # of distance pixels
     int n_y = params.img_stack->rect->N_bins[0];    // # of reddening pixels
     int n_stars = params.img_stack->N_images;       // # of stars
 
-    // Temporary variables
-    double dlog_p;
-    double log_p = 0;
-    double logL = 0;
-    double logPr = 0;
-    double ln_proposal_factor = 0;
-    double* line_int = new double[n_stars];
-    double* delta_line_int = new double[n_stars];
+    //
+    // Derived sampling parameters
+    //
+    int n_swaps_burnin = burnin_frac * n_swaps;
+    n_swaps += n_swaps_burnin;
+    central_steps_per_update *= n_x;
+    double shift_weight = std::exp(log_shift_weight);
+    
+    if(verbosity >= 2) {
+        std::cerr << "Total # of central steps: "
+                  << n_swaps
+                     * updates_per_swap
+                     * central_steps_per_update
+                  << std::endl;
+    }
+    
+    int save_every = n_swaps / n_save; // Save one sample every # of swaps
+    int save_in = save_every; // Counts down until next saved sample
+    
+    //int n_steps = options.steps * n_x;
+    //int n_burnin = 0.25 * n_steps;
 
-    double* line_int_test = new double[n_stars];
-    double* line_int_test_old = new double[n_stars];
+    //int n_neighbor_steps = 500; // TODO: Make this adjustable?
+    //int neighbor_step_every = n_steps / n_neighbor_steps;
+    //int neighbor_step_in = 1;
+    //
+    //int n_save = 500;
+    //int save_every = n_steps / n_save;
+    //int save_in = save_every;
+
+    // How often to recalculate exact line integrals
+    int recalculate_every = 1000;
+    std::vector<int> recalculate_in(n_temperatures, recalculate_every);
+    
+    // GSL random number generator
+    gsl_rng *r;
+    seed_gsl_rng(&r);
+    
+    // Temperature ladder
+    std::vector<double> beta;
+    beta.reserve(n_temperatures);
+    double b = 1.0;
+    for(int t=0; t<n_temperatures; t++, b*=beta_spacing) {
+        beta.push_back(b);
+    }
+
+    // Temporary variables
+    std::vector<double> log_p(n_temperatures, 0.);
+    std::vector<double> logPr(n_temperatures, 0.);
+    std::vector<double> logL(n_temperatures, 0.);
+    double dlog_p;
+    //double log_p = 0;
+    //double logL = 0;
+    //double logPr = 0;
+    double ln_proposal_factor = 0;
+    
+    //
+    // Temporary variables for line integrals, etc.
+    //
+    std::vector<std::unique_ptr<std::vector<double>>> line_int;
+    std::vector<double> delta_line_int(n_stars, 0.);
+    line_int.reserve(n_temperatures);
+    for(int t=0; t<n_temperatures; t++) {
+        line_int.push_back(
+            std::make_unique<std::vector<double>>(n_stars, 0.)
+        );
+    }
+    std::vector<double> line_int_test(n_stars, 0.);
+    //std::vector<double> line_int_test_old(n_stars, 0.);
+    
+    //double* line_int = new double[n_stars];
+    //double* delta_line_int = new double[n_stars];
+
+    //double* line_int_test = new double[n_stars];
+    //double* line_int_test_old = new double[n_stars];
 
     // Calculate line integrals with correct line-of-sight distribution
     // int16_t* y_idx_true = new int16_t[n_x];
@@ -3065,38 +3246,62 @@ void sample_los_extinction_discrete(
     // std::cerr << "true l.o.s. integral (0) = "
     //           << line_int_true[0] << std::endl;
 
-    // Guess reddening profile
-    int16_t* y_idx = new int16_t[n_x];
-    double* y_idx_dbl = new double[n_x];
-    params.guess_EBV_profile_discrete(y_idx, r);
+    //
+    // Reddening profile
+    //
+    std::cerr << "Set up reddening profile" << std::endl;
+    std::vector<std::unique_ptr<std::vector<int16_t>>> y_idx;
+    std::vector<double> y_idx_dbl(n_x, 0.);
+    y_idx.reserve(n_temperatures);
+    for(int t=0; t<n_temperatures; t++) {
+        if(t == 0) {
+            y_idx.push_back(
+                std::make_unique<std::vector<int16_t>>(n_x, 0)
+            );
+            // Guess reddening profile
+            params.guess_EBV_profile_discrete(y_idx.at(0)->data(), r);
+        } else {
+            y_idx.push_back(
+                std::make_unique<std::vector<int16_t>>(
+                    y_idx.at(0)->begin(),
+                    y_idx.at(0)->end()
+                )
+            );
+        }
+    }
+    //int16_t* y_idx = new int16_t[n_x];
+    //double* y_idx_dbl = new double[n_x];
+    //params.guess_EBV_profile_discrete(y_idx, r);
 
     // Calculate initial line integral for each star
-    params.los_integral_discrete(y_idx, line_int);
+    std::cerr << "Calculate initial line integral for each star" << std::endl;
+    params.los_integral_discrete(
+        y_idx.at(0)->data(),
+        line_int.at(0)->data()
+    );
+    for(int t=1; t<n_temperatures; t++) {
+        for(int s=0; s<n_stars; s++) {
+            line_int.at(t)->at(s) = line_int.at(0)->at(s);
+        }
+    }
 
     // params.los_integral_discrete(y_idx, line_int_test_old);
-
-    // Calculate initial prior
-    logPr = params.log_prior(y_idx);
 
     // for(int k = 0; k < n_x; k++) {
     //     y_idx_dbl[k] = (double)(y_idx[k]);
     // }
 
     // Number of steps, samples to save, etc.
-    int n_steps = options.steps * n_x;
-    int n_burnin = 0.25 * n_steps;
+    //int n_steps = options.steps * n_x;
+    //int n_burnin = 0.25 * n_steps;
 
-    int n_neighbor_steps = 500; // TODO: Make this adjustable?
-    int neighbor_step_every = n_steps / n_neighbor_steps;
-    int neighbor_step_in = 1;
-    
-    int n_save = 500;
-    int save_every = n_steps / n_save;
-    int save_in = save_every;
-
-    // How often to recalculate exact line integrals
-    int recalculate_every = 100;
-    int recalculate_in = recalculate_every;
+    //int n_neighbor_steps = 500; // TODO: Make this adjustable?
+    //int neighbor_step_every = n_steps / n_neighbor_steps;
+    //int neighbor_step_in = 1;
+    //
+    //int n_save = 500;
+    //int save_every = n_steps / n_save;
+    //int save_in = save_every;
 
     // Acceptance statistics
     int64_t n_proposals[] = {0, 0, 0, 0, 0, 0},
@@ -3108,15 +3313,36 @@ void sample_los_extinction_discrete(
     TChain chain(n_x, n_save_buffered);
 
     // Neighboring pixels
-    unsigned int n_temperatures = 4;
-    double beta_spacing = 0.50; // Spacing of sampling temperatures (0<x<1. 1 = degenerate)
-    unsigned int steps_per_swap = 2;
-    unsigned int n_swaps = 50;
+    //unsigned int n_temperatures = 4;
+    //double beta_spacing = 0.50; // Spacing of sampling temperatures (0<x<1. 1 = degenerate)
+    //unsigned int steps_per_swap = 2;
+    //unsigned int n_swaps = 50;
     // For each temperature, which sample to select for each neighboring pix
     //std::vector<std::unique_ptr<std::vector<uint16_t>>> neighbor_sample;
     //std::vector<double> beta; // Temperature of each neighbor sampler
-    //std::vector<int> gibbs_order; // Order in which to update neighboring pixels
-    std::vector<double> log_p_neighbor;
+    
+    //
+    // Information on neighboring pixels
+    //
+
+    // Quantities needed for calculation of marginal probabilities
+    std::vector<double> logL_chain, logPr_chain;
+    std::vector<int16_t> y_idx_chain;
+    std::vector<uint16_t> neighbor_sample_chain;
+    int n_neighbors = 1;
+    int n_neighbor_samples = 1;
+    
+    if(params.neighbor_pixels) {
+        n_neighbors = params.neighbor_pixels->get_n_pix();
+        n_neighbor_samples = params.neighbor_pixels->get_n_samples();
+
+        logL_chain.reserve(n_save_buffered);
+        logPr_chain.reserve(n_save_buffered);
+        y_idx_chain.reserve(n_x*n_save_buffered);
+        
+        neighbor_sample_chain.reserve((n_neighbors-1)*n_save_buffered);
+    }
+    
     int64_t n_swaps_proposed = 0;
     int64_t n_swaps_accepted = 0;
     
@@ -3142,30 +3368,99 @@ void sample_los_extinction_discrete(
         //    gibbs_order.push_back(i);
         //}
     //}
-
-    std::vector<uint16_t> neighbor_idx;
-    std::vector<uint16_t> neighbor_sample_ws;
-
-    // Quantities needed for calculation of marginal probabilities
-    std::vector<double> logL_chain, logPr_chain;
-    std::vector<int16_t> y_idx_chain;
-    std::vector<uint16_t> neighbor_sample_chain;
-    int n_neighbors = 0;
-
+    
+    // Pixel indices chosen for neighbors
+    std::vector<std::unique_ptr<std::vector<uint16_t>>> neighbor_idx;
+    neighbor_idx.reserve(n_temperatures);
+    // log(prior) of neighboring pixel combination
+    std::vector<double> logPr_neighbor(n_temperatures, 0.);
+    // Sampling order for neighboring pixels. Will be shuffled.
+    std::vector<int> neighbor_gibbs_order;
+    // Workspaces used during neighbor pixel sampling
+    std::vector<double> log_p_sample_ws;
+    std::vector<double> p_sample_ws;
+    // # of samples stored in neighboring pixels
+    
     if(params.neighbor_pixels) {
-        n_neighbors = params.neighbor_pixels->get_n_pix() - 1;
-
-        logL_chain.reserve(n_save_buffered);
-        logPr_chain.reserve(n_save_buffered);
-        y_idx_chain.reserve(n_x*n_save_buffered);
-        neighbor_sample_chain.reserve(n_neighbors*n_save_buffered);
-        neighbor_sample_ws.reserve(params.neighbor_pixels->get_n_pix());
+        for(int t=0; t<n_temperatures; t++) {
+            neighbor_idx.push_back(
+                std::make_unique<std::vector<uint16_t>>()
+            );
+            neighbor_idx.at(t)->reserve(n_neighbors);
+            
+            // Initialize different temperatures to same staring position
+            if(t == 0) {
+                randomize_neighbors(
+                    *(params.neighbor_pixels),
+                    *(neighbor_idx.at(0)),
+                    params.r
+                );
+                // Central pixel always fixed to sample 0 for simplicity.
+                // Sampled line-of-sight profile will be copied in.
+                neighbor_idx.at(0)->at(0) = 0;
+            } else {
+                std::copy(
+                    neighbor_idx.at(0)->begin(),
+                    neighbor_idx.at(0)->end(),
+                    std::back_inserter(*(neighbor_idx.at(t)))
+                );
+            }
+        }
+        
+        log_p_sample_ws.resize(n_neighbor_samples);
+        p_sample_ws.resize(n_neighbor_samples);
+        
+        neighbor_gibbs_order.reserve(n_neighbors-1);
+        for(int n=1; n<n_neighbors; n++) {
+            neighbor_gibbs_order.push_back(n);
+        }
+    
+    } else { // No neighboring pixels loaded
+        for(int t=0; t<n_temperatures; t++) {
+            neighbor_idx.push_back(
+                std::make_unique<std::vector<uint16_t>>(
+                    n_neighbor_samples,
+                    0
+                )
+            );
+        }
     }
 
-    std::uniform_int_distribution<int> r_neighbor(
-        0,
-        neighbor_sample.size()/(n_neighbors+1) - 1
-    );
+    // Priors on dE in central pixel
+    std::vector<std::unique_ptr<cv::Mat>> lnP_dy;
+    lnP_dy.reserve(n_temperatures);
+    for(int t=0; t<n_temperatures; t++) {
+        lnP_dy.push_back(
+            std::make_unique<cv::Mat>()
+        );
+        params.update_priors_image(
+            *(lnP_dy.at(t)),
+            *(neighbor_idx.at(t)),
+            0.,
+            params.priors_subsampling,
+            shift_weight,
+            verbosity
+        );
+        logPr.at(t) = params.log_prior(
+            y_idx.at(t)->data(),
+            *(lnP_dy.at(t))
+        );
+    }
+    
+    // Calculate initial prior
+    //std::cerr << "Calculate initial prior" << std::endl;
+    //logPr.at(0) = params.log_prior(y_idx.at(0)->data());
+    //for(int t=1; t<n_temperatures; t++) {
+    //    logPr.at(t) = params.log_prior(y_idx.at(0)->data());
+    //}
+    
+    // Random sampler to select temperature (excluding T=1)
+    std::uniform_int_distribution<int> r_temperature(1, n_temperatures-1);
+
+    //std::uniform_int_distribution<int> r_neighbor(
+    //    0,
+    //    neighbor_sample.size()/(n_neighbors+1) - 1
+    //);
 
     // std::cerr << std::endl
     //        << "##################################" << std::endl
@@ -3176,7 +3471,7 @@ void sample_los_extinction_discrete(
     //        << "##################################" << std::endl
     //        << std::endl;
 
-    int w = 0;
+    //int w = 0;
 
     // Softening parameter
     // TODO: Make p_badstar either a config option or dep. on ln(Z)
@@ -3185,7 +3480,7 @@ void sample_los_extinction_discrete(
 
     double sigma_dy_neg = 1.e-5;
     double sigma_dy_neg_target = 1.e-10;
-    double tau_decay = (double)n_steps / 5.;
+    double tau_decay = (double)n_swaps / 20.;
 
     // Proposal settings
     // TODO: Set these more intelligently, or make them configurable?
@@ -3203,350 +3498,284 @@ void sample_los_extinction_discrete(
     std::uniform_real_distribution<> uniform_dist(0., 1.0);
     
     auto t_start = std::chrono::steady_clock::now();
-
-    for(int i = 0; i < n_steps + n_burnin; i++) {
-        // Randomize neighbors
-        if(params.neighbor_pixels && (--neighbor_step_in == 0)) {
-            neighbor_step_in = neighbor_step_every;
-            
-            //params.randomize_neighbors(neighbor_sample);
-            //neighbor_sample[0] = 0;
-
-            // Gibbs sample neighboring pixels
-            //params.set_central_delta(y_idx);
-            //for(int t=1; t<n_temperatures; t++) {
-            //    for(int k=0; k<neighbor_sample[0]->size(); k++) {
-            //        (*(neighbor_sample[t]))[k] = (*(neighbor_sample[0]))[k];
-            //    }
-            //}
-
-            //for(int j=0; j<n_swaps; j++) {
-            //    for(int t=0; t<n_temperatures; t++) {
-            //        for(int l=0; l<steps_per_swap; l++) {
-            //            // Randomize Gibbs step order
-            //            std::shuffle(gibbs_order.begin(),
-            //                         gibbs_order.end(),
-            //                         params.r);
-
-            //            // Take a Gibbs step in each neighbor pixel
-            //            for(auto k : gibbs_order) {
-            //                log_p_neighbor[t] = neighbor_gibbs_step(
-            //                    k,
-            //                    *(params.neighbor_pixels),
-            //                    *(neighbor_sample[t]),
-            //                    params.log_p_sample,
-            //                    params.p_sample,
-            //                    params.r,
-            //                    beta.at(t));
-            //            }
-            //        }
-            //    }
-
-            //    // Take a swap step between temperatures
-            //    for(int t=1; t<n_temperatures; t++) {
-            //        // Try to swap t and t-1
-            //        n_swaps_proposed++;
-
-            //        double lnp_swap = (
-            //            (beta[t]-beta[t-1]) *
-            //            (log_p_neighbor[t-1]-log_p_neighbor[t])
-            //        );
-            //        
-            //        //if(t == 1) {
-            //        //    std::cerr << "p_swap = " << std::exp(lnp_swap) << std::endl;
-            //        //}
-
-            //        if(std::log(uniform_dist(params.r)) < lnp_swap) {
-            //            //std::cerr << "swap " << t-1 << " <-> " << t << std::endl;
-            //            neighbor_sample[t].swap(neighbor_sample[t-1]);
-            //            n_swaps_accepted++;
-            //        } else {
-            //            //std::cerr << "no swap " << t-1 << " <-> " << t << std::endl;
-            //        }
-            //    }
-            //}
-
-            // Update the pre-computed priors image, in (E, DM)-pixel-space
-            //params.update_priors_image(
-            //    *(neighbor_sample.at(0)), 0.,
-            //    params.priors_subsampling,
-            //    verbosity);
-            
-            int idx = r_neighbor(params.r);
-            neighbor_idx.push_back(idx);
-
-            neighbor_sample_ws.clear();
-            neighbor_sample_ws.insert(
-                neighbor_sample_ws.end(),
-                neighbor_sample.begin() + (n_neighbors+1)*idx,
-                neighbor_sample.begin() + (n_neighbors+1)*(idx+1)
-            );
-
-            params.update_priors_image(
-                neighbor_sample_ws, 0.,
-                params.priors_subsampling,
-                verbosity);
-
-            // Update log(prior) of current state
-            logPr = params.log_prior(y_idx);
-        }
+    
+    // Loop over swaps between temperatures
+    for(int swap=0; swap<n_swaps; swap++) {
+        std::cerr << "Swap " << swap << " of " << n_swaps << std::endl;
         
         // Smoothly ramp penalty on negative reddening steps up
         sigma_dy_neg -= (sigma_dy_neg - sigma_dy_neg_target) / tau_decay;
         params.inv_sigma_dy_neg = 1. / sigma_dy_neg;
-
-        // Increase weight of current state
-        w += 1;
-
-        // Propose a new state
-        int x_idx, dy, y_idx_new, dy1;
-
-        // Determine what type of proposal to make
-        proposal_type.roll(r);
-        // int proposal_type = gsl_rng_uniform_int(r, N_PROPOSAL_TYPES);
-        // int proposal_type = STEP_PROPOSAL;
-        // int proposal_type;
-        // double prop_rand = gsl_rng_uniform(r);
-        // const double p_swap = 0.8;
-        // const double p_step = 0.1;
-        // // const double p_shift = 0.1;
-        // if(prop_rand < p_swap) {
-        //  proposal_type = SWAP_PROPOSAL;
-        // } else if(prop_rand < p_swap + p_step) {
-        //  proposal_type = STEP_PROPOSAL;
-        // } else {
-        //  proposal_type = SHIFT_PROPOSAL;
-        // }
-
-        n_proposals[proposal_type.code]++;
-
-        if(proposal_type.step) {
-            discrete_propose_step(r, n_x, x_idx, dy);
-            y_idx_new = y_idx[x_idx] + dy;
-        } else if(proposal_type.swap) {
-            discrete_propose_swap(r, n_x, x_idx);
-            dy1 = y_idx[x_idx+1] - y_idx[x_idx];
-            y_idx_new = y_idx[x_idx-1] + dy1;
-        } else if(proposal_type.absolute) {
-            // SHIFT_ABS_L_PROPOSAL or SHIFT_ABS_R_PROPOSAL
-            discrete_propose_shift_abs(
-                r, y_idx, n_x, y_shift_abs_mean, y_shift_abs_max,
-                x_idx, dy, ln_proposal_factor
-            );
-        } else {
-            // SHIFT_L_PROPOSAL or SHIFT_R_PROPOSAL
-            discrete_propose_shift(r, n_x, x_idx, dy);
-        }
-
-        // int y_idx_new = y_idx[x_idx] + dy;
-
-        // Check if the proposal lands in a valid region of parameter space
-        bool prop_valid = discrete_proposal_valid(
-            proposal_type, y_idx_new, n_y,
-            params, x_idx, dy, y_idx);
-
-        if(prop_valid) {
-            n_proposals_valid[proposal_type.code]++;
-
-            double dlogL = 0;
-            double dlogPr, alpha;
-
-            // Calculate difference in line integrals and prior (between the
-            // current and proposed states).
-            if(proposal_type.step) {
-                params.los_integral_diff_step(
-                    x_idx,
-                    y_idx[x_idx],
-                    y_idx_new,
-                    delta_line_int
-                );
-                dlogPr = params.log_prior_diff_step(x_idx, y_idx, y_idx_new);
-            } else if(proposal_type.swap) {
-                params.los_integral_diff_swap(
-                    x_idx, y_idx,
-                    delta_line_int
-                );
-                dlogPr = params.log_prior_diff_swap(x_idx, y_idx);
-            } else if(proposal_type.left) {
-                dlogPr = params.log_prior_diff_shift_l(x_idx, dy, y_idx);
-                // No point in calculating line integrals if prior -> -infinity.
-                if(dlogPr != -std::numeric_limits<double>::infinity()) {
-                    params.los_integral_diff_shift_l(
-                        x_idx, dy, y_idx,
-                        delta_line_int
+        
+        // Sample within each temperature
+        for(int t=0; t<n_temperatures; t++) {
+            int16_t* y_idx_t = y_idx.at(t)->data();
+            double* line_int_t = line_int.at(t)->data();
+            double& logPr_t = logPr.at(t);
+            double& logL_t = logL.at(t);
+            double& log_p_t = log_p.at(t);
+            cv::Mat& lnP_dy_t = *(lnP_dy.at(t));
+            double b = beta.at(t);
+            
+            // Loop over update cycles
+            for(int u=0; u<updates_per_swap; u++) {
+                // Update neighbors
+                if(params.neighbor_pixels) {
+                    // Copy in central pixel's l.o.s. reddening profile
+                    params.set_central_delta(y_idx_t);
+                    
+                    for(int n=0; n<neighbor_steps_per_update; n++) {
+                        // Randomize Gibbs step order
+                        std::shuffle(neighbor_gibbs_order.begin(),
+                                     neighbor_gibbs_order.end(),
+                                     params.r);
+                        
+                        // Take a Gibbs step in each neighbor pixel
+                        for(auto k : neighbor_gibbs_order) {
+                            neighbor_gibbs_step_shifted(
+                                k,
+                                *(params.neighbor_pixels),
+                                *(neighbor_idx[t]),
+                                log_p_sample_ws,
+                                p_sample_ws,
+                                params.r,
+                                b,
+                                shift_weight
+                            );
+                        }
+                    }
+                    
+                    // Update priors on central
+                    // TODO: need shifted version of this function
+                    params.update_priors_image(
+                        lnP_dy_t,
+                        *(neighbor_idx.at(t)),
+                        0.,
+                        params.priors_subsampling,
+                        shift_weight,
+                        verbosity
                     );
+                    logPr_t = params.log_prior(y_idx_t, lnP_dy_t);
+                    log_p_t = logPr_t + logL_t;
                 }
+                
+                // Between neighbor updates, update central pixel
+                for(int c=0; c<central_steps_per_update; c++) {
+                    // Propose a new state
+                    int x_idx, dy, y_idx_new, dy1;
 
-                // std::cerr << dlogPr << std::endl;
-            } else { // SHIFT_R_PROPOSAL or SHIFT_ABS_R_PROPOSAL
-                dlogPr = params.log_prior_diff_shift_r(x_idx, dy, y_idx);
-
-                // if(x_idx == 0) {
-                //  std::cerr << "shift(0, "
-                //            << y_idx[0] << " -> " << y_idx[0] + dy
-                //            << ") : dln(prior) = " << dlogPr
-                //            << std::endl;
-                // }
-
-                // No point in calculating line integrals if prior -> -infinity.
-                if(dlogPr != -std::numeric_limits<double>::infinity()) {
-                    params.los_integral_diff_shift_r(
-                        x_idx, dy, y_idx,
-                        delta_line_int
-                    );
-
-                    // unsigned int n_eval_diff_tmp;
-                    // unsigned int n_eval_cumulative_tmp;
-                    // params.los_integral_diff_shift_compare_operations(
-                    //  x_idx, dy, y_idx,
-                    //  n_eval_diff_tmp,
-                    //  n_eval_cumulative_tmp
-                    // );
-                    //
-                    // n_eval_diff += n_eval_diff_tmp;
-                    // n_eval_cumulative += n_eval_cumulative_tmp;
-                    // n_shift_steps++;
-
-
-                }
-            }
-
-            // Change in likelihood
-            if(dlogPr != -std::numeric_limits<double>::infinity()) {
-                for(int k = 0; k < n_stars; k++) {
-                    double zeta = delta_line_int[k] / (line_int[k]+epsilon);
-                    if(std::fabs(zeta) < 1.e-2) {
-                        dlogL += zeta - 0.5 * zeta*zeta + 0.33333333*zeta*zeta*zeta; // Taylor expansion of log(1+zeta) for zeta << 1.
+                    // Determine what type of proposal to make
+                    proposal_type.roll(r);
+                    n_proposals[proposal_type.code]++;
+                    
+                    if(proposal_type.step) {
+                        // STEP
+                        discrete_propose_step(r, n_x, x_idx, dy);
+                        y_idx_new = y_idx_t[x_idx] + dy;
+                        //std::cerr << "x_idx = " << x_idx << std::endl;
+                        //std::cerr << "dy = " << dy << std::endl;
+                        //std::cerr << "y_idx_new = " << y_idx_new << std::endl;
+                    } else if(proposal_type.swap) {
+                        // SWAP
+                        discrete_propose_swap(r, n_x, x_idx);
+                        dy1 = y_idx_t[x_idx+1] - y_idx_t[x_idx];
+                        y_idx_new = y_idx_t[x_idx-1] + dy1;
+                    } else if(proposal_type.absolute) {
+                        // SHIFT_ABS_L_PROPOSAL or SHIFT_ABS_R_PROPOSAL
+                        discrete_propose_shift_abs(
+                            r, y_idx_t, n_x,
+                            y_shift_abs_mean, y_shift_abs_max,
+                            x_idx, dy, ln_proposal_factor
+                        );
                     } else {
-                        dlogL += std::log(1.0 + zeta);
+                        // SHIFT_L_PROPOSAL or SHIFT_R_PROPOSAL
+                        discrete_propose_shift(r, n_x, x_idx, dy);
                     }
-                }
-            }
+                    
+                    
+                    // Check if the proposal lands in a valid region
+                    // of parameter space
+                    bool prop_valid = discrete_proposal_valid(
+                        proposal_type, y_idx_new, n_y,
+                        params, x_idx, dy, y_idx_t
+                    );
+                    
+                    //std::cerr << "prop_valid = " << prop_valid << std::endl;
+                    
+                    if(!prop_valid) { continue; }
+                    
+                    n_proposals_valid[proposal_type.code]++;
 
-            // Acceptance probability
-            alpha = dlogL + dlogPr;
-            //alpha = dlogPr; // TODO: Switch back to log(prior) + log(likelihood)
+                    double dlogL = 0;
+                    double dlogPr, alpha;
 
-            if(proposal_type.absolute) {
-                alpha += ln_proposal_factor;
-            }
-
-            // Accept proposal?
-            if((alpha > 0) || ((alpha > -10.) && (std::exp(alpha) > gsl_rng_uniform(r)))) {
-                // if((dlogPr < -10000) || (dlogPr > 10000)) {
-                //  std::cerr << "dlogPr = " << dlogPr << std::endl
-                //            << "  proposal_type = " << proposal_type << std::endl
-                //            << "  x_idx = " << x_idx << std::endl
-                //            << "  dy = " << dy << std::endl
-                //            << "  y_idx[0] = " << y_idx[0] << std::endl;
-                //  std::exit(1);
-                // }
-
-                // ACCEPT
-                n_proposals_accepted[proposal_type.code]++;
-
-                // Add old point to chain
-                // chain.add_point(y_idx_dbl, log_p, (double)w);
-
-                // Update state to proposal
-                if(!proposal_type.shift) {
-                    // STEP_PROPOSAL or SWAP_PROPOSAL
-                    y_idx[x_idx] = y_idx_new;
-                    // y_idx_dbl[x_idx] = (double)y_idx_new;
-                } else if(proposal_type.left) {
-                    for(int j=0; j<=x_idx; j++) {
-                        y_idx[j] += dy;
+                    // Calculate difference in line integrals and
+                    // prior (between the current and proposed states).
+                    if(proposal_type.step) {
+                        params.los_integral_diff_step(
+                            x_idx,
+                            y_idx_t[x_idx],
+                            y_idx_new,
+                            delta_line_int.data()
+                        );
+                        dlogPr = params.log_prior_diff_step(
+                            x_idx,
+                            y_idx_t,
+                            y_idx_new,
+                            lnP_dy_t
+                        );
+                    } else if(proposal_type.swap) {
+                        params.los_integral_diff_swap(
+                            x_idx, y_idx_t,
+                            delta_line_int.data()
+                        );
+                        dlogPr = params.log_prior_diff_swap(
+                            x_idx,
+                            y_idx_t,
+                            lnP_dy_t
+                        );
+                    } else if(proposal_type.left) {
+                        dlogPr = params.log_prior_diff_shift_l(
+                            x_idx,
+                            dy,
+                            y_idx_t,
+                            lnP_dy_t
+                        );
+                        // No point in calculating line integrals
+                        // if prior -> -infinity.
+                        if(dlogPr
+                           != -std::numeric_limits<double>::infinity())
+                        {
+                            params.los_integral_diff_shift_l(
+                                x_idx, dy, y_idx_t,
+                                delta_line_int.data()
+                            );
+                        }
+                    } else { // SHIFT_R_PROPOSAL or SHIFT_ABS_R_PROPOSAL
+                        dlogPr = params.log_prior_diff_shift_r(
+                            x_idx,
+                            dy,
+                            y_idx_t,
+                            lnP_dy_t
+                        );
+                        // No point in calculating line integrals
+                        // if prior -> -infinity.
+                        if(dlogPr
+                           != -std::numeric_limits<double>::infinity())
+                        {
+                            params.los_integral_diff_shift_r(
+                                x_idx, dy, y_idx_t,
+                                delta_line_int.data()
+                            );
+                        }
                     }
-                } else { // SHIFT_R_PROPOSAL or SHIFT_ABS_R_PROPOSAL
-                    for(int j=x_idx; j<params.n_dists; j++) {
-                        y_idx[j] += dy;
-                        // y_idx_dbl[j] = (double)(y_idx[j]);
+                    
+                    //std::cerr << "dlogPr = " << dlogPr << std::endl;
+                    
+                    // Change in likelihood
+                    if(dlogPr != -std::numeric_limits<double>::infinity()) {
+                        for(int k = 0; k < n_stars; k++) {
+                            double zeta = delta_line_int[k]
+                                          / (line_int_t[k]+epsilon);
+                            if(std::fabs(zeta) < 1.e-2) {
+                                // Taylor expansion of ln(1+zeta)
+                                // for zeta << 1.
+                                dlogL += zeta
+                                         - 0.5 * zeta*zeta
+                                         + 0.33333333*zeta*zeta*zeta;
+                            } else {
+                                dlogL += std::log(1.0 + zeta);
+                            }
+                        }
+                        
+                        //std::cerr << "dlogL = " << dlogL << std::endl;
                     }
-                }
 
-                // Update line integrals
-                for(int k = 0; k < n_stars; k++) {
-                    line_int[k] += delta_line_int[k];
-                }
+                    // Acceptance probability
+                    alpha = dlogL + dlogPr;
+                    alpha *= b; // TODO: Multiply before prop factor?
 
-                // Calculate line integrals exactly every certain number of steps
-                if(--recalculate_in == 0) {
-                    recalculate_in = recalculate_every;
-                    params.los_integral_discrete(y_idx, line_int);
-                }
+                    if(proposal_type.absolute) {
+                        alpha += ln_proposal_factor;
+                    }
 
-                // Update prior & likelihood
-                log_p += alpha;
-                logL += dlogL;
-                logPr += dlogPr;
+                    //std::cerr << "alpha = " << alpha << std::endl;
+                    
+                    // Accept proposal?
+                    if((alpha > 0) // > 0 means automatic acceptance
+                       || (
+                            (alpha > -10.) && // Treat ln(-10) as zero
+                            (std::exp(alpha) > gsl_rng_uniform(r))
+                          ))
+                    {
+                        // ACCEPT
+                        n_proposals_accepted[proposal_type.code]++;
 
-                // double log_Pr_tmp = params.log_prior(y_idx);
-                // std::cerr << std::endl
-                //        << "log(prior) : "
-                //        << log_Pr_tmp << " (actual) "
-                //        << logPr << " (estimate) "
-                //        << log_Pr_tmp - logPr << " (difference)"
-                //        << std::endl;
-                //
-                // if(fabs(log_Pr_tmp - logPr) > 0.001) {
-                //  std::cerr << "x_idx = " << x_idx << std::endl;
-                //  std::exit(1);
-                // }
+                        // Update state to proposal
+                        if(!proposal_type.shift) {
+                            // STEP_PROPOSAL or SWAP_PROPOSAL
+                            y_idx_t[x_idx] = y_idx_new;
+                        } else if(proposal_type.left) {
+                            for(int j=0; j<=x_idx; j++) {
+                                y_idx_t[j] += dy;
+                            }
+                        } else { // SHIFT_R_PROPOSAL or SHIFT_ABS_R_PROPOSAL
+                            for(int j=x_idx; j<params.n_dists; j++) {
+                                y_idx_t[j] += dy;
+                            }
+                        }
 
-                // params.los_integral_discrete(y_idx, line_int_test);
+                        // Update line integrals
+                        for(int k = 0; k < n_stars; k++) {
+                            line_int_t[k] += delta_line_int[k];
+                        }
 
-                // for(int k=0; k<n_stars; k++) {
-                //  floating_t delta_true = line_int_test[k] - line_int_test_old[k];
-                //  floating_t delta_resid = delta_line_int[k] - delta_true;
-                //  // floating_t rel_delta_resid = delta_resid / delta_true;
-                //
-                //  if(fabs(delta_resid) > 1.e-10) {
-                //      floating_t P_old = params.img_stack->img[k]->at<floating_t>(
-                //          y_idx_new-dy, x_idx);
-                //      floating_t P_new = params.img_stack->img[k]->at<floating_t>(
-                //          y_idx_new, x_idx);
-                //
-                //      std::cerr << "delta_resid[" << k << "] = "
-                //                << delta_resid
-                //                << " , delta = "
-                //                << delta_true
-                //                << " , integral = "
-                //                << line_int_test[k]
-                //                << " , x_idx = "
-                //                << x_idx
-                //                << std::endl;
-                //      std::cerr << "  P_old = " << P_old << std::endl
-                //                << "  P_new = " << P_new << std::endl
-                //                << "  P_new - P_old = " << P_new - P_old << std::endl;
-                //  }
-                //  // std::cerr << delta_true << "  " << rel_delta_resid << std::endl;
-                // }
+                        // Calculate line integrals exactly every
+                        // certain number of steps
+                        if(--recalculate_in.at(t) == 0) {
+                            recalculate_in.at(t) = recalculate_every;
+                            params.los_integral_discrete(
+                                y_idx_t,
+                                line_int_t
+                            );
+                        }
 
-                // std::swap(line_int_test, line_int_test_old);
-
-                // Reset weight to zero
-                w = 0;
-            }
-        }
-
-        // Add state to chain
-        if((i >= n_burnin) && (--save_in == 0)) {
+                        // Update prior & likelihood
+                        log_p_t += dlogL + dlogPr;
+                        logL_t += dlogL;
+                        logPr_t += dlogPr;
+                        //logPr_t = params.log_prior(y_idx_t);
+                        //logPr.at(t) = params.log_prior(y_idx_t);
+                        
+                        //double logPr_tmp = params.log_prior(y_idx_t);
+                        //if(std::abs(logPr_t-logPr_tmp) > 1.e-3) {
+                        //
+                        //}
+                    }
+                } // c (central steps)
+            } // n (neighbor steps)
+        } // t (temperatures)
+        
+        // Add beta=1 state to chain (must occur *before* possible swap)
+        if((swap >= n_swaps_burnin) && (--save_in == 0)) {
+            int16_t* y_idx_t = y_idx.at(0)->data();
+            
             for(int k=0; k<n_x; k++) {
-                y_idx_dbl[k] = (double)y_idx[k];
+                y_idx_dbl[k] = (double)y_idx_t[k];
             }
-            chain.add_point(y_idx_dbl, logPr, 1.);//log_p, 1.);
+            chain.add_point(y_idx_dbl.data(), logPr.at(0), 1.);//log_p, 1.);
 
             // Save info needed to calculate marginal probabilities
             if(params.neighbor_pixels) {
-                logL_chain.push_back(logL);
-                logPr_chain.push_back(logPr);
+                logL_chain.push_back(logL.at(0));
+                logPr_chain.push_back(logPr.at(0));
                 neighbor_sample_chain.insert(
                     neighbor_sample_chain.end(),
-                    neighbor_sample_ws.begin()+1,
-                    neighbor_sample_ws.end()
+                    neighbor_idx.at(0)->begin()+1,
+                    neighbor_idx.at(0)->end()
                 );
                 for(int k=0; k<n_x; k++) {
-                    y_idx_chain.push_back(y_idx[k]);
+                    y_idx_chain.push_back(y_idx_t[k]);
                 }
             }
 
@@ -3554,20 +3783,24 @@ void sample_los_extinction_discrete(
             save_in = save_every;
         }
 
-        if((verbosity >= 2) && (i % 10000 == 0)) {
+        if(verbosity >= 2) {
+            int t_report = 0;//n_temperatures-1;
+            int16_t* y_idx_t = y_idx.at(t_report)->data();
+            double* line_int_t = line_int.at(t_report)->data();
+            
             discrete_los_ascii_art(
-                n_x, n_y, y_idx,
+                n_x, n_y, y_idx_t,
                 40, 700,
                 params.img_stack->rect->dx[0],
                 4., 19.,
                 std::cerr);
             std::cerr << std::endl;
 
-            params.los_integral_discrete(y_idx, line_int_test);
+            params.los_integral_discrete(y_idx_t, line_int_test.data());
             double abs_resid_max = -std::numeric_limits<double>::infinity();
             double rel_resid_max = -std::numeric_limits<double>::infinity();
             for(int k=0; k<n_stars; k++) {
-                double abs_resid = line_int[k] - line_int_test[k];
+                double abs_resid = line_int_t[k] - line_int_test[k];
                 double rel_resid = abs_resid / line_int_test[k];
                 abs_resid_max = std::max(abs_resid_max, abs_resid);
                 rel_resid_max = std::max(rel_resid_max, rel_resid);
@@ -3578,68 +3811,539 @@ void sample_los_extinction_discrete(
                       << rel_resid_max << " (rel)"
                       << std::endl;
 
-            double log_Pr_tmp = params.log_prior(y_idx);
+            double log_Pr_tmp = params.log_prior(
+                y_idx_t,
+                *(lnP_dy.at(t_report))
+            );
             std::cerr << "log(prior) : "
                       << log_Pr_tmp << " (actual) "
-                      << logPr << " (running) "
-                      << log_Pr_tmp - logPr << " (difference)"
-                      << std::endl << std::endl;
+                      << logPr.at(t_report) << " (running) "
+                      << log_Pr_tmp - logPr.at(t_report) << " (difference)"
+                      << std::endl;
             
             if(params.neighbor_pixels) {
                 std::cerr << "neighbor samples:";
                 for(int j=0; j<params.neighbor_pixels->get_n_pix(); j++) {
-                    std::cerr << " " << neighbor_sample_ws.at(j);
+                    std::cerr << " " << neighbor_idx.at(t_report)->at(j);
                 }
-                std::cerr << std::endl << std::endl;
+                std::cerr << std::endl;
             }
-
-            // std::vector<std::pair<int,double>> delta_line_int_true;
-            // double delta_lnL_true = 0.;
-            // for(int k=0; k<n_stars; k++) {
-            //  double tmp_diff = log(line_int[k]+epsilon) - log(line_int_true[k]+epsilon);
-            //  delta_line_int_true.emplace_back(k, tmp_diff);
-            //  delta_lnL_true += tmp_diff;
-            // }
-            // std::sort(
-            //  delta_line_int_true.begin(),
-            //  delta_line_int_true.end(),
-            //  [](std::pair<int,double> _l, std::pair<int,double> _r) -> bool {
-            //      return _l.second < _r.second;
-            //  }
-            // );
-            //
-            // std::cerr << "Delta ln(L) = " << delta_lnL_true << std::endl;
-            // int n_show = 4;
-            // for(int k=0; k<n_show; k++) {
-            //  std::cerr << "  "
-            //            << delta_line_int_true.at(k).second
-            //            << "  (" << delta_line_int_true.at(k).first << ")"
-            //            << std::endl;
-            // }
-            // std::cerr << "  ..." << std::endl;
-            // for(int k=0; k<n_show; k++) {
-            //  std::cerr << "  "
-            //            << delta_line_int_true.at(n_stars-n_show+k).second
-            //            << "  (" << delta_line_int_true.at(n_stars-n_show+k).first << ")"
-            //            << std::endl;
-            // }
-            // std::cerr << std::endl;
-            //
-            // std::cerr << "l.o.s. integrals (true):" << std::endl;
-            // for(int k=0; k<3; k++) {
-            //  std::cerr << "  "
-            //            << line_int[k]
-            //            << "  (" << line_int_true[k] << ")"
-            //            << std::endl;
-            // }
-            // std::cerr << std::endl;
+            
+            std::cerr << "log(p)_t =";
+            for(int t=0; t<n_temperatures; t++) {
+                std::cerr << " " << log_p.at(t);
+            }
+            std::cerr << std::endl;
             
             auto t_now = std::chrono::steady_clock::now();
             std::chrono::duration<double> t_elapsed = t_now - t_start;
-            ascii_progressbar(i, n_steps+n_burnin, 50, t_elapsed.count(), std::cerr);
+            std::cerr << std::endl;
+            ascii_progressbar(
+                swap,
+                n_swaps,
+                50,
+                t_elapsed.count(),
+                std::cerr
+            );
             std::cerr << std::endl;
         }
-    }
+        
+        // Attempt swap
+        if(n_temperatures > 1) {
+            n_swaps_proposed++;
+            
+            // Choose temperature pair to swap
+            int t1 = r_temperature(params.r); // 1 <= t1 <= n_temperatures-1
+            
+            // Determine probability density of each temperature
+            double logp_t1 = params.log_prior(
+                y_idx.at(t1)->data(),
+                *(lnP_dy.at(t1))
+            );
+            double logp_t0 = params.log_prior(
+                y_idx.at(t1-1)->data(),
+                *(lnP_dy.at(t1-1))
+            );
+            logp_t1 += logL.at(t1);
+            logp_t0 += logL.at(t1-1);
+            
+            double alpha = (beta.at(t1) - beta.at(t1-1))
+                           * (logp_t0 - logp_t1);
+            
+            if(verbosity >= 2) {
+                std::cerr << "Swap " << t1-1 << " <-> " << t1
+                          << std::endl
+                          << "  ln(p) = " << logp_t0 << " " << logp_t1
+                          << std::endl
+                          << "  alpha = " << alpha;
+            }
+            //alpha = -100.; // TODO: Remove this line.
+            
+            if((alpha > 0.)
+               || (
+                    (alpha > -10.) &&
+                    (std::exp(alpha) > gsl_rng_uniform(r))
+                  ))
+            {
+                // Swap accepted
+                n_swaps_accepted++;
+                
+                // Swap all the relevant pointers
+                y_idx.at(t1).swap(y_idx.at(t1-1));
+                line_int.at(t1).swap(line_int.at(t1-1));
+                neighbor_idx.at(t1).swap(neighbor_idx.at(t1-1));
+                lnP_dy.at(t1).swap(lnP_dy.at(t1-1));
+                
+                // Swap all the relevant values
+                std::swap(log_p.at(t1), log_p.at(t1-1));
+                std::swap(logPr.at(t1), logPr.at(t1-1));
+                std::swap(logL.at(t1), logL.at(t1-1));
+                
+                if(verbosity >= 2) {
+                    std::cerr << " (accepted)";
+                }
+            }
+            
+            if(verbosity >= 2) { std::cerr << std::endl; }
+        }
+    } // s (swaps)
+    
+    //for(int i = 0; i < n_steps + n_burnin; i++) {
+    //    // Randomize neighbors
+    //    if(params.neighbor_pixels && (--neighbor_step_in == 0)) {
+    //        neighbor_step_in = neighbor_step_every;
+    //        
+    //        //params.randomize_neighbors(neighbor_sample);
+    //        //neighbor_sample[0] = 0;
+
+    //        // Gibbs sample neighboring pixels
+    //        //params.set_central_delta(y_idx);
+    //        //for(int t=1; t<n_temperatures; t++) {
+    //        //    for(int k=0; k<neighbor_sample[0]->size(); k++) {
+    //        //        (*(neighbor_sample[t]))[k] = (*(neighbor_sample[0]))[k];
+    //        //    }
+    //        //}
+
+    //        //for(int j=0; j<n_swaps; j++) {
+    //        //    for(int t=0; t<n_temperatures; t++) {
+    //        //        for(int l=0; l<steps_per_swap; l++) {
+    //        //            // Randomize Gibbs step order
+    //        //            std::shuffle(gibbs_order.begin(),
+    //        //                         gibbs_order.end(),
+    //        //                         params.r);
+
+    //        //            // Take a Gibbs step in each neighbor pixel
+    //        //            for(auto k : gibbs_order) {
+    //        //                log_p_neighbor[t] = neighbor_gibbs_step(
+    //        //                    k,
+    //        //                    *(params.neighbor_pixels),
+    //        //                    *(neighbor_sample[t]),
+    //        //                    params.log_p_sample,
+    //        //                    params.p_sample,
+    //        //                    params.r,
+    //        //                    beta.at(t));
+    //        //            }
+    //        //        }
+    //        //    }
+
+    //        //    // Take a swap step between temperatures
+    //        //    for(int t=1; t<n_temperatures; t++) {
+    //        //        // Try to swap t and t-1
+    //        //        n_swaps_proposed++;
+
+    //        //        double lnp_swap = (
+    //        //            (beta[t]-beta[t-1]) *
+    //        //            (log_p_neighbor[t-1]-log_p_neighbor[t])
+    //        //        );
+    //        //        
+    //        //        //if(t == 1) {
+    //        //        //    std::cerr << "p_swap = " << std::exp(lnp_swap) << std::endl;
+    //        //        //}
+
+    //        //        if(std::log(uniform_dist(params.r)) < lnp_swap) {
+    //        //            //std::cerr << "swap " << t-1 << " <-> " << t << std::endl;
+    //        //            neighbor_sample[t].swap(neighbor_sample[t-1]);
+    //        //            n_swaps_accepted++;
+    //        //        } else {
+    //        //            //std::cerr << "no swap " << t-1 << " <-> " << t << std::endl;
+    //        //        }
+    //        //    }
+    //        //}
+
+    //        // Update the pre-computed priors image, in (E, DM)-pixel-space
+    //        //params.update_priors_image(
+    //        //    *(neighbor_sample.at(0)), 0.,
+    //        //    params.priors_subsampling,
+    //        //    verbosity);
+    //        
+    //        int idx = r_neighbor(params.r);
+    //        neighbor_idx.push_back(idx);
+
+    //        neighbor_sample_ws.clear();
+    //        neighbor_sample_ws.insert(
+    //            neighbor_sample_ws.end(),
+    //            neighbor_sample.begin() + (n_neighbors+1)*idx,
+    //            neighbor_sample.begin() + (n_neighbors+1)*(idx+1)
+    //        );
+
+    //        params.update_priors_image(
+    //            neighbor_sample_ws, 0.,
+    //            params.priors_subsampling,
+    //            verbosity);
+
+    //        // Update log(prior) of current state
+    //        logPr = params.log_prior(y_idx);
+    //    }
+    //    
+    //    // Smoothly ramp penalty on negative reddening steps up
+    //    sigma_dy_neg -= (sigma_dy_neg - sigma_dy_neg_target) / tau_decay;
+    //    params.inv_sigma_dy_neg = 1. / sigma_dy_neg;
+
+    //    // Increase weight of current state
+    //    w += 1;
+
+    //    // Propose a new state
+    //    int x_idx, dy, y_idx_new, dy1;
+
+    //    // Determine what type of proposal to make
+    //    proposal_type.roll(r);
+    //    // int proposal_type = gsl_rng_uniform_int(r, N_PROPOSAL_TYPES);
+    //    // int proposal_type = STEP_PROPOSAL;
+    //    // int proposal_type;
+    //    // double prop_rand = gsl_rng_uniform(r);
+    //    // const double p_swap = 0.8;
+    //    // const double p_step = 0.1;
+    //    // // const double p_shift = 0.1;
+    //    // if(prop_rand < p_swap) {
+    //    //  proposal_type = SWAP_PROPOSAL;
+    //    // } else if(prop_rand < p_swap + p_step) {
+    //    //  proposal_type = STEP_PROPOSAL;
+    //    // } else {
+    //    //  proposal_type = SHIFT_PROPOSAL;
+    //    // }
+
+    //    n_proposals[proposal_type.code]++;
+
+    //    if(proposal_type.step) {
+    //        discrete_propose_step(r, n_x, x_idx, dy);
+    //        y_idx_new = y_idx[x_idx] + dy;
+    //    } else if(proposal_type.swap) {
+    //        discrete_propose_swap(r, n_x, x_idx);
+    //        dy1 = y_idx[x_idx+1] - y_idx[x_idx];
+    //        y_idx_new = y_idx[x_idx-1] + dy1;
+    //    } else if(proposal_type.absolute) {
+    //        // SHIFT_ABS_L_PROPOSAL or SHIFT_ABS_R_PROPOSAL
+    //        discrete_propose_shift_abs(
+    //            r, y_idx, n_x, y_shift_abs_mean, y_shift_abs_max,
+    //            x_idx, dy, ln_proposal_factor
+    //        );
+    //    } else {
+    //        // SHIFT_L_PROPOSAL or SHIFT_R_PROPOSAL
+    //        discrete_propose_shift(r, n_x, x_idx, dy);
+    //    }
+
+    //    // int y_idx_new = y_idx[x_idx] + dy;
+
+    //    // Check if the proposal lands in a valid region of parameter space
+    //    bool prop_valid = discrete_proposal_valid(
+    //        proposal_type, y_idx_new, n_y,
+    //        params, x_idx, dy, y_idx);
+
+    //    if(prop_valid) {
+    //        n_proposals_valid[proposal_type.code]++;
+
+    //        double dlogL = 0;
+    //        double dlogPr, alpha;
+
+    //        // Calculate difference in line integrals and prior (between the
+    //        // current and proposed states).
+    //        if(proposal_type.step) {
+    //            params.los_integral_diff_step(
+    //                x_idx,
+    //                y_idx[x_idx],
+    //                y_idx_new,
+    //                delta_line_int
+    //            );
+    //            dlogPr = params.log_prior_diff_step(x_idx, y_idx, y_idx_new);
+    //        } else if(proposal_type.swap) {
+    //            params.los_integral_diff_swap(
+    //                x_idx, y_idx,
+    //                delta_line_int
+    //            );
+    //            dlogPr = params.log_prior_diff_swap(x_idx, y_idx);
+    //        } else if(proposal_type.left) {
+    //            dlogPr = params.log_prior_diff_shift_l(x_idx, dy, y_idx);
+    //            // No point in calculating line integrals if prior -> -infinity.
+    //            if(dlogPr != -std::numeric_limits<double>::infinity()) {
+    //                params.los_integral_diff_shift_l(
+    //                    x_idx, dy, y_idx,
+    //                    delta_line_int
+    //                );
+    //            }
+
+    //            // std::cerr << dlogPr << std::endl;
+    //        } else { // SHIFT_R_PROPOSAL or SHIFT_ABS_R_PROPOSAL
+    //            dlogPr = params.log_prior_diff_shift_r(x_idx, dy, y_idx);
+
+    //            // if(x_idx == 0) {
+    //            //  std::cerr << "shift(0, "
+    //            //            << y_idx[0] << " -> " << y_idx[0] + dy
+    //            //            << ") : dln(prior) = " << dlogPr
+    //            //            << std::endl;
+    //            // }
+
+    //            // No point in calculating line integrals if prior -> -infinity.
+    //            if(dlogPr != -std::numeric_limits<double>::infinity()) {
+    //                params.los_integral_diff_shift_r(
+    //                    x_idx, dy, y_idx,
+    //                    delta_line_int
+    //                );
+
+    //                // unsigned int n_eval_diff_tmp;
+    //                // unsigned int n_eval_cumulative_tmp;
+    //                // params.los_integral_diff_shift_compare_operations(
+    //                //  x_idx, dy, y_idx,
+    //                //  n_eval_diff_tmp,
+    //                //  n_eval_cumulative_tmp
+    //                // );
+    //                //
+    //                // n_eval_diff += n_eval_diff_tmp;
+    //                // n_eval_cumulative += n_eval_cumulative_tmp;
+    //                // n_shift_steps++;
+
+
+    //            }
+    //        }
+
+    //        // Change in likelihood
+    //        if(dlogPr != -std::numeric_limits<double>::infinity()) {
+    //            for(int k = 0; k < n_stars; k++) {
+    //                double zeta = delta_line_int[k] / (line_int[k]+epsilon);
+    //                if(std::fabs(zeta) < 1.e-2) {
+    //                    dlogL += zeta - 0.5 * zeta*zeta + 0.33333333*zeta*zeta*zeta; // Taylor expansion of log(1+zeta) for zeta << 1.
+    //                } else {
+    //                    dlogL += std::log(1.0 + zeta);
+    //                }
+    //            }
+    //        }
+
+    //        // Acceptance probability
+    //        alpha = dlogL + dlogPr;
+    //        //alpha = dlogPr; // TODO: Switch back to log(prior) + log(likelihood)
+
+    //        if(proposal_type.absolute) {
+    //            alpha += ln_proposal_factor;
+    //        }
+
+    //        // Accept proposal?
+    //        if((alpha > 0) || ((alpha > -10.) && (std::exp(alpha) > gsl_rng_uniform(r)))) {
+    //            // if((dlogPr < -10000) || (dlogPr > 10000)) {
+    //            //  std::cerr << "dlogPr = " << dlogPr << std::endl
+    //            //            << "  proposal_type = " << proposal_type << std::endl
+    //            //            << "  x_idx = " << x_idx << std::endl
+    //            //            << "  dy = " << dy << std::endl
+    //            //            << "  y_idx[0] = " << y_idx[0] << std::endl;
+    //            //  std::exit(1);
+    //            // }
+
+    //            // ACCEPT
+    //            n_proposals_accepted[proposal_type.code]++;
+
+    //            // Add old point to chain
+    //            // chain.add_point(y_idx_dbl, log_p, (double)w);
+
+    //            // Update state to proposal
+    //            if(!proposal_type.shift) {
+    //                // STEP_PROPOSAL or SWAP_PROPOSAL
+    //                y_idx[x_idx] = y_idx_new;
+    //                // y_idx_dbl[x_idx] = (double)y_idx_new;
+    //            } else if(proposal_type.left) {
+    //                for(int j=0; j<=x_idx; j++) {
+    //                    y_idx[j] += dy;
+    //                }
+    //            } else { // SHIFT_R_PROPOSAL or SHIFT_ABS_R_PROPOSAL
+    //                for(int j=x_idx; j<params.n_dists; j++) {
+    //                    y_idx[j] += dy;
+    //                    // y_idx_dbl[j] = (double)(y_idx[j]);
+    //                }
+    //            }
+
+    //            // Update line integrals
+    //            for(int k = 0; k < n_stars; k++) {
+    //                line_int[k] += delta_line_int[k];
+    //            }
+
+    //            // Calculate line integrals exactly every certain number of steps
+    //            if(--recalculate_in == 0) {
+    //                recalculate_in = recalculate_every;
+    //                params.los_integral_discrete(y_idx, line_int);
+    //            }
+
+    //            // Update prior & likelihood
+    //            log_p += alpha;
+    //            logL += dlogL;
+    //            logPr += dlogPr;
+
+    //            // double log_Pr_tmp = params.log_prior(y_idx);
+    //            // std::cerr << std::endl
+    //            //        << "log(prior) : "
+    //            //        << log_Pr_tmp << " (actual) "
+    //            //        << logPr << " (estimate) "
+    //            //        << log_Pr_tmp - logPr << " (difference)"
+    //            //        << std::endl;
+    //            //
+    //            // if(fabs(log_Pr_tmp - logPr) > 0.001) {
+    //            //  std::cerr << "x_idx = " << x_idx << std::endl;
+    //            //  std::exit(1);
+    //            // }
+
+    //            // params.los_integral_discrete(y_idx, line_int_test);
+
+    //            // for(int k=0; k<n_stars; k++) {
+    //            //  floating_t delta_true = line_int_test[k] - line_int_test_old[k];
+    //            //  floating_t delta_resid = delta_line_int[k] - delta_true;
+    //            //  // floating_t rel_delta_resid = delta_resid / delta_true;
+    //            //
+    //            //  if(fabs(delta_resid) > 1.e-10) {
+    //            //      floating_t P_old = params.img_stack->img[k]->at<floating_t>(
+    //            //          y_idx_new-dy, x_idx);
+    //            //      floating_t P_new = params.img_stack->img[k]->at<floating_t>(
+    //            //          y_idx_new, x_idx);
+    //            //
+    //            //      std::cerr << "delta_resid[" << k << "] = "
+    //            //                << delta_resid
+    //            //                << " , delta = "
+    //            //                << delta_true
+    //            //                << " , integral = "
+    //            //                << line_int_test[k]
+    //            //                << " , x_idx = "
+    //            //                << x_idx
+    //            //                << std::endl;
+    //            //      std::cerr << "  P_old = " << P_old << std::endl
+    //            //                << "  P_new = " << P_new << std::endl
+    //            //                << "  P_new - P_old = " << P_new - P_old << std::endl;
+    //            //  }
+    //            //  // std::cerr << delta_true << "  " << rel_delta_resid << std::endl;
+    //            // }
+
+    //            // std::swap(line_int_test, line_int_test_old);
+
+    //            // Reset weight to zero
+    //            w = 0;
+    //        }
+    //    }
+
+    //    // Add state to chain
+    //    if((i >= n_burnin) && (--save_in == 0)) {
+    //        for(int k=0; k<n_x; k++) {
+    //            y_idx_dbl[k] = (double)y_idx[k];
+    //        }
+    //        chain.add_point(y_idx_dbl, logPr, 1.);//log_p, 1.);
+
+    //        // Save info needed to calculate marginal probabilities
+    //        if(params.neighbor_pixels) {
+    //            logL_chain.push_back(logL);
+    //            logPr_chain.push_back(logPr);
+    //            neighbor_sample_chain.insert(
+    //                neighbor_sample_chain.end(),
+    //                neighbor_sample_ws.begin()+1,
+    //                neighbor_sample_ws.end()
+    //            );
+    //            for(int k=0; k<n_x; k++) {
+    //                y_idx_chain.push_back(y_idx[k]);
+    //            }
+    //        }
+
+    //        // Reset save counter
+    //        save_in = save_every;
+    //    }
+
+    //    if((verbosity >= 2) && (i % 10000 == 0)) {
+    //        discrete_los_ascii_art(
+    //            n_x, n_y, y_idx,
+    //            40, 700,
+    //            params.img_stack->rect->dx[0],
+    //            4., 19.,
+    //            std::cerr);
+    //        std::cerr << std::endl;
+
+    //        params.los_integral_discrete(y_idx, line_int_test);
+    //        double abs_resid_max = -std::numeric_limits<double>::infinity();
+    //        double rel_resid_max = -std::numeric_limits<double>::infinity();
+    //        for(int k=0; k<n_stars; k++) {
+    //            double abs_resid = line_int[k] - line_int_test[k];
+    //            double rel_resid = abs_resid / line_int_test[k];
+    //            abs_resid_max = std::max(abs_resid_max, abs_resid);
+    //            rel_resid_max = std::max(rel_resid_max, rel_resid);
+    //        }
+    //        std::cerr << std::endl
+    //                  << "max. line integral residuals: "
+    //                  << abs_resid_max << " (abs) "
+    //                  << rel_resid_max << " (rel)"
+    //                  << std::endl;
+
+    //        double log_Pr_tmp = params.log_prior(y_idx);
+    //        std::cerr << "log(prior) : "
+    //                  << log_Pr_tmp << " (actual) "
+    //                  << logPr << " (running) "
+    //                  << log_Pr_tmp - logPr << " (difference)"
+    //                  << std::endl << std::endl;
+    //        
+    //        if(params.neighbor_pixels) {
+    //            std::cerr << "neighbor samples:";
+    //            for(int j=0; j<params.neighbor_pixels->get_n_pix(); j++) {
+    //                std::cerr << " " << neighbor_sample_ws.at(j);
+    //            }
+    //            std::cerr << std::endl << std::endl;
+    //        }
+
+    //        // std::vector<std::pair<int,double>> delta_line_int_true;
+    //        // double delta_lnL_true = 0.;
+    //        // for(int k=0; k<n_stars; k++) {
+    //        //  double tmp_diff = log(line_int[k]+epsilon) - log(line_int_true[k]+epsilon);
+    //        //  delta_line_int_true.emplace_back(k, tmp_diff);
+    //        //  delta_lnL_true += tmp_diff;
+    //        // }
+    //        // std::sort(
+    //        //  delta_line_int_true.begin(),
+    //        //  delta_line_int_true.end(),
+    //        //  [](std::pair<int,double> _l, std::pair<int,double> _r) -> bool {
+    //        //      return _l.second < _r.second;
+    //        //  }
+    //        // );
+    //        //
+    //        // std::cerr << "Delta ln(L) = " << delta_lnL_true << std::endl;
+    //        // int n_show = 4;
+    //        // for(int k=0; k<n_show; k++) {
+    //        //  std::cerr << "  "
+    //        //            << delta_line_int_true.at(k).second
+    //        //            << "  (" << delta_line_int_true.at(k).first << ")"
+    //        //            << std::endl;
+    //        // }
+    //        // std::cerr << "  ..." << std::endl;
+    //        // for(int k=0; k<n_show; k++) {
+    //        //  std::cerr << "  "
+    //        //            << delta_line_int_true.at(n_stars-n_show+k).second
+    //        //            << "  (" << delta_line_int_true.at(n_stars-n_show+k).first << ")"
+    //        //            << std::endl;
+    //        // }
+    //        // std::cerr << std::endl;
+    //        //
+    //        // std::cerr << "l.o.s. integrals (true):" << std::endl;
+    //        // for(int k=0; k<3; k++) {
+    //        //  std::cerr << "  "
+    //        //            << line_int[k]
+    //        //            << "  (" << line_int_true[k] << ")"
+    //        //            << std::endl;
+    //        // }
+    //        // std::cerr << std::endl;
+    //        
+    //        auto t_now = std::chrono::steady_clock::now();
+    //        std::chrono::duration<double> t_elapsed = t_now - t_start;
+    //        ascii_progressbar(i, n_steps+n_burnin, 50, t_elapsed.count(), std::cerr);
+    //        std::cerr << std::endl;
+    //    }
+    //}
 
     if(verbosity >= 1) {
         std::string prop_name[N_PROPOSAL_TYPES];
@@ -3686,65 +4390,65 @@ void sample_los_extinction_discrete(
     // chain.add_point(y_idx_dbl, log_p, (double)w);
 
     // Estimate marginal probabilities
-    if(params.neighbor_pixels) {
-        std::cerr << std::endl << "Estimating marginals ..." << std::endl;
-        auto t_start_marg = std::chrono::steady_clock::now();
+    //if(params.neighbor_pixels) {
+    //    std::cerr << std::endl << "Estimating marginals ..." << std::endl;
+    //    auto t_start_marg = std::chrono::steady_clock::now();
 
-        int16_t* chain_ptr = y_idx_chain.data();
-        int chain_len = logL_chain.size();
-        std::vector<double> prior_chain; // shape = (chain sample, neighbor sample)
-        prior_chain.resize(chain_len*chain_len);
-        //std::vector<double> prior_avg(chain_len, 0.);
+    //    int16_t* chain_ptr = y_idx_chain.data();
+    //    int chain_len = logL_chain.size();
+    //    std::vector<double> prior_chain; // shape = (chain sample, neighbor sample)
+    //    prior_chain.resize(chain_len*chain_len);
+    //    //std::vector<double> prior_avg(chain_len, 0.);
 
-        // For each set of neighbor pixels
-        for(int i=0; i<chain_len; i++) {
-            // Set the neighbor pixel indices
-            for(int k=1; k<n_neighbors; k++) {
-                neighbor_sample_ws[k] = neighbor_sample_chain[n_neighbors*i+k-1];
-            }
+    //    // For each set of neighbor pixels
+    //    for(int i=0; i<chain_len; i++) {
+    //        // Set the neighbor pixel indices
+    //        for(int k=1; k<n_neighbors; k++) {
+    //            neighbor_sample_ws[k] = neighbor_sample_chain[n_neighbors*i+k-1];
+    //        }
 
-            // Update the pre-computed priors image, in (E, DM)-pixel-space
-            params.update_priors_image(
-                neighbor_sample_ws, 0.,
-                params.priors_subsampling,
-                verbosity);
+    //        // Update the pre-computed priors image, in (E, DM)-pixel-space
+    //        params.update_priors_image(
+    //            neighbor_sample_ws, 0.,
+    //            params.priors_subsampling,
+    //            verbosity);
 
-            // Calculate the log(prior) of each point in chain
-            for(int k=0; k<chain_len; k++) {
-                prior_chain[chain_len*k+i] = params.log_prior(chain_ptr + n_x*k);
-            }
+    //        // Calculate the log(prior) of each point in chain
+    //        for(int k=0; k<chain_len; k++) {
+    //            prior_chain[chain_len*k+i] = params.log_prior(chain_ptr + n_x*k);
+    //        }
 
-            if(i % 10 == 0) {
-                auto t_now = std::chrono::steady_clock::now();
-                std::chrono::duration<double> t_elapsed = t_now - t_start_marg;
-                ascii_progressbar(i, chain_len, 50, t_elapsed.count(), std::cerr, false, true);
-            }
-        }
+    //        if(i % 10 == 0) {
+    //            auto t_now = std::chrono::steady_clock::now();
+    //            std::chrono::duration<double> t_elapsed = t_now - t_start_marg;
+    //            ascii_progressbar(i, chain_len, 50, t_elapsed.count(), std::cerr, false, true);
+    //        }
+    //    }
 
-        std::cerr << std::endl << std::endl;
-        
-        double log_chain_len = std::log((double)chain_len);
-        std::vector<double> log_p_tmp;
-        log_p_tmp.reserve(chain_len);
+    //    std::cerr << std::endl << std::endl;
+    //    
+    //    double log_chain_len = std::log((double)chain_len);
+    //    std::vector<double> log_p_tmp;
+    //    log_p_tmp.reserve(chain_len);
 
-        for(unsigned int i=0; i<chain_len; i++) {
-            // Set log(p) of chain to prior_avg
-            auto it_0 = prior_chain.begin() + i*chain_len;
-            auto it_1 = it_0 + (chain_len-1);
-            double log_p_max = *std::max_element(it_0, it_1);
-            double p = std::accumulate(it_0, it_1, 0.,
-                [log_p_max](double a, double b) { return a + std::exp(b-log_p_max); }
-            );
-            p = log_p_max + std::log(p) - log_chain_len;
-            log_p_tmp.push_back(p);
-            //chain.set_L(i, p);
-        }
-        
-        double log_p0 = *std::max_element(log_p_tmp.begin(), log_p_tmp.end());
-        for(unsigned int i=0; i<chain_len; i++) {
-            chain.set_L(i, log_p_tmp.at(i) - log_p0);
-        }
-    }
+    //    for(unsigned int i=0; i<chain_len; i++) {
+    //        // Set log(p) of chain to prior_avg
+    //        auto it_0 = prior_chain.begin() + i*chain_len;
+    //        auto it_1 = it_0 + (chain_len-1);
+    //        double log_p_max = *std::max_element(it_0, it_1);
+    //        double p = std::accumulate(it_0, it_1, 0.,
+    //            [log_p_max](double a, double b) { return a + std::exp(b-log_p_max); }
+    //        );
+    //        p = log_p_max + std::log(p) - log_chain_len;
+    //        log_p_tmp.push_back(p);
+    //        //chain.set_L(i, p);
+    //    }
+    //    
+    //    double log_p0 = *std::max_element(log_p_tmp.begin(), log_p_tmp.end());
+    //    for(unsigned int i=0; i<chain_len; i++) {
+    //        chain.set_L(i, log_p_tmp.at(i) - log_p0);
+    //    }
+    //}
 
     // Save the chain
     // chain.save(out_fname, group_name, "")
@@ -3764,17 +4468,19 @@ void sample_los_extinction_discrete(
 
     double dm_min = params.img_stack->rect->min[1];
     double dm_max = params.img_stack->rect->max[1];
-    H5Utils::add_watermark<double>(out_fname, dset_name.str(), "DM_min", dm_min);
-    H5Utils::add_watermark<double>(out_fname, dset_name.str(), "DM_max", dm_max);
+    H5Utils::add_watermark<double>(
+        out_fname,
+        dset_name.str(),
+        "DM_min",
+        dm_min
+    );
+    H5Utils::add_watermark<double>(
+        out_fname,
+        dset_name.str(),
+        "DM_max",
+        dm_max
+    );
 
-    delete[] y_idx;
-    delete[] y_idx_dbl;
-    delete[] line_int;
-    delete[] delta_line_int;
-    delete[] line_int_test;
-    delete[] line_int_test_old;
-    // delete[] y_idx_true;
-    // delete[] line_int_true;
     gsl_rng_free(r);
 }
 
