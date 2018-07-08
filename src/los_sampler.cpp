@@ -3136,11 +3136,11 @@ void sample_los_extinction_discrete(
     // # of update cycles per swap
     int updates_per_swap = 1;
     // # of swaps to attempt
-    int n_swaps = 50;
+    int n_swaps = 500;
     // Fraction of sampling to use as burn-in
     double burnin_frac = 0.3;
     // # of samples to save
-    unsigned int n_save = 25;
+    unsigned int n_save = 250;
     // Deformation of prior to correlate neighboring distances
     double log_shift_weight = -1.;
     
@@ -3471,6 +3471,67 @@ void sample_los_extinction_discrete(
     //        << "n_steps = " << n_steps << std::endl
     //        << "##################################" << std::endl
     //        << std::endl;
+    //
+
+    // Hash to speed up neighbor gibbs steps
+    int gibbs_cache_capacity = 10000;
+    std::vector<
+        LRUCache::CachedFunction<
+            std::vector<uint16_t>,
+            std::shared_ptr<std::discrete_distribution<int>>,
+            LRUCache::VectorHasher<uint16_t>
+        >
+    > gibbs_step_cache;
+    int gibbs_step_pix;
+    
+    if(params.neighbor_pixels) {
+        gibbs_step_cache.reserve(n_temperatures);
+        for(int t=0; t<n_temperatures; t++) {
+            gibbs_step_cache.push_back(
+            LRUCache::CachedFunction<
+                std::vector<uint16_t>,
+                std::shared_ptr<std::discrete_distribution<int>>,
+                LRUCache::VectorHasher<uint16_t>
+            >(
+                [
+                    &gibbs_step_pix,
+                    &neighbor_pixels=*(params.neighbor_pixels),
+                    &log_p_sample_ws,
+                    &p_sample_ws,
+                    bt=beta.at(t),
+                    shift_weight
+                ]
+                (const std::vector<uint16_t>& nbor_idx)
+                -> std::shared_ptr<std::discrete_distribution<int>>
+            {
+                //uint16_t s_tmp = nbor_samp[step_pix];
+                //nbor_samp[step_pix] = neighbor_pixels.get_n_pix();
+                std::unique_ptr<std::discrete_distribution<int>> dd = 
+                neighbor_gibbs_step_shifted_factory(
+                    gibbs_step_pix,
+                    neighbor_pixels,
+                    nbor_idx,
+                    log_p_sample_ws,
+                    p_sample_ws,
+                    bt,
+                    shift_weight
+                );
+                //nbor_samp[step_pix] = s_tmp;
+                return std::move(dd);
+            },
+            gibbs_cache_capacity,
+            nullptr)
+            );
+        }
+    }
+    
+    int disc_distr_res;
+    auto roll_disc_distr = [&rr=params.r, &disc_distr_res](
+        std::shared_ptr<std::discrete_distribution<int>>& dd
+    ) -> void
+    {
+        disc_distr_res = (*dd)(rr);
+    };
 
     //int w = 0;
 
@@ -3535,16 +3596,23 @@ void sample_los_extinction_discrete(
                         
                         // Take a Gibbs step in each neighbor pixel
                         for(auto k : neighbor_gibbs_order) {
-                            neighbor_gibbs_step_shifted(
-                                k,
-                                *(params.neighbor_pixels),
+                            //neighbor_gibbs_step_shifted(
+                            //    k,
+                            //    *(params.neighbor_pixels),
+                            //    *(neighbor_idx[t]),
+                            //    log_p_sample_ws,
+                            //    p_sample_ws,
+                            //    params.r,
+                            //    b,
+                            //    shift_weight
+                            //);
+                            neighbor_idx[t]->at(k) = n_neighbor_samples;
+                            gibbs_step_pix = k;
+                            gibbs_step_cache.at(t)(
                                 *(neighbor_idx[t]),
-                                log_p_sample_ws,
-                                p_sample_ws,
-                                params.r,
-                                b,
-                                shift_weight
+                                roll_disc_distr
                             );
+                            neighbor_idx[t]->at(k) = disc_distr_res;
                         }
                     }
                     
