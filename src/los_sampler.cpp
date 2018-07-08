@@ -3130,17 +3130,17 @@ void sample_los_extinction_discrete(
     //   0 -> maximal spacing
     double beta_spacing = 0.85; 
     // # of steps to take in central pixel per update
-    int central_steps_per_update = 10; // times # of distances
+    int central_steps_per_update = 20; // times # of distances
     // # of neighbor steps to take per update
     int neighbor_steps_per_update = 5; // times # of neighbors
     // # of update cycles per swap
-    int updates_per_swap = 5;
+    int updates_per_swap = 1;
     // # of swaps to attempt
-    int n_swaps = 100;
+    int n_swaps = 50;
     // Fraction of sampling to use as burn-in
     double burnin_frac = 0.3;
     // # of samples to save
-    unsigned int n_save = 100;
+    unsigned int n_save = 25;
     // Deformation of prior to correlate neighboring distances
     double log_shift_weight = -1.;
     
@@ -3154,6 +3154,10 @@ void sample_los_extinction_discrete(
     //
     // Derived sampling parameters
     //
+    int save_every = n_swaps / n_save; // Save one sample every # of swaps
+    int save_in = save_every; // Counts down until next saved sample
+    int n_saved = 0;
+    
     int n_swaps_burnin = burnin_frac * n_swaps;
     n_swaps += n_swaps_burnin;
     central_steps_per_update *= n_x;
@@ -3166,9 +3170,6 @@ void sample_los_extinction_discrete(
                      * central_steps_per_update
                   << std::endl;
     }
-    
-    int save_every = n_swaps / n_save; // Save one sample every # of swaps
-    int save_in = save_every; // Counts down until next saved sample
     
     //int n_steps = options.steps * n_x;
     //int n_burnin = 0.25 * n_steps;
@@ -3501,7 +3502,9 @@ void sample_los_extinction_discrete(
     
     // Loop over swaps between temperatures
     for(int swap=0; swap<n_swaps; swap++) {
-        std::cerr << "Swap " << swap << " of " << n_swaps << std::endl;
+        std::cerr << "Swap " << swap-n_swaps_burnin
+                  << " of " << n_swaps-n_swaps_burnin
+                  << std::endl;
         
         // Smoothly ramp penalty on negative reddening steps up
         sigma_dy_neg -= (sigma_dy_neg - sigma_dy_neg_target) / tau_decay;
@@ -3781,6 +3784,7 @@ void sample_los_extinction_discrete(
 
             // Reset save counter
             save_in = save_every;
+            n_saved++;
         }
 
         if(verbosity >= 2) {
@@ -4374,6 +4378,8 @@ void sample_los_extinction_discrete(
             std::cerr << "Swap propsals: " << 100. * p_accept << " % accepted"
                       << std::endl;
         }
+        
+        std::cerr << n_saved << " samples saved." << std::endl;
     }
 
     // std::cerr << std::endl
