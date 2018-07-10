@@ -1988,6 +1988,226 @@ std::unique_ptr<std::discrete_distribution<int>> neighbor_gibbs_step_shifted_fac
 }
 
 
+struct NeighborGibbsCacheData {
+    // Data required in cache to speed up Gibbs steps in
+    // neighboring pixels.
+    std::vector<uint16_t> samples;
+    std::vector<double> mu;
+};
+
+
+std::unique_ptr<NeighborGibbsCacheData>
+neighbor_gibbs_step_shifted_cache_data(
+        const int pix,
+        TNeighborPixels& neighbor_pixels,
+        const std::vector<uint16_t>& neighbor_sample,
+        std::vector<double>& log_p_sample_ws,
+        std::vector<double>& p_sample_ws,
+        std::vector<double>& mu_ws,
+        const double beta,
+        const double shift_weight,
+        const double lnp_cutoff)
+{
+    // Gather cache data allowing one to execute a Gibbs step
+    // in one of the neighboring pixels, choosing
+    // a sample at random, weighted by the Gaussian process prior.
+    
+    double mu, ivar, dx;
+
+    const int n_samples = neighbor_pixels.get_n_samples();
+    const int n_dists = neighbor_pixels.get_n_dists();
+
+    log_p_sample_ws.resize(n_samples);
+    mu_ws.resize(n_samples*n_dists);
+    
+    // Determine chi^2 of each sample
+    uint32_t k = 0;
+    for(int sample=0; sample<n_samples; sample++) {
+        log_p_sample_ws[sample] = 0.;
+        
+        for(int dist=0; dist<n_dists; dist++, k++) {
+            // Calculate mean, sigma of pixel
+            mu_ws[k] = neighbor_pixels.calc_mean_shifted(
+                pix,
+                dist,
+                neighbor_sample,
+                shift_weight,
+                1
+            );
+            ivar = neighbor_pixels.get_inv_var(pix, dist);
+
+            // Add to chi^2
+            dx = neighbor_pixels.get_delta(pix, sample, dist) - mu;
+            log_p_sample_ws[sample] += ivar * dx*dx;
+        }
+        
+        log_p_sample_ws[sample] *= -0.5;
+
+        // Prior term
+        log_p_sample_ws[sample] -= neighbor_pixels.get_prior(pix, sample);
+    }
+    
+    // Turn chi^2 into probability
+    double log_p_max = *std::max_element(
+        log_p_sample_ws.begin(),
+        log_p_sample_ws.end()
+    );
+    
+    std::unique_ptr<NeighborGibbsCacheData> cache_data
+        = std::make_unique<NeighborGibbsCacheData>();
+    
+    cache_data->samples.reserve(n_samples);
+    for(int sample=0; sample<n_samples; sample++) {
+        double lnp_sample = beta
+                            * (log_p_sample_ws[sample] - log_p_max);
+        if(lnp_sample > lnp_cutoff) {
+            cache_data->samples.push_back(sample);
+        }
+    }
+    
+    const int n_samples_cached = cache_data->samples.size();
+    cache_data->mu.reserve(n_dists*n_samples_cached);
+    for(auto s : cache_data->samples) {
+        for(int k=s*n_dists; k<(s+1)*n_dists; k++) {
+            cache_data->mu.push_back(mu_ws[k]);
+        }
+    }
+
+    return std::move(cache_data);
+}
+
+
+//typedef LRUCache::CachedFunction<
+//            std::vector<uint16_t>,
+//            std::shared_ptr<NeighborGibbsCacheData>,
+//            LRUCache::VectorHasher<uint16_t>
+//        > NeighborGibbsCache;
+
+
+int neighbor_gibbs_step_shifted_cached(
+        const int pix,
+        NeighborGibbsCacheData& cache_data,
+        TNeighborPixels& neighbor_pixels,
+        const std::vector<uint16_t>& neighbor_sample,
+        std::vector<double>& log_p_sample_ws,
+        std::vector<double>& p_sample_ws,
+        std::vector<double>& mu_ws,
+        const double beta,
+        const double shift_weight,
+        const double lnp_cutoff,
+        std::mt19937& r)
+{
+    // Calculate ln(p) for each sample
+    const int n_dists = neighbor_pixels.get_n_dists();
+    const int n_samples = cache_data.samples.size();
+    
+    double mu, dx, ivar;
+    double inv_cov_0;
+    double inv_cov_m1;
+    double inv_cov_p1;
+    
+    int j = 0;
+    
+    for(int i=0; i<n_samples; i++) {
+        uint16_t sample = cache_data.samples[i];
+        
+        log_p_sample_ws[i] = 0.;
+        
+        // At each distance, update mean to take into
+        // account central pixel.
+        // The first and last distances are treated as special cases.
+
+        // First distance
+        mu = cache_data.mu[j];
+        
+        inv_cov_0 = neighbor_pixels.get_inv_cov(0, pix, 0);
+        inv_cov_p1 = neighbor_pixels.get_inv_cov(1, pix, 0);
+        
+        mu += inv_cov_0 * neighbor_pixels.get_delta(0, sample, 0)
+              + shift_weight * (
+                    inv_cov_p1
+                    * neighbor_pixels.get_delta(0, sample, 1)
+                );
+        ivar = neighbor_pixels.get_inv_var(pix, 0);
+
+        // Add to chi^2
+        dx = neighbor_pixels.get_delta(pix, sample, 0) - mu;
+        log_p_sample_ws[sample] += ivar * dx*dx;
+        
+        j++;
+        
+        // Middle distances
+        for(int dist=1; dist<n_dists-1; dist++, j++) {
+            mu = cache_data.mu[j];
+            
+            inv_cov_0 = neighbor_pixels.get_inv_cov(dist, pix, 0);
+            inv_cov_m1 = neighbor_pixels.get_inv_cov(dist-1, pix, 0);
+            inv_cov_p1 = neighbor_pixels.get_inv_cov(dist+1, pix, 0);
+            
+            mu += inv_cov_0 * neighbor_pixels.get_delta(0, sample, dist)
+                  + shift_weight * (
+                        inv_cov_m1
+                        * neighbor_pixels.get_delta(0, sample, dist-1)
+                      + inv_cov_p1
+                        * neighbor_pixels.get_delta(0, sample, dist+1)
+                    );
+            ivar = neighbor_pixels.get_inv_var(pix, dist);
+
+            // Add to chi^2
+            dx = neighbor_pixels.get_delta(pix, sample, dist) - mu;
+            log_p_sample_ws[i] += ivar * dx*dx;
+        }
+        
+        // Last distance
+        mu = cache_data.mu[j];
+        
+        inv_cov_0 = neighbor_pixels.get_inv_cov(n_dists-1, pix, 0);
+        inv_cov_m1 = neighbor_pixels.get_inv_cov(n_dists-2, pix, 0);
+        
+        mu += inv_cov_0 * neighbor_pixels.get_delta(0, sample, n_dists-1)
+              + shift_weight * (
+                    inv_cov_m1
+                    * neighbor_pixels.get_delta(0, sample, n_dists-2)
+                );
+        ivar = neighbor_pixels.get_inv_var(pix, 0);
+
+        // Add to chi^2
+        dx = neighbor_pixels.get_delta(pix, sample, n_dists-1) - mu;
+        log_p_sample_ws[i] += ivar * dx*dx;
+        
+        j++;
+        
+        log_p_sample_ws[i] *= -0.5;
+        
+        // Prior term
+        log_p_sample_ws[i] -= neighbor_pixels.get_prior(pix, sample);
+    }
+    
+    // Turn chi^2 into probability
+    double log_p_max = *std::max_element(
+        log_p_sample_ws.begin(),
+        log_p_sample_ws.begin()+n_samples
+    );
+    
+    for(int i=0; i<n_samples; i++) {
+        double lnp_sample = beta
+                            * (log_p_sample_ws[i] - log_p_max);
+        if(lnp_sample < -8.) {
+            p_sample_ws[i] = 0.;
+        } else {
+            p_sample_ws[i] = std::exp(lnp_sample);
+        }
+    }
+
+    std::discrete_distribution<int> dd(
+        p_sample_ws.begin(),
+        p_sample_ws.begin()+n_samples
+    );
+    
+    return dd(r);
+}
+
+
 double neighbor_gibbs_step_shifted(
         const int pix,
         TNeighborPixels& neighbor_pixels,
@@ -3398,6 +3618,7 @@ void sample_los_extinction_discrete(
     // Workspaces used during neighbor pixel sampling
     std::vector<double> log_p_sample_ws;
     std::vector<double> p_sample_ws;
+    std::vector<double> mu_ws;
     // # of samples stored in neighboring pixels
     
     if(params.neighbor_pixels) {
@@ -3493,24 +3714,32 @@ void sample_los_extinction_discrete(
 
     // Hash to speed up neighbor gibbs steps
     #define USE_NEIGHBOR_GIBBS_CACHE 0
-    #if USE_NEIGBHOR_GIBBS_CACHE
-    int gibbs_cache_capacity = 10000;
+    #if USE_NEIGHBOR_GIBBS_CACHE
+    int gibbs_cache_capacity = 5000;
     std::vector<
         LRUCache::CachedFunction<
             std::vector<uint16_t>,
-            std::shared_ptr<std::discrete_distribution<int>>,
+            std::shared_ptr<NeighborGibbsCacheData>,
             LRUCache::VectorHasher<uint16_t>
         >
     > gibbs_step_cache;
+    
     int gibbs_step_pix;
+    int disc_distr_res;
+    double lnp_cutoff_cache = -10.;
+    
+    std::vector<
+        std::function<void(std::shared_ptr<NeighborGibbsCacheData>&)>
+    > roll_gibbs_idx;
     
     if(params.neighbor_pixels) {
         gibbs_step_cache.reserve(n_temperatures);
+        roll_gibbs_idx.reserve(n_temperatures);
         for(int t=0; t<n_temperatures; t++) {
             gibbs_step_cache.push_back(
             LRUCache::CachedFunction<
                 std::vector<uint16_t>,
-                std::shared_ptr<std::discrete_distribution<int>>,
+                std::shared_ptr<NeighborGibbsCacheData>,
                 LRUCache::VectorHasher<uint16_t>
             >(
                 [
@@ -3518,40 +3747,70 @@ void sample_los_extinction_discrete(
                     &neighbor_pixels=*(params.neighbor_pixels),
                     &log_p_sample_ws,
                     &p_sample_ws,
+                    &mu_ws,
                     bt=beta.at(t),
-                    shift_weight
+                    shift_weight,
+                    lnp_cutoff_cache
                 ]
                 (const std::vector<uint16_t>& nbor_idx)
-                -> std::shared_ptr<std::discrete_distribution<int>>
+                -> std::shared_ptr<NeighborGibbsCacheData>
             {
                 //uint16_t s_tmp = nbor_samp[step_pix];
                 //nbor_samp[step_pix] = neighbor_pixels.get_n_pix();
-                std::unique_ptr<std::discrete_distribution<int>> dd = 
-                neighbor_gibbs_step_shifted_factory(
+                std::unique_ptr<NeighborGibbsCacheData> cache_entry = 
+                neighbor_gibbs_step_shifted_cache_data(
                     gibbs_step_pix,
                     neighbor_pixels,
                     nbor_idx,
                     log_p_sample_ws,
                     p_sample_ws,
+                    mu_ws,
                     bt,
-                    shift_weight
+                    shift_weight,
+                    lnp_cutoff_cache
                 );
                 //nbor_samp[step_pix] = s_tmp;
-                return std::move(dd);
+                return std::move(cache_entry);
             },
             gibbs_cache_capacity,
             nullptr)
             );
+            
+            roll_gibbs_idx.push_back(
+                [
+                    &gibbs_step_pix,
+                    &neighbor_pixels=*(params.neighbor_pixels),
+                    &neighbor_idx,
+                    &log_p_sample_ws,
+                    &p_sample_ws,
+                    &mu_ws,
+                    bt=beta.at(t),
+                    shift_weight,
+                    lnp_cutoff_cache,
+                    &rr=params.r,
+                    &disc_distr_res,
+                    t
+                ]
+                (std::shared_ptr<NeighborGibbsCacheData>& cache_entry)
+                -> void 
+                {
+                    disc_distr_res = neighbor_gibbs_step_shifted_cached(
+                        gibbs_step_pix,
+                        *cache_entry,
+                        neighbor_pixels,
+                        *(neighbor_idx.at(t)),
+                        log_p_sample_ws,
+                        p_sample_ws,
+                        mu_ws,
+                        bt,
+                        shift_weight,
+                        lnp_cutoff_cache,
+                        rr
+                    );
+                }
+            );
         }
     }
-    
-    int disc_distr_res;
-    auto roll_disc_distr = [&rr=params.r, &disc_distr_res](
-        std::shared_ptr<std::discrete_distribution<int>>& dd
-    ) -> void
-    {
-        disc_distr_res = (*dd)(rr);
-    };
     #endif
 
     //int w = 0;
@@ -3617,12 +3876,12 @@ void sample_los_extinction_discrete(
                         
                         // Take a Gibbs step in each neighbor pixel
                         for(auto k : neighbor_gibbs_order) {
-                            #if USE_NEIGBHOR_GIBBS_CACHE
+                            #if USE_NEIGHBOR_GIBBS_CACHE
                             neighbor_idx[t]->at(k) = n_neighbor_samples;
                             gibbs_step_pix = k;
                             gibbs_step_cache.at(t)(
                                 *(neighbor_idx[t]),
-                                roll_disc_distr
+                                roll_gibbs_idx.at(t)
                             );
                             neighbor_idx[t]->at(k) = disc_distr_res;
                             #else

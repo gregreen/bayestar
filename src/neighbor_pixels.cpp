@@ -708,6 +708,20 @@ void TNeighborPixels::set_delta(
 }
 
 
+double TNeighborPixels::get_inv_cov(
+        unsigned int dist,
+        unsigned int pix0,
+        unsigned int pix1) const
+{
+    //std::cerr << "pix0, pix1, dist = ("
+    //          << pix0 << ", "
+    //          << pix1 << ", "
+    //          << dist << ")"
+    //          << std::endl;
+    return (*(inv_cov[dist]))(pix0, pix1);
+}
+
+
 double TNeighborPixels::calc_mean(
         unsigned int pix,
         unsigned int dist,
@@ -757,7 +771,8 @@ double TNeighborPixels::calc_mean_shifted(
         unsigned int pix,
         unsigned int dist,
         const std::vector<uint16_t>& sample,
-        const double shift_weight) const
+        const double shift_weight,
+        unsigned int start_pix) const
 {
     // Calculates the mean of the specified pixel, given that
     // the specified samples are chosen for the other pixels.
@@ -788,7 +803,7 @@ double TNeighborPixels::calc_mean_shifted(
     if(dist == 0) {
         Eigen::MatrixXd& inv_cov_p1 = *(inv_cov[dist+1]);
         
-        for(int i=0; i<pix; i++) {
+        for(int i=start_pix; i<pix; i++) {
             mu += inv_cov_0(pix, i) * get_delta(i, sample[i], dist)
                   + shift_weight * (
                         inv_cov_p1(pix, i) * get_delta(i, sample[i], dist+1)
@@ -803,7 +818,7 @@ double TNeighborPixels::calc_mean_shifted(
     } else if(dist == n_dists-1) {
         Eigen::MatrixXd& inv_cov_m1 = *(inv_cov[dist-1]);
         
-        for(int i=0; i<pix; i++) {
+        for(int i=start_pix; i<pix; i++) {
             mu += inv_cov_0(pix, i) * get_delta(i, sample[i], dist)
                   + shift_weight * (
                         inv_cov_m1(pix, i) * get_delta(i, sample[i], dist-1)
@@ -819,7 +834,7 @@ double TNeighborPixels::calc_mean_shifted(
         Eigen::MatrixXd& inv_cov_m1 = *(inv_cov[dist-1]);
         Eigen::MatrixXd& inv_cov_p1 = *(inv_cov[dist+1]);
 
-        for(int i=0; i<pix; i++) {
+        for(int i=start_pix; i<pix; i++) {
             mu += inv_cov_0(pix, i) * get_delta(i, sample[i], dist)
                   + shift_weight * (
                         inv_cov_m1(pix, i) * get_delta(i, sample[i], dist-1)

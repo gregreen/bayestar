@@ -99,6 +99,11 @@ public:
     unsigned int get_n_samples() const;
     unsigned int get_n_dists() const;
     
+    double get_inv_cov(
+            unsigned int dist,
+            unsigned int pix0,
+            unsigned int pix1) const;
+    
     // Setters
     void set_delta(
             double value,
@@ -119,7 +124,8 @@ public:
             unsigned int pix,
             unsigned int dist,
             const std::vector<uint16_t>& sample,
-            const double shift_weight) const;
+            const double shift_weight,
+            unsigned int start_pix=0) const;
     
     double calc_lnprob(const std::vector<uint16_t>& sample) const;
 
