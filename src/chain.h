@@ -173,6 +173,7 @@ public:
 	void set_capacity(unsigned int _capacity);				// Set the capacity of the vectors used in the chain
 	double append(const TChain& chain, bool reweight=false, bool use_peak=true, double nsigma_max=1.,
 	              double nsigma_peak=0.1, double chain_frac=0.05, double threshold=1.e-5);	// Append a second chain to this one
+        void set_L(unsigned int i, double L_i);
 
 	// Accessors
 	unsigned int get_capacity() const;			// Return the capacity of the vectors used in the chain

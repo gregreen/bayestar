@@ -699,14 +699,11 @@ bool save_gridstars(
     // Open up file and create group
 	H5::Exception::dontPrint();
 
-	H5::H5File *file = H5Utils::openFile(fname);
-	if(file == NULL) { return false; }
+	std::unique_ptr<H5::H5File> file = H5Utils::openFile(fname);
+	if(!file) { return false; }
 
-	H5::Group *gp = H5Utils::openGroup(file, group);
-	if(gp == NULL) {
-		delete file;
-		return false;
-	}
+	std::unique_ptr<H5::Group> gp = H5Utils::openGroup(*file, group);
+	if(!gp) { return false; }
     
     // Determine maximum number of Gaussians for one star
     uint32_t n_gaussians = 0;

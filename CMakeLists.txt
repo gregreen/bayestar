@@ -44,6 +44,20 @@ configure_file(
 include_directories("${PROJECT_BINARY_DIR}/src")
 
 #
+# Profiling
+#
+IF(CMAKE_COMPILER_IS_GNUCXX)
+	IF(PROFILING_GEN)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-generate=prof -lgcov ")
+		MESSAGE( STATUS "Setting flags to generate profiling information." )
+	ENDIF(PROFILING_GEN)
+	IF(PROFILING_USE)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-use=prof ")
+		MESSAGE( STATUS "Setting flags to use profiling information." )
+	ENDIF(PROFILING_USE)
+ENDIF(CMAKE_COMPILER_IS_GNUCXX)
+
+#
 # Optimizations
 #
 IF(NOT CMAKE_COMPILER_IS_GNUCXX)
@@ -57,28 +71,12 @@ ENDIF(NOT CMAKE_COMPILER_IS_GNUCXX)
 # Non-compiler-specific flags
 #
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11 ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++14 ")
 
 #
 # Standard revision, ABI, etc.
 #
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
-
-#
-# Profiling
-#
-IF(CMAKE_COMPILER_IS_GNUCXX)
-	IF(PROFILING_GEN)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-generate -pg ")
-		#set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS} -fprofile-generate=profiling/ -pg ")
-		MESSAGE( STATUS "Setting flags to generate profiling information." )
-	ENDIF(PROFILING_GEN)
-	IF(PROFILING_USE)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-use ")
-		#set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS} -fprofile-use=profiling/ ")
-		MESSAGE( STATUS "Setting flags to use profiling information." )
-	ENDIF(PROFILING_USE)
-ENDIF(CMAKE_COMPILER_IS_GNUCXX)
 
 ### HDF5
 find_package(HDF5 COMPONENTS C CXX HL REQUIRED)
@@ -145,8 +143,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_LIMIT_MACROS")
 add_executable(bayestar src/main.cpp src/model.cpp src/sampler.cpp
                         src/interpolation.cpp src/stats.cpp src/chain.cpp
                         src/data.cpp src/binner.cpp src/los_sampler.cpp
-												src/h5utils.cpp src/star_exact.cpp
-												src/program_opts.cpp)
+                        src/h5utils.cpp src/star_exact.cpp
+                        src/program_opts.cpp src/gaussian_process.cpp
+                        src/healpix_tree.cpp src/neighbor_pixels.cpp
+			src/bridging_sampler.cpp)
 
 #
 # Link libraries

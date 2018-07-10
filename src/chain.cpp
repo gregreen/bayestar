@@ -107,6 +107,10 @@ double TChain::get_L(unsigned int i) const {
 	return L[i];
 }
 
+void TChain::set_L(unsigned int i, double L_i) {
+	L[i] = L_i;
+}
+
 double TChain::get_w(unsigned int i) const {
 	return w[i];
 }
@@ -472,8 +476,8 @@ bool TChain::save(std::string fname, std::string group_name, size_t index,
 
 	H5::Exception::dontPrint();
 
-	H5::H5File *file = H5Utils::openFile(fname);
-	if(file == NULL) { return false; }
+	std::unique_ptr<H5::H5File> file = H5Utils::openFile(fname);
+	if(!file) { return false; }
 
 	/*
 	try {
@@ -483,11 +487,8 @@ bool TChain::save(std::string fname, std::string group_name, size_t index,
 	}
 	*/
 
-	H5::Group *group = H5Utils::openGroup(file, group_name);
-	if(group == NULL) {
-		delete file;
-		return false;
-	}
+	std::unique_ptr<H5::Group> group = H5Utils::openGroup(*file, group_name);
+	if(!group) { return false; }
 
 	/*
 	 *  Attributes
@@ -679,9 +680,6 @@ bool TChain::save(std::string fname, std::string group_name, size_t index,
 	delete x_dataset;
 	delete L_dataset;
 
-	delete group;
-	delete file;
-
 	return true;
 }
 
@@ -837,8 +835,8 @@ void TImgWriteBuffer::add(const cv::Mat& img) {
 }
 
 void TImgWriteBuffer::write(const std::string& fname, const std::string& group, const std::string& img) {
-	H5::H5File* h5file = H5Utils::openFile(fname);
-	H5::Group* h5group = H5Utils::openGroup(h5file, group);
+	std::unique_ptr<H5::H5File> h5file = H5Utils::openFile(fname);
+	std::unique_ptr<H5::Group> h5group = H5Utils::openGroup(*h5file, group);
 
 	// Dataset properties: optimized for reading/writing entire buffer at once
 	int rank = 3;
@@ -879,8 +877,6 @@ void TImgWriteBuffer::write(const std::string& fname, const std::string& group, 
 	att_max.write(att_dtype, &(rect_.max));
 
 	delete dataset;
-	delete h5group;
-	delete h5file;
 }
 
 
@@ -1014,8 +1010,8 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
 }
 
 void TChainWriteBuffer::write(const std::string& fname, const std::string& group, const std::string& chain, const std::string& meta) {
-	H5::H5File* h5file = H5Utils::openFile(fname);
-	H5::Group* h5group = H5Utils::openGroup(h5file, group);
+	std::unique_ptr<H5::H5File> h5file = H5Utils::openFile(fname);
+	std::unique_ptr<H5::Group> h5group = H5Utils::openGroup(*h5file, group);
 
 	// Dataset properties: optimized for reading/writing entire buffer at once
 	int rank = 3;
@@ -1087,8 +1083,6 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 	}
 
 	delete dataset;
-	delete h5group;
-	delete h5file;
 
 	//std::cerr << "Cleaned up." << std::endl;
 }
@@ -1476,14 +1470,11 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string gr
 
 	H5::Exception::dontPrint();
 
-	H5::H5File *file = H5Utils::openFile(fname);
-	if(file == NULL) { return false; }
+	std::unique_ptr<H5::H5File> file = H5Utils::openFile(fname);
+	if(!file) { return false; }
 
-	H5::Group *group = H5Utils::openGroup(file, group_name);
-	if(group == NULL) {
-		delete file;
-		return false;
-	}
+	std::unique_ptr<H5::Group> group = H5Utils::openGroup(*file, group_name);
+	if(!group) { return false; }
 
 	/*
 	 *  Image Data
@@ -1504,8 +1495,6 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string gr
 		dataset = new H5::DataSet(group->createDataSet(dset_name, H5::PredType::NATIVE_FLOAT, dspace, plist));
 	} catch(H5::FileIException create_dset_err) {
 		std::cerr << "Unable to create dataset '" << dset_name << "'." << std::endl;
-		delete group;
-		delete file;
 		return false;
 	}
 
@@ -1552,8 +1541,6 @@ bool save_mat_image(cv::Mat& img, TRect& rect, std::string fname, std::string gr
 
 	delete[] buf;
 	delete dataset;
-	delete group;
-	delete file;
 
 	return true;
 
