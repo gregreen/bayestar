@@ -284,7 +284,9 @@ public:
 
 class TChainWriteBuffer {
 public:
-	TChainWriteBuffer(unsigned int nDim, unsigned int nSamples, unsigned int nReserved = 10);
+	TChainWriteBuffer(unsigned int nDim,
+                      unsigned int nSamples,
+                      unsigned int nReserved = 10);
 	~TChainWriteBuffer();
 
 	void add(const TChain &chain,

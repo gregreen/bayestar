@@ -52,7 +52,11 @@ TChain::TChain(std::string filename, bool reserve_extra)
 
 TChain::~TChain() {}
 
-void TChain::add_point(const double *const element, double L_i, double w_i) {
+void TChain::add_point(const double *const element,
+                       double L_i,
+                       double p_i,
+                       double w_i)
+{
 	stats(element, (unsigned int)w_i);
 	for(unsigned int i=0; i<N; i++) {
 		x.push_back(element[i]);
@@ -60,14 +64,23 @@ void TChain::add_point(const double *const element, double L_i, double w_i) {
 		if(element[i] > x_max[i]) { x_max[i] = element[i]; }
 	}
 	L.push_back(L_i);
+	p.push_back(p_i);
 	w.push_back(w_i);
 	total_weight += w_i;
 	length += 1;
 }
 
+void TChain::add_point(const double *const element,
+                       double L_i,
+                       double w_i)
+{
+    add_point(element, L_i, 0., w_i); // Use dummy value for prior
+}
+
 void TChain::clear() {
 	x.clear();
 	L.clear();
+	p.clear();
 	w.clear();
 	stats.clear();
 	total_weight = 0;
@@ -84,6 +97,7 @@ void TChain::set_capacity(unsigned int _capacity) {
 	capacity = _capacity;
 	x.reserve(N*capacity);
 	L.reserve(capacity);
+	p.reserve(capacity);
 	w.reserve(capacity);
 }
 
@@ -111,6 +125,14 @@ void TChain::set_L(unsigned int i, double L_i) {
 	L[i] = L_i;
 }
 
+double TChain::get_p(unsigned int i) const {
+	return p[i];
+}
+
+void TChain::set_p(unsigned int i, double p_i) {
+	p[i] = p_i;
+}
+
 double TChain::get_w(unsigned int i) const {
 	return w[i];
 }
@@ -130,11 +152,13 @@ void TChain::get_best(std::vector<double> &x) const {
 }
 
 unsigned int TChain::get_index_of_best() const {
-	double L_max = L[0];
+	double pi_max = L[0] + p[0];
 	unsigned int i_max = 0;
+    double pi_tmp;
 	for(unsigned int i=1; i<length; i++) {
-		if(L[i] > L_max) {
-			L_max = L[i];
+        pi_tmp = L[i] + p[i];
+		if(pi_tmp > pi_max) {
+			pi_max = pi_tmp;
 			i_max = i;
 		}
 	}
@@ -142,16 +166,34 @@ unsigned int TChain::get_index_of_best() const {
 }
 
 
-double TChain::append(const TChain& chain, bool reweight, bool use_peak, double nsigma_max, double nsigma_peak, double chain_frac, double threshold) {
-	assert(chain.N == N);	// Make sure the two chains have the same dimensionality
+double TChain::append(const TChain& chain,
+                      bool reweight,
+                      bool use_peak,
+                      double nsigma_max,
+                      double nsigma_peak,
+                      double chain_frac,
+                      double threshold)
+{
+    // Make sure the two chains have the same dimensionality
+	assert(chain.N == N);
 
 	// Weight each chain according to Bayesian evidence, if requested
 	double a1 = 1.;
 	double a2 = 1.;
 	double lnZ = 0.;
 	if(reweight) {
-		double lnZ1 = chain.get_ln_Z_harmonic(use_peak, nsigma_max, nsigma_peak, chain_frac);
-		double lnZ2 = get_ln_Z_harmonic(use_peak, nsigma_max, nsigma_peak, chain_frac);
+		double lnZ1 = chain.get_ln_Z_harmonic(
+            use_peak,
+            nsigma_max,
+            nsigma_peak,
+            chain_frac
+        );
+		double lnZ2 = get_ln_Z_harmonic(
+            use_peak,
+            nsigma_max,
+            nsigma_peak,
+            chain_frac
+        );
 
 		if(lnZ2 > lnZ1) {
 			a2 = exp(lnZ1 - lnZ2) * total_weight / chain.total_weight;
@@ -161,7 +203,8 @@ double TChain::append(const TChain& chain, bool reweight, bool use_peak, double 
 				std::cout << "ln(Z1) = " << lnZ1 << std::endl;
 				std::cout << "ln(Z2) = " << lnZ2 << std::endl;
 				std::cout << "total_weight = " << total_weight << std::endl;
-				std::cout << "chain.total_weight = " << chain.total_weight << std::endl;
+				std::cout << "chain.total_weight = " << chain.total_weight
+                          << std::endl;
 				std::cout << std::endl;
 			}*/
 		} else {
@@ -172,7 +215,8 @@ double TChain::append(const TChain& chain, bool reweight, bool use_peak, double 
 				std::cout << "ln(Z1) = " << lnZ1 << std::endl;
 				std::cout << "ln(Z2) = " << lnZ2 << std::endl;
 				std::cout << "total_weight = " << total_weight << std::endl;
-				std::cout << "chain.total_weight = " << chain.total_weight << std::endl;
+				std::cout << "chain.total_weight = " << chain.total_weight
+                          << std::endl;
 				std::cout << std::endl;
 			}*/
 		}
@@ -180,12 +224,15 @@ double TChain::append(const TChain& chain, bool reweight, bool use_peak, double 
 		lnZ = log(a1/(a1+a2) * exp(lnZ2) + a2/(a1+a2) * exp(lnZ1));
 	}
 
-	if(reweight) { std::cout << "(a1, a2) = " << a1 << ", " << a2 << std::endl; }
+	if(reweight) {
+        std::cout << "(a1, a2) = " << a1 << ", " << a2 << std::endl;
+    }
 
 	// Append the last chain to this one
 	if(reweight && (a1 < threshold)) {
 		x = chain.x;
 		L = chain.L;
+		p = chain.p;
 		w = chain.w;
 		length = chain.length;
 		capacity = chain.capacity;
@@ -196,18 +243,27 @@ double TChain::append(const TChain& chain, bool reweight, bool use_peak, double 
 			x_min[i] = chain.x_min[i];
 		}
 	} else if(!(reweight && (a2 < threshold))) {
-		if(capacity < length + chain.length) { set_capacity(1.5*(length + chain.length)); }
+		if(capacity < length + chain.length) {
+            set_capacity(1.5*(length + chain.length));
+        }
 		std::vector<double>::iterator w_end_old = w.end();
 		x.insert(x.end(), chain.x.begin(), chain.x.end());
 		L.insert(L.end(), chain.L.begin(), chain.L.end());
+		p.insert(p.end(), chain.p.begin(), chain.p.end());
 		w.insert(w.end(), chain.w.begin(), chain.w.end());
 
 		if(reweight) {
 			std::vector<double>::iterator w_end = w.end();
-			for(std::vector<double>::iterator it = w.begin(); it != w_end_old; ++it) {
+			for(std::vector<double>::iterator it = w.begin();
+                it != w_end_old;
+                ++it)
+            {
 				*it *= a1;
 			}
-			for(std::vector<double>::iterator it = w_end_old; it != w_end; ++it) {
+			for(std::vector<double>::iterator it = w_end_old;
+                it != w_end;
+                ++it)
+            {
 				*it *= a2;
 			}
 		}
@@ -245,6 +301,7 @@ TChain& TChain::operator =(const TChain& rhs) {
 		stats = rhs.stats;
 		x = rhs.x;
 		L = rhs.L;
+		p = rhs.p;
 		w = rhs.w;
 		total_weight = rhs.total_weight;
 		N = rhs.N;
@@ -268,12 +325,19 @@ struct TChainSort {
 //bool chainsortcomp(TChainSort a, TChainSort b) { return a.dist2 < b.dist2; }
 
 
-// Uses a variant of the bounded harmonic mean approximation to determine the evidence.
-// Essentially, the regulator chosen is an ellipsoid with radius nsigma standard deviations
-// along each principal axis. The regulator is then 1/V inside the ellipsoid and 0 without,
-// where V is the volume of the ellipsoid. In this form, the harmonic mean approximation
-// has finite variance. See Gelfand & Dey (1994) and Robert & Wraith (2009) for details.
-double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma_peak, double chain_frac) const {
+// Uses a variant of the bounded harmonic mean approximation to
+// determine the evidence. Essentially, the regulator chosen is
+// an ellipsoid with radius nsigma standard deviations along
+// each principal axis. The regulator is then 1/V inside the
+// ellipsoid and 0 without, where V is the volume of the ellipsoid.
+// In this form, the harmonic mean approximation has finite
+// variance. See Gelfand & Dey (1994) and Robert & Wraith (2009)
+// for details.
+double TChain::get_ln_Z_harmonic(bool use_peak,
+                                 double nsigma_max,
+                                 double nsigma_peak,
+                                 double chain_frac) const
+{
 	// Get the covariance and determinant of the chain
 	gsl_matrix* Sigma = gsl_matrix_alloc(N, N);
 	gsl_matrix* invSigma = gsl_matrix_alloc(N, N);
@@ -289,12 +353,17 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 		for(unsigned int i=0; i<N; i++) { mu[i] = stats.mean(i); }
 	}
 
-	// Sort elements in chain by distance from center, filtering out values of L which are not finite
+	// Sort elements in chain by distance from center, filtering
+	// out values of L which are not finite
 	std::vector<TChainSort> sorted_indices;
 	sorted_indices.reserve(length);
 	unsigned int filt_length = 0;
 	for(unsigned int i=0; i<length; i++) {
-		if(!(std::isnan(L[i]) || is_inf_replacement(L[i]))) {
+		if(!(
+            std::isnan(L[i]) || is_inf_replacement(L[i]) ||
+            std::isnan(p[i]) || is_inf_replacement(p[i])
+            ))
+        {
 			TChainSort tmp_el;
 			tmp_el.index = i;
 			tmp_el.dist2 = metric_dist2(invSigma, get_element(i), mu, N);
@@ -303,14 +372,19 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 		}
 	}
 	unsigned int npoints = (unsigned int)(chain_frac * (double)filt_length);
-	std::partial_sort(sorted_indices.begin(), sorted_indices.begin() + npoints, sorted_indices.end());
+	std::partial_sort(
+        sorted_indices.begin(),
+        sorted_indices.begin() + npoints,
+        sorted_indices.end()
+    );
 
-	// Determine <1/L> inside the prior volume
-	double sum_invL = 0.;
-	double tmp_invL;
+	// Determine <1/(L*p)> inside the prior volume
+	double sum_inv_pi = 0.;
+	double tmp_inv_pi;
 	double nsigma = sqrt(sorted_indices[npoints-1].dist2);
 	unsigned int tmp_index = sorted_indices[0].index;;
 	double L_0 = L[tmp_index];
+	double p_0 = p[tmp_index];
 	//std::cout << "index_0 = " << sorted_indices[0].index << std::endl;
 	for(unsigned int i=0; i<npoints; i++) {
 		if(sorted_indices[i].dist2 > nsigma_max * nsigma_max) {
@@ -318,44 +392,59 @@ double TChain::get_ln_Z_harmonic(bool use_peak, double nsigma_max, double nsigma
 			break;
 		}
 		tmp_index = sorted_indices[i].index;
-		tmp_invL = w[tmp_index] / exp(L[tmp_index] - L_0);
+		tmp_inv_pi = w[tmp_index]
+                     * exp(L_0 - L[tmp_index] + p_0 - p[tmp_index]);
 		//std::cout << w[tmp_index] << ", " << L[tmp_index] << std::endl;
 		//if(std::isnan(tmp_invL)) {
-		//	std::cout << "\t\tL, L_0 = " << L[tmp_index] << ", " << L_0 << std::endl;
+		//	std::cout << "\t\tL, L_0 = " << L[tmp_index] << ", " << L_0
+		//	          << std::endl;
 		//}
-		if((tmp_invL + sum_invL > 1.e100) && (i != 0)) {
+		if((tmp_inv_pi + sum_inv_pi > 1.e100) && (i != 0)) {
 			nsigma = sqrt(sorted_indices[i-1].dist2);
 			break;
 		}
-		sum_invL += tmp_invL;
+		sum_inv_pi += tmp_inv_pi;
 	}
 
 	// Determine the volume normalization (the prior volume)
-	double V = sqrt(detSigma) * 2. * pow(SQRTPI * nsigma, (double)N) / (double)(N) / gsl_sf_gamma((double)(N)/2.);
+	double V = sqrt(detSigma)
+               * 2. * pow(SQRTPI * nsigma, (double)N)
+               / (double)(N)
+               / gsl_sf_gamma((double)(N)/2.);
 
 	// Return an estimate of ln(Z)
-	double lnZ = log(V) - log(sum_invL) + log(total_weight) + L_0;
+	double lnZ = log(V) - log(sum_inv_pi) + log(total_weight) + L_0 + p_0;
 
 	if(std::isnan(lnZ)) {
 		std::cout << std::endl;
 		std::cout << "NaN Error! lnZ = " << lnZ << std::endl;
-		std::cout << "\tsum_invL = e^(" << -L_0 << ") * " << sum_invL << " = " << exp(-L_0) * sum_invL << std::endl;
+		std::cout << "\tsum_invL = e^("
+                  << -L_0-p_0 << ") * " << sum_inv_pi
+                  << " = " << exp(-L_0-p_0) * sum_inv_pi
+                  << std::endl;
 		std::cout << "\tV = " << V << std::endl;
-		std::cout << "\ttotal_weight = " << total_weight << std::endl;
+		std::cout << "\ttotal_weight = " << total_weight
+                  << std::endl;
 		std::cout << std::endl;
 	} else if(is_inf_replacement(lnZ)) {
 		std::cout << std::endl;
 		std::cout << "inf Error! lnZ = " << lnZ << std::endl;
-		std::cout << "\tsum_invL = e^(" << -L_0 << ") * " << sum_invL << " = " << exp(-L_0) * sum_invL << std::endl;
+		std::cout << "\tsum_inv_pi = e^(" << -L_0-p_0 << ") * "
+                  << sum_inv_pi << " = "
+                  << exp(-L_0-p_0) * sum_inv_pi << std::endl;
 		std::cout << "\tV = " << V << std::endl;
-		std::cout << "\ttotal_weight = " << total_weight << std::endl;
+		std::cout << "\ttotal_weight = " << total_weight
+                  << std::endl;
 		std::cout << "\tnsigma = " << nsigma << std::endl;
 		std::cout << "\tIndex\tDist^2:" << std::endl;
 		for(unsigned int i=0; i<10; i++) {
-			std::cout << sorted_indices[i].index << "\t\t" << sorted_indices[i].dist2 << std::endl;
+			std::cout << sorted_indices[i].index << "\t\t"
+                      << sorted_indices[i].dist2 << std::endl;
 			std::cout << "  ";
 			const double *tmp_x = get_element(sorted_indices[i].index);
-			for(unsigned int k=0; k<N; k++) { std::cout << " " << tmp_x[k]; }
+			for(unsigned int k=0; k<N; k++) {
+                std::cout << " " << tmp_x[k];
+            }
 			std::cout << std::endl;
 		}
 		std::cout << "mu =";
@@ -885,8 +974,16 @@ void TImgWriteBuffer::write(const std::string& fname, const std::string& group, 
  *   TChainWriteBuffer member functions
  */
 
-TChainWriteBuffer::TChainWriteBuffer(unsigned int nDim, unsigned int nSamples, unsigned int nReserved)
-	: buf(NULL), nDim_(nDim+1), nSamples_(nSamples), nReserved_(0), length_(0), samplePos(nSamples, 0)
+TChainWriteBuffer::TChainWriteBuffer(
+        unsigned int nDim,
+        unsigned int nSamples,
+        unsigned int nReserved)
+	: buf(NULL),
+      nDim_(nDim+2),
+      nSamples_(nSamples),
+      nReserved_(0),
+      length_(0),
+      samplePos(nSamples, 0)
 {
 	reserve(nReserved);
 	seed_gsl_rng(&r);
@@ -909,8 +1006,12 @@ void TChainWriteBuffer::reserve(unsigned int nReserved) {
 	nReserved_ = nReserved;
 }
 
-void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
-							double * GR, bool subsample) {
+void TChainWriteBuffer::add(const TChain& chain,
+                            bool converged,
+                            double lnZ,
+							double * GR,
+                            bool subsample)
+{
 	// Make sure buffer is long enough
 	if(length_ >= nReserved_) {
 		reserve(1.5 * (length_ + 1));
@@ -946,7 +1047,8 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
 			} else {
 				chainElement = chain.get_element(i-1);
 				buf[start_idx + nDim_*(k+2)] = chain.get_L(i-1);
-				for(size_t n = 1; n < nDim_; n++) {
+				buf[start_idx + nDim_*(k+2) + 1] = chain.get_p(i-1);
+				for(size_t n = 2; n < nDim_; n++) {
 					buf[start_idx + nDim_*(k+2) + n] = chainElement[n-1];
 				}
 				k++;
@@ -964,9 +1066,10 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
 
 		for(int64_t k=0; k<n_to_add; k++) {
 			buf[start_idx + nDim_*(k+2)] = chain.get_L(k);
+			buf[start_idx + nDim_*(k+2) + 1] = chain.get_p(k);
 			chainElement = chain.get_element(k);
 
-			for(size_t n=1; n<nDim_; n++) {
+			for(size_t n=2; n<nDim_; n++) {
 				buf[start_idx + nDim_*(k+2) + n] = chainElement[n-1];
 			}
 		}
@@ -974,10 +1077,9 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
 		// Fill out the buffer with NaNs if chain has fewer
 		// than nSamples_ elements
 		for(int64_t k=n_to_add; k<nSamples_; k++) {
-			buf[start_idx + nDim_*(k+2)] = std::numeric_limits<floating_t>::quiet_NaN();
-
-			for(size_t n=1; n<nDim_; n++) {
-				buf[start_idx + nDim_*(k+2) + n] = std::numeric_limits<floating_t>::quiet_NaN();
+			for(size_t n=0; n<nDim_; n++) {
+				buf[start_idx + nDim_*(k+2) + n]
+                    = std::numeric_limits<floating_t>::quiet_NaN();
 			}
 		}
 	}
@@ -986,19 +1088,21 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
 	unsigned int i = chain.get_index_of_best();
 	chainElement = chain.get_element(i);
 	buf[start_idx + nDim_] = chain.get_L(i);
-	for(size_t n = 1; n < nDim_; n++) {
+	buf[start_idx + nDim_ + 1] = chain.get_p(i);
+	for(size_t n = 2; n < nDim_; n++) {
 		buf[start_idx + nDim_ + n] = chainElement[n-1];
 	}
 
 	// Copy the Gelman-Rubin diagnostic into the buffer
 	buf[start_idx] = std::numeric_limits<floating_t>::quiet_NaN();
+	buf[start_idx+1] = std::numeric_limits<floating_t>::quiet_NaN();
 	if(GR == NULL) {
-		for(size_t n = 1; n < nDim_; n++) {
+		for(size_t n = 2; n < nDim_; n++) {
 			buf[start_idx + n] = std::numeric_limits<floating_t>::quiet_NaN();
 		}
 	} else {
 		//std::cout << "Writing G-R ..." << std::endl;
-		for(size_t n = 1; n < nDim_; n++) {
+		for(size_t n = 2; n < nDim_; n++) {
 			//std::cout << n << std::endl;
 			buf[start_idx + n] = GR[n-1];
 		}
@@ -1009,7 +1113,12 @@ void TChainWriteBuffer::add(const TChain& chain, bool converged, double lnZ,
 	length_++;
 }
 
-void TChainWriteBuffer::write(const std::string& fname, const std::string& group, const std::string& chain, const std::string& meta) {
+void TChainWriteBuffer::write(
+        const std::string& fname,
+        const std::string& group,
+        const std::string& chain,
+        const std::string& meta)
+{
 	std::unique_ptr<H5::H5File> h5file = H5Utils::openFile(fname);
 	std::unique_ptr<H5::Group> h5group = H5Utils::openGroup(*h5file, group);
 
@@ -1025,10 +1134,20 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 
 	H5::DataSet* dataset = NULL;
 	try {
-		dataset = new H5::DataSet(h5group->createDataSet(chain, H5::PredType::NATIVE_FLOAT, dspace, plist));
+		dataset = new H5::DataSet(
+            h5group->createDataSet(
+                chain,
+                H5::PredType::NATIVE_FLOAT,
+                dspace,
+                plist
+            )
+        );
 	} catch(H5::GroupIException &group_exception) {
-		std::cerr << "Could not create dataset for chain." << std::endl;
-		std::cerr << "Dataset '" << group << "/" << chain << "' most likely already exists." << std::endl;
+		std::cerr << "Could not create dataset for chain."
+                  << std::endl;
+		std::cerr << "Dataset '" << group << "/"
+                  << chain << "' most likely already exists."
+                  << std::endl;
 		throw;
 	}
 
@@ -1053,19 +1172,36 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 		//}
 
 		H5::DataSpace convSpace(1, &(dim[0]));
-		H5::Attribute convAtt = dataset->createAttribute("converged", H5::PredType::NATIVE_CHAR, convSpace);
-		convAtt.write(H5::PredType::NATIVE_CHAR, reinterpret_cast<char*>(converged));
+		H5::Attribute convAtt = dataset->createAttribute(
+            "converged",
+            H5::PredType::NATIVE_CHAR,
+            convSpace
+        );
+		convAtt.write(H5::PredType::NATIVE_CHAR,
+                      reinterpret_cast<char*>(converged));
 
 		H5::DataSpace lnZSpace(1, &(dim[0]));
-		H5::Attribute lnZAtt = dataset->createAttribute("ln(Z)", H5::PredType::NATIVE_FLOAT, lnZSpace);
+		H5::Attribute lnZAtt = dataset->createAttribute(
+            "ln(Z)",
+            H5::PredType::NATIVE_FLOAT,
+            lnZSpace
+        );
 		lnZAtt.write(H5::PredType::NATIVE_FLOAT, lnZ);
 
 		delete[] converged;
 		delete[] lnZ;
 	} else {	 	// Store metadata as separate dataset
 		H5::CompType metaType(sizeof(TChainMetadata));
-		metaType.insertMember("converged", HOFFSET(TChainMetadata, converged), H5::PredType::NATIVE_CHAR);
-		metaType.insertMember("ln(Z)", HOFFSET(TChainMetadata, lnZ), H5::PredType::NATIVE_FLOAT);
+		metaType.insertMember(
+            "converged",
+            HOFFSET(TChainMetadata, converged),
+            H5::PredType::NATIVE_CHAR
+        );
+		metaType.insertMember(
+            "ln(Z)",
+            HOFFSET(TChainMetadata, lnZ),
+            H5::PredType::NATIVE_FLOAT
+        );
 
 		rank = 1;
 		H5::DataSpace metaSpace(rank, &(dim[0]));
@@ -1075,7 +1211,14 @@ void TChainWriteBuffer::write(const std::string& fname, const std::string& group
 		metaProp.setDeflate(3);
 		metaProp.setChunk(rank, &(dim[0]));
 
-		H5::DataSet* metaDataset = new H5::DataSet(h5group->createDataSet(meta, metaType, metaSpace, metaProp));
+		H5::DataSet* metaDataset = new H5::DataSet(
+            h5group->createDataSet(
+                meta,
+                metaType,
+                metaSpace,
+                metaProp
+            )
+        );
 		metaDataset->write(metadata.data(), metaType);
 
 		delete metaDataset;
