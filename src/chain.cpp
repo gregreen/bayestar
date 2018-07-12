@@ -31,6 +31,7 @@ TChain::TChain(const TChain& c)
 	stats = c.stats;
 	x = c.x;
 	L = c.L;
+    p = c.p;
 	w = c.w;
 	total_weight = c.total_weight;
 	N = c.N;
@@ -998,7 +999,11 @@ void TChainWriteBuffer::reserve(unsigned int nReserved) {
 	assert(nReserved >= nReserved_);
 	float *buf_new = new float[nDim_ * (nSamples_+2) * nReserved];
 	if(buf != NULL) {
-		memcpy(buf_new, buf, sizeof(float) * nDim_ * (nSamples_+2) * length_);
+		memcpy(
+            buf_new,
+            buf,
+            sizeof(float) * nDim_ * (nSamples_+2) * length_
+        );
 		delete[] buf;
 	}
 	buf = buf_new;
@@ -1026,6 +1031,8 @@ void TChainWriteBuffer::add(const TChain& chain,
 	unsigned int chainLength = chain.get_length();
 	size_t start_idx = length_ * nDim_ * (nSamples_+2);
 
+    std::cerr << "start_idx = " << start_idx << std::endl;
+
 	if(subsample) {	// Choose random subsample of points to add
 		// Choose which points in chain to sample
 		double totalWeight = chain.get_total_weight();
@@ -1049,7 +1056,7 @@ void TChainWriteBuffer::add(const TChain& chain,
 				buf[start_idx + nDim_*(k+2)] = chain.get_L(i-1);
 				buf[start_idx + nDim_*(k+2) + 1] = chain.get_p(i-1);
 				for(size_t n = 2; n < nDim_; n++) {
-					buf[start_idx + nDim_*(k+2) + n] = chainElement[n-1];
+					buf[start_idx + nDim_*(k+2) + n] = chainElement[n-2];
 				}
 				k++;
 			}
@@ -1059,10 +1066,11 @@ void TChainWriteBuffer::add(const TChain& chain,
 		// Add points in chain in order, ignoring weights
 		// (this works if every weight is unity)
 		unsigned int n_to_add = std::min(nSamples_, chainLength);
-        //std::cerr << "n_to_add = " << n_to_add
-        //          << " (nSamples_ = " << nSamples_ << " ,"
-        //          << " chainLength = " << chainLength << ")"
-        //          << std::endl;
+        std::cerr << "n_to_add = " << n_to_add
+                  << " (nSamples_ = " << nSamples_ << " ,"
+                  << " nDim_ = " << nDim_ << ","
+                  << " chainLength = " << chainLength << ")"
+                  << std::endl;
 
 		for(int64_t k=0; k<n_to_add; k++) {
 			buf[start_idx + nDim_*(k+2)] = chain.get_L(k);
@@ -1070,7 +1078,7 @@ void TChainWriteBuffer::add(const TChain& chain,
 			chainElement = chain.get_element(k);
 
 			for(size_t n=2; n<nDim_; n++) {
-				buf[start_idx + nDim_*(k+2) + n] = chainElement[n-1];
+				buf[start_idx + nDim_*(k+2) + n] = chainElement[n-2];
 			}
 		}
 
@@ -1090,7 +1098,7 @@ void TChainWriteBuffer::add(const TChain& chain,
 	buf[start_idx + nDim_] = chain.get_L(i);
 	buf[start_idx + nDim_ + 1] = chain.get_p(i);
 	for(size_t n = 2; n < nDim_; n++) {
-		buf[start_idx + nDim_ + n] = chainElement[n-1];
+		buf[start_idx + nDim_ + n] = chainElement[n-2];
 	}
 
 	// Copy the Gelman-Rubin diagnostic into the buffer
@@ -1104,7 +1112,7 @@ void TChainWriteBuffer::add(const TChain& chain,
 		//std::cout << "Writing G-R ..." << std::endl;
 		for(size_t n = 2; n < nDim_; n++) {
 			//std::cout << n << std::endl;
-			buf[start_idx + n] = GR[n-1];
+			buf[start_idx + n] = GR[n-2];
 		}
 	}
 
@@ -1161,7 +1169,8 @@ void TChainWriteBuffer::write(
 			lnZ[i] = metadata[i].lnZ;
 		}
 
-		// Allow large attributes to be stored in dense storage, versus compact (which has 64 kB limit)
+		// Allow large attributes to be stored in dense storage,
+		// versus compact (which has 64 kB limit)
 		//if(length_ > 5) {
 		//	hid_t dID = dataset->getCreatePlist().getId();
 		//	herr_t res = H5Pset_attr_phase_change(dID, 0, 0);
