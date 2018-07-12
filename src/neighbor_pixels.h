@@ -49,8 +49,9 @@ private:
     // shape = (pix, sample, dist)
     std::vector<double> delta;
     
-    // Prior stored for each neighbor
+    // Prior and likelihood stored for each neighbor
     std::vector<double> prior;
+    std::vector<double> likelihood;
     
     // Locations of neibhoring pixels
     std::vector<double> lon, lat;
@@ -93,7 +94,10 @@ public:
             unsigned int dist) const;
 
     const std::vector<double> get_prior() const;
-    double get_prior(unsigned int pix, unsigned int sample) const;
+    double get_prior(unsigned int pix,
+                     unsigned int sample) const;
+    double get_likelihood(unsigned int pix,
+                          unsigned int sample) const;
     
     unsigned int get_n_pix() const;
     unsigned int get_n_samples() const;
@@ -131,7 +135,8 @@ public:
 
     double calc_lnprob_shifted(
             const std::vector<uint16_t>& sample,
-            const double shift_weight) const;
+            const double shift_weight,
+            const bool add_eff_prior=true) const;
     
     // Initialization
     bool load_neighbor_list(

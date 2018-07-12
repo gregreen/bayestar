@@ -262,8 +262,9 @@ bool TNeighborPixels::load_neighbor_los(
     int32_t file_idx_current = -1;
     std::unique_ptr<H5::H5File> f = nullptr;
 
-    // Clear priors
+    // Clear priors and likelihoods
     prior.clear();
+    likelihood.clear();
     
     // Loop through file indices
     for(auto p : file_idx_sort) {
@@ -279,7 +280,12 @@ bool TNeighborPixels::load_neighbor_los(
         if(fidx != file_idx_current) {
             //std::cerr << "output_fname_pattern = " << output_fname_pattern << std::endl;
             //std::cerr << "fidx = " << std::to_string(fidx) << std::endl;
-            auto fname_size = std::snprintf(nullptr, 0, output_fname_pattern.c_str(), fidx);
+            auto fname_size = std::snprintf(
+                nullptr,
+                0,
+                output_fname_pattern.c_str(),
+                fidx
+            );
             std::string fname(fname_size+1, '\0');
             std::sprintf(&fname[0], output_fname_pattern.c_str(), fidx);
             std::cerr << "Opening output file " << fname
@@ -297,10 +303,12 @@ bool TNeighborPixels::load_neighbor_los(
 
         // Load l.o.s. dataset
         std::stringstream group_name;
-        group_name << "/pixel " << nside_current << "-" << pix_idx_current;
+        group_name << "/pixel " << nside_current
+                   << "-" << pix_idx_current;
         std::stringstream dset_name;
         dset_name << group_name.str() << "/discrete-los";
-        std::unique_ptr<H5::DataSet> dataset = H5Utils::openDataSet(*f, dset_name.str());
+        std::unique_ptr<H5::DataSet> dataset
+            = H5Utils::openDataSet(*f, dset_name.str());
         if(!dataset) {
             std::cerr << "Failed to open dataset "
                       << dset_name.str()
@@ -316,13 +324,13 @@ bool TNeighborPixels::load_neighbor_los(
         
         // Set dimensions
         if(n_samples == 0) {
-            n_samples = dims[1] - 2;
+            n_samples = dims[1] - 2; // (GR, best, samples)
             if((n_samples_max > 0) && (n_samples > n_samples_max)) {
                 n_samples = n_samples_max;
             }
         }
         if(n_dists == 0) {
-            n_dists = dims[2] - 1;
+            n_dists = dims[2] - 2; // (prior, likelihood, distances)
         }
         
         // Check dimensions
@@ -338,7 +346,7 @@ bool TNeighborPixels::load_neighbor_los(
                       << " !" << std::endl;
             return false;
         }
-        if(dims[2] < n_dists+1) {
+        if(dims[2] < n_dists+2) {
             std::cerr << "Not enough distance bins in dataset "
                       << dset_name.str()
                       << " !" << std::endl;
@@ -357,19 +365,26 @@ bool TNeighborPixels::load_neighbor_los(
         if(prior.size() == 0) {
             prior.resize(n_pix*n_samples);
         }
+        
+        if(likelihood.size() == 0) {
+            likelihood.resize(n_pix*n_samples);
+        }
 
         uint32_t buf_idx;
         for(int sample=0; sample<n_samples; sample++) {
-            // Line-of-sight reddening
-            for(int dist=0; dist<n_dists; dist++) {
-                buf_idx = dims[2] * (sample+2) + (dist+1);
-                set_delta(buf[buf_idx], i, sample, dist);
-            }
-
             // Prior
             buf_idx = dims[2] * (sample+2);
             prior.at(n_samples*i + sample) = buf[buf_idx];
-            //prior.push_back(buf[buf_idx]);
+            
+            // Likelihood
+            buf_idx = dims[2] * (sample+2) + 1;
+            likelihood.at(n_samples*i + sample) = buf[buf_idx];
+            
+            // Line-of-sight reddening
+            for(int dist=0; dist<n_dists; dist++) {
+                buf_idx = dims[2] * (sample+2) + (dist+2);
+                set_delta(buf[buf_idx], i, sample, dist);
+            }
         }
         
         std::cerr << "Loaded output from " << dset_name.str()
@@ -394,6 +409,8 @@ bool TNeighborPixels::load_neighbor_los(
         
         std::cerr << "Loaded attributes related to " << dset_name.str()
                   << std::endl;
+        
+        delete[] buf;
     }
     
     return true;
@@ -856,7 +873,9 @@ double TNeighborPixels::calc_mean_shifted(
 }
 
 
-double TNeighborPixels::calc_lnprob(const std::vector<uint16_t>& sample) const {
+double TNeighborPixels::calc_lnprob(
+    const std::vector<uint16_t>& sample) const
+{
     double p = 0.;
     unsigned int s0, s1;
 
@@ -891,7 +910,8 @@ double TNeighborPixels::calc_lnprob(const std::vector<uint16_t>& sample) const {
 
 double TNeighborPixels::calc_lnprob_shifted(
         const std::vector<uint16_t>& sample,
-        const double shift_weight) const
+        const double shift_weight,
+        const bool add_eff_prior) const
 {
     double p = 0.;
     unsigned int s0, s1;
@@ -934,8 +954,10 @@ double TNeighborPixels::calc_lnprob_shifted(
             
             //std::cerr << get_delta(pix0, s0, dist) << std::endl;
         }
-
-        p += get_prior(pix0, s0);
+        
+        if(add_eff_prior) {
+            p += get_prior(pix0, s0);
+        }
         //std::cerr << std::endl;
     }
     //std::cerr << std::endl;
@@ -944,8 +966,19 @@ double TNeighborPixels::calc_lnprob_shifted(
 }
 
 
-double TNeighborPixels::get_prior(unsigned int pix, unsigned int sample) const {
+double TNeighborPixels::get_prior(
+        unsigned int pix,
+        unsigned int sample) const
+{
     return prior[n_samples*pix + sample];
+}
+
+
+double TNeighborPixels::get_likelihood(
+        unsigned int pix,
+        unsigned int sample) const
+{
+    return likelihood[n_samples*pix + sample];
 }
 
 
