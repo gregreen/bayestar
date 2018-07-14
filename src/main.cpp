@@ -403,6 +403,7 @@ int main(int argc, char **argv) {
                     discrete_los_options,
                     discrete_los_params,
                     neighbor_sample,
+                    opts.dsc_samp_settings,
                     opts.verbosity
                 );
                 cout << "Done with discrete sampling." << endl;

@@ -274,6 +274,74 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
                 to_string(opts.correlation_scale) + ")").c_str())
     ;
 
+    po::options_description dsc_samp_settings_desc(
+        "Settings for discrete l.o.s. model sampler.");
+    dsc_samp_settings_desc.add_options()
+        ("dsc-n-temperatures",
+            po::value<unsigned int>(&(opts.dsc_samp_settings.n_temperatures)),
+                ("# of temperatures to use when sampling discrete \n"
+                 "l.o.s. model (default: " +
+                    to_string(opts.dsc_samp_settings.n_temperatures) +
+                 ")").c_str())
+        ("dsc-beta-spacing",
+            po::value<double>(&(opts.dsc_samp_settings.beta_spacing)),
+                ("Spacing of temperature ladder for discrete l.o.s. \n"
+                 "(1=degenerate, 0=maximal spacing). (default: " +
+                    to_string(opts.dsc_samp_settings.beta_spacing) +
+                 ")").c_str())
+        ("dsc-central-steps-per-update",
+            po::value<unsigned int>(&(opts.dsc_samp_settings.central_steps_per_update)),
+                ("Discrete l.o.s. sampler: # of steps to take in central \n"
+                 "pixel per distance per update. (default: " +
+                    to_string(opts.dsc_samp_settings.central_steps_per_update) +
+                 ")").c_str())
+        ("dsc-neighbor-steps-per-update",
+            po::value<unsigned int>(&(opts.dsc_samp_settings.neighbor_steps_per_update)),
+                ("Discrete l.o.s. sampler: # of steps to take in each \n"
+                 "neighboring pixel per update. (default: " +
+                    to_string(opts.dsc_samp_settings.neighbor_steps_per_update) +
+                 ")").c_str())
+        ("dsc-updates-per-swap",
+            po::value<unsigned int>(&(opts.dsc_samp_settings.updates_per_swap)),
+                ("Discrete l.o.s. sampler: # of update rounds of pixels \n"
+                 "per attemped swap between temperatures (default: " +
+                    to_string(opts.dsc_samp_settings.updates_per_swap) +
+                 ")").c_str())
+        ("dsc-n-swaps",
+            po::value<unsigned int>(&(opts.dsc_samp_settings.n_swaps)),
+                ("Discrete l.o.s. sampler: total # of swaps between \n"
+                 "temperatures to attempt (default: " +
+                    to_string(opts.dsc_samp_settings.n_swaps) +
+                 ")").c_str())
+        ("dsc-burnin-fraction",
+            po::value<double>(&(opts.dsc_samp_settings.burnin_frac)),
+                ("Discrete l.o.s. sampler: Length of burn-in, as a \n"
+                 "fraction of the main sampling phase (default: " +
+                    to_string(opts.dsc_samp_settings.burnin_frac) +
+                 ")").c_str())
+        ("dsc-n-save",
+            po::value<unsigned int>(&(opts.dsc_samp_settings.n_save)),
+                ("Discrete l.o.s. sampler: # of samples to save \n"
+                 "(default: " +
+                    to_string(opts.dsc_samp_settings.n_save) +
+                 ")").c_str())
+        ("dsc-log-shift-weight",
+            po::value<double>(&(opts.dsc_samp_settings.log_shift_weight)),
+                ("Discrete l.o.s. sampler: Parameter that controls \n"
+                 "strength of correlations between neighboring \n"
+                 "distances, as a fraction of inv. cov. between \n"
+                 "neighboring pixels (default: " +
+                    to_string(opts.dsc_samp_settings.log_shift_weight) +
+                 ")").c_str())
+        ("dsc-save-all-temperatures",
+            po::value<bool>(&(opts.dsc_samp_settings.save_all_temperatures)),
+                ("Discrete l.o.s. sampler: If true, samples from higher \n"
+                 "temperature samplers will be saved as well (default: " +
+                    to_string(opts.dsc_samp_settings.save_all_temperatures) +
+                 ")").c_str())
+    ;
+    config_desc.add(dsc_samp_settings_desc);
+    
     po::options_description gal_desc(
         "Galactic Structural Parameters (all distances in pc)");
     gal_desc.add_options()

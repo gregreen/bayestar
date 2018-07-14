@@ -11,6 +11,7 @@
 
 #include "model.h"
 #include "bayestar_config.h"
+#include "los_sampler.h"
 
 
 using namespace std;
@@ -86,6 +87,8 @@ struct TProgramOpts {
     string output_fname_pattern;
 
     double correlation_scale;
+    
+    TDiscreteLOSSamplingSettings dsc_samp_settings;
 
     TProgramOpts();
 };

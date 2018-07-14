@@ -320,7 +320,7 @@ bool TNeighborPixels::load_neighbor_los(
         hsize_t dims[3]; // (null, GR best samples, prob distances)
         H5::DataSpace dataspace = dataset->getSpace();
         dataspace.getSimpleExtentDims(&(dims[0]));
-        hsize_t length = dims[0] * dims[1] * dims[2];
+        hsize_t length =  dims[1] * dims[2];
         
         // Set dimensions
         if(n_samples == 0) {
@@ -334,11 +334,10 @@ bool TNeighborPixels::load_neighbor_los(
         }
         
         // Check dimensions
-        if(dims[0] != 1) {
-            std::cerr << "Dimension 0 of dataset " << dset_name.str()
-                      << " should be 1 (is " << dims[0] << ")!"
+        if(dims[0] > 1) {
+            std::cerr << "Ignoring " << dims[0]-1 << " higher-temperature samples "
+                      << "in neighboring pixels (" << dset_name.str() << ")"
                       << std::endl;
-            return false;
         }
         if(dims[1] < n_samples+2) {
             std::cerr << "Not enough samples in dataset "
@@ -354,8 +353,15 @@ bool TNeighborPixels::load_neighbor_los(
         }
         
         // Read in dataset
+        hsize_t mem_shape[1] = {dims[1] * dims[2]};
+        H5::DataSpace memspace(1, &(mem_shape[0]));
+        
+        hsize_t sel_shape[3] = {1, dims[1], dims[2]};
+        hsize_t sel_offset[3] = {0, 0, 0};
+        dataspace.selectHyperslab(H5S_SELECT_SET, &(sel_shape[0]), &(sel_offset[0]));
+        
         float* buf = new float[length];
-        dataset->read(buf, H5::PredType::NATIVE_FLOAT);
+        dataset->read(buf, H5::PredType::NATIVE_FLOAT, memspace, dataspace);
         
         // Copy into class data structure
         if(delta.size() == 0) {
