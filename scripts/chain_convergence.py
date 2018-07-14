@@ -13,7 +13,7 @@ from argparse import ArgumentParser
 def load_chain(fname, dset):
     with h5py.File(fname, 'r') as f:
         # dset.shape = (chain, GR+best+sample, lnp+parameter)
-        dset = f[dset][0,2:-1,1:]
+        dset = f[dset][0,2:,2:]
     return dset
 
 

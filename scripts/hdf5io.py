@@ -139,19 +139,19 @@ class TChain:
 	
 	def load(self, dset):
 		self.nChains, self.nSamples, self.nDim = dset.shape
-		self.nDim -= 1
-		self.nSamples -= 1
+		self.nDim -= 2
+		self.nSamples -= 2
 		
 		self.converged = dset.attrs['converged'][:].astype(np.bool)
 		self.lnZ = dset.attrs['ln(Z)'][:]
 		
-		self.lnp = dset[:,1:,0]
-		self.coords = dset[:,1:,1:]
+		self.lnp = np.sum(dset[:,1:,:2], axis=2)
+		self.coords = dset[:,1:,2:]
 		
-		self.lnp_best = dset[:,1,0]
-		self.coords_best = dset[:,1,1:]
+		self.lnp_best = np.sum(dset[:,1,:2], axis=1)
+		self.coords_best = dset[:,1,2:]
 		
-		self.GR = dset[:,0,1:]
+		self.GR = dset[:,0,2:]
 		
 		self.lnp_max = np.max(self.lnp)
 		self.x_min = np.min(self.coords, axis=1)

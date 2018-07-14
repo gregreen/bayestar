@@ -1921,7 +1921,8 @@ double neighbor_gibbs_step(
 }
 
 
-std::unique_ptr<std::discrete_distribution<int>> neighbor_gibbs_step_shifted_factory(
+std::unique_ptr<std::discrete_distribution<int>>
+neighbor_gibbs_step_shifted_factory(
         const int pix,
         TNeighborPixels& neighbor_pixels,
         const std::vector<uint16_t>& neighbor_sample,
@@ -2177,7 +2178,7 @@ int neighbor_gibbs_step_shifted_cached(
         
         j++;
         
-        log_p_sample_ws[i] *= -0.5;
+        log_p_sample_ws[i] *= -0.5 * beta;
         
         // Prior term
         log_p_sample_ws[i] -= neighbor_pixels.get_prior(pix, sample);
@@ -2190,8 +2191,7 @@ int neighbor_gibbs_step_shifted_cached(
     );
     
     for(int i=0; i<n_samples; i++) {
-        double lnp_sample = beta
-                            * (log_p_sample_ws[i] - log_p_max);
+        double lnp_sample = log_p_sample_ws[i] - log_p_max;
         if(lnp_sample < -8.) {
             p_sample_ws[i] = 0.;
         } else {
@@ -2265,10 +2265,12 @@ double neighbor_gibbs_step_shifted(
             //}
         }
         
-        log_p_sample_ws[sample] *= -0.5;
+        log_p_sample_ws[sample] *= -0.5 * beta;
 
-        // Prior term
-        log_p_sample_ws[sample] -= neighbor_pixels.get_prior(pix, sample);
+        // Prior and likelihood terms
+        log_p_sample_ws[sample] -=
+            neighbor_pixels.get_prior(pix, sample) + 
+            (1.-beta) * neighbor_pixels.get_likelihood(pix, sample);
     }
     
     // Turn chi^2 into probability
@@ -2280,8 +2282,7 @@ double neighbor_gibbs_step_shifted(
     //std::cerr << std::endl
     //          << "p_min = " << p_min << std::endl;
     for(int sample=0; sample<n_samples; sample++) {
-        double lnp_sample = beta
-                            * (log_p_sample_ws[sample] - log_p_max);
+        double lnp_sample = log_p_sample_ws[sample] - log_p_max;
         if(lnp_sample < -8.) {
             p_sample_ws[sample] = 0.;
         } else {
@@ -3353,6 +3354,7 @@ void sample_los_extinction_discrete(
         TMCMCOptions& options,
         TDiscreteLosMcmcParams& params,
         const std::vector<uint16_t>& neighbor_sample,
+        const TDiscreteLOSSamplingSettings& s,
         int verbosity)
 {
     std::cerr << "Beginning to sample discrete l.o.s. model ..." << std::endl;
@@ -3360,28 +3362,8 @@ void sample_los_extinction_discrete(
     //
     // Parallel tempering parameters
     //
+    // -> Taken from TDiscreteSamplingSettings& s
 
-    unsigned int n_temperatures = 4;
-    // Spacing of sampling temperatures:
-    //   0 < beta_spacing < 1
-    //   1 -> degenerate
-    //   0 -> maximal spacing
-    double beta_spacing = 0.85; 
-    // # of steps to take in central pixel per update
-    int central_steps_per_update = 20; // times # of distances
-    // # of neighbor steps to take per update
-    int neighbor_steps_per_update = 5; // times # of neighbors
-    // # of update cycles per swap
-    int updates_per_swap = 1;
-    // # of swaps to attempt
-    int n_swaps = 300;
-    // Fraction of sampling to use as burn-in
-    double burnin_frac = 1./3.;
-    // # of samples to save
-    unsigned int n_save = 250;
-    // Deformation of prior to correlate neighboring distances
-    double log_shift_weight = -1.;
-    
     //
     // Stellar PDF image parameters
     //
@@ -3392,19 +3374,19 @@ void sample_los_extinction_discrete(
     //
     // Derived sampling parameters
     //
-    int save_every = n_swaps / n_save; // Save one sample every # of swaps
+    int save_every = s.n_swaps / s.n_save; // Save one sample every # of swaps
     int save_in = save_every; // Counts down until next saved sample
     int n_saved = 0;
     
-    int n_swaps_burnin = burnin_frac * n_swaps;
-    n_swaps += n_swaps_burnin;
-    central_steps_per_update *= n_x;
-    double shift_weight = std::exp(log_shift_weight);
+    int n_swaps_burnin = s.burnin_frac * s.n_swaps;
+    int n_swaps = s.n_swaps + n_swaps_burnin;
+    int central_steps_per_update = s.central_steps_per_update * n_x;
+    double shift_weight = std::exp(s.log_shift_weight);
     
     if(verbosity >= 2) {
         std::cerr << "Total # of central steps: "
                   << n_swaps
-                     * updates_per_swap
+                     * s.updates_per_swap
                      * central_steps_per_update
                   << std::endl;
     }
@@ -3422,7 +3404,7 @@ void sample_los_extinction_discrete(
 
     // How often to recalculate exact line integrals
     int recalculate_every = 1000;
-    std::vector<int> recalculate_in(n_temperatures, recalculate_every);
+    std::vector<int> recalculate_in(s.n_temperatures, recalculate_every);
     
     // GSL random number generator
     gsl_rng *r;
@@ -3430,16 +3412,16 @@ void sample_los_extinction_discrete(
     
     // Temperature ladder
     std::vector<double> beta;
-    beta.reserve(n_temperatures);
+    beta.reserve(s.n_temperatures);
     double b = 1.0;
-    for(int t=0; t<n_temperatures; t++, b*=beta_spacing) {
+    for(int t=0; t<s.n_temperatures; t++, b*=s.beta_spacing) {
         beta.push_back(b);
     }
 
     // Temporary variables
-    std::vector<double> log_p(n_temperatures, 0.);
-    std::vector<double> logPr(n_temperatures, 0.);
-    std::vector<double> logL(n_temperatures, 0.);
+    std::vector<double> log_p(s.n_temperatures, 0.);
+    std::vector<double> logPr(s.n_temperatures, 0.);
+    std::vector<double> logL(s.n_temperatures, 0.);
     double dlog_p;
     //double log_p = 0;
     //double logL = 0;
@@ -3451,8 +3433,8 @@ void sample_los_extinction_discrete(
     //
     std::vector<std::unique_ptr<std::vector<double>>> line_int;
     std::vector<double> delta_line_int(n_stars, 0.);
-    line_int.reserve(n_temperatures);
-    for(int t=0; t<n_temperatures; t++) {
+    line_int.reserve(s.n_temperatures);
+    for(int t=0; t<s.n_temperatures; t++) {
         line_int.push_back(
             std::make_unique<std::vector<double>>(n_stars, 0.)
         );
@@ -3491,8 +3473,8 @@ void sample_los_extinction_discrete(
     std::cerr << "Set up reddening profile" << std::endl;
     std::vector<std::unique_ptr<std::vector<int16_t>>> y_idx;
     std::vector<double> y_idx_dbl(n_x, 0.);
-    y_idx.reserve(n_temperatures);
-    for(int t=0; t<n_temperatures; t++) {
+    y_idx.reserve(s.n_temperatures);
+    for(int t=0; t<s.n_temperatures; t++) {
         if(t == 0) {
             y_idx.push_back(
                 std::make_unique<std::vector<int16_t>>(n_x, 0)
@@ -3518,7 +3500,7 @@ void sample_los_extinction_discrete(
         y_idx.at(0)->data(),
         line_int.at(0)->data()
     );
-    for(int t=1; t<n_temperatures; t++) {
+    for(int t=1; t<s.n_temperatures; t++) {
         for(int s=0; s<n_stars; s++) {
             line_int.at(t)->at(s) = line_int.at(0)->at(s);
         }
@@ -3538,7 +3520,7 @@ void sample_los_extinction_discrete(
     //int neighbor_step_every = n_steps / n_neighbor_steps;
     //int neighbor_step_in = 1;
     //
-    //int n_save = 500;
+    //int s.n_save = 500;
     //int save_every = n_steps / n_save;
     //int save_in = save_every;
 
@@ -3548,8 +3530,15 @@ void sample_los_extinction_discrete(
             n_proposals_valid[] = {0, 0, 0, 0, 0, 0};
 
     // Chain
-    int n_save_buffered = 1.1*n_save + 5; // Number to save, + some margin
-    TChain chain(n_x, n_save_buffered);
+    int n_save_buffered = 1.1*s.n_save + 5; // Number to save, + some margin
+    
+    std::vector<std::unique_ptr<TChain>> chain;
+    chain.push_back(std::make_unique<TChain>(n_x, n_save_buffered));
+    if(s.save_all_temperatures) {
+        for(int t=1; t<s.n_temperatures; t++) {
+            chain.push_back(std::make_unique<TChain>(n_x, n_save_buffered));
+        }
+    }
 
     // Neighboring pixels
     //unsigned int n_temperatures = 4;
@@ -3564,26 +3553,49 @@ void sample_los_extinction_discrete(
     // Information on neighboring pixels
     //
 
-    // Quantities needed for calculation of marginal probabilities
-    std::vector<double> logL_chain, logPr_chain;
-    std::vector<int16_t> y_idx_chain;
-    std::vector<uint16_t> neighbor_sample_chain;
+    // Quantities needed for calculation of marginal probabilities.
+    // One vector per temperature to save, so shape is: (temperature, sample)
+    std::vector<std::vector<double>> logL_chain, logPr_chain;
+    std::vector<std::vector<int16_t>> y_idx_chain;
+    std::vector<std::vector<uint16_t>> neighbor_sample_chain;
     int n_neighbors = 1;
     int n_neighbor_samples = 1;
+    
+    // Maximum temperature to save
+    int t_save_max = 1;
+    if(s.save_all_temperatures) {
+        t_save_max = s.n_temperatures;
+    }
     
     if(params.neighbor_pixels) {
         n_neighbors = params.neighbor_pixels->get_n_pix();
         n_neighbor_samples = params.neighbor_pixels->get_n_samples();
-
-        logL_chain.reserve(n_save_buffered);
-        logPr_chain.reserve(n_save_buffered);
-        y_idx_chain.reserve(n_x*n_save_buffered);
         
-        neighbor_sample_chain.reserve((n_neighbors-1)*n_save_buffered);
+        logL_chain.reserve(t_save_max);
+        logPr_chain.reserve(t_save_max);
+        y_idx_chain.reserve(t_save_max);
+        neighbor_sample_chain.reserve(t_save_max);
+        
+        for(int t=0; t<t_save_max; t++) {
+            logL_chain.emplace_back();
+            logL_chain.back().reserve(n_save_buffered);
+            
+            logPr_chain.emplace_back();
+            logPr_chain.back().reserve(n_save_buffered);
+            
+            y_idx_chain.emplace_back();
+            y_idx_chain.back().reserve(n_x*n_save_buffered);
+            
+            neighbor_sample_chain.emplace_back();
+            neighbor_sample_chain.back().reserve(
+                (n_neighbors-1)*n_save_buffered
+            );
+        }
     }
     
-    int64_t n_swaps_proposed = 0;
-    int64_t n_swaps_accepted = 0;
+    // TODO: Statistics broken down by temperature
+    std::vector<int64_t> n_swaps_proposed(s.n_temperatures-1, 0);
+    std::vector<int64_t> n_swaps_accepted(s.n_temperatures-1, 0);
     
     //if(params.neighbor_pixels) {
         //double b = 1.0;
@@ -3610,9 +3622,9 @@ void sample_los_extinction_discrete(
     
     // Pixel indices chosen for neighbors
     std::vector<std::unique_ptr<std::vector<uint16_t>>> neighbor_idx;
-    neighbor_idx.reserve(n_temperatures);
+    neighbor_idx.reserve(s.n_temperatures);
     // log(prior) of neighboring pixel combination
-    std::vector<double> logPr_neighbor(n_temperatures, 0.);
+    std::vector<double> logPr_neighbor(s.n_temperatures, 0.);
     // Sampling order for neighboring pixels. Will be shuffled.
     std::vector<int> neighbor_gibbs_order;
     // Workspaces used during neighbor pixel sampling
@@ -3622,7 +3634,7 @@ void sample_los_extinction_discrete(
     // # of samples stored in neighboring pixels
     
     if(params.neighbor_pixels) {
-        for(int t=0; t<n_temperatures; t++) {
+        for(int t=0; t<s.n_temperatures; t++) {
             neighbor_idx.push_back(
                 std::make_unique<std::vector<uint16_t>>()
             );
@@ -3656,7 +3668,7 @@ void sample_los_extinction_discrete(
         }
     
     } else { // No neighboring pixels loaded
-        for(int t=0; t<n_temperatures; t++) {
+        for(int t=0; t<s.n_temperatures; t++) {
             neighbor_idx.push_back(
                 std::make_unique<std::vector<uint16_t>>(
                     n_neighbor_samples,
@@ -3668,8 +3680,8 @@ void sample_los_extinction_discrete(
 
     // Priors on dE in central pixel
     std::vector<std::unique_ptr<cv::Mat>> lnP_dy;
-    lnP_dy.reserve(n_temperatures);
-    for(int t=0; t<n_temperatures; t++) {
+    lnP_dy.reserve(s.n_temperatures);
+    for(int t=0; t<s.n_temperatures; t++) {
         lnP_dy.push_back(
             std::make_unique<cv::Mat>()
         );
@@ -3695,7 +3707,7 @@ void sample_los_extinction_discrete(
     //}
     
     // Random sampler to select temperature (excluding T=1)
-    std::uniform_int_distribution<int> r_temperature(1, n_temperatures-1);
+    std::uniform_int_distribution<int> r_temperature(1, s.n_temperatures-1);
 
     //std::uniform_int_distribution<int> r_neighbor(
     //    0,
@@ -3733,9 +3745,9 @@ void sample_los_extinction_discrete(
     > roll_gibbs_idx;
     
     if(params.neighbor_pixels) {
-        gibbs_step_cache.reserve(n_temperatures);
-        roll_gibbs_idx.reserve(n_temperatures);
-        for(int t=0; t<n_temperatures; t++) {
+        gibbs_step_cache.reserve(s.n_temperatures);
+        roll_gibbs_idx.reserve(s.n_temperatures);
+        for(int t=0; t<s.n_temperatures; t++) {
             gibbs_step_cache.push_back(
             LRUCache::CachedFunction<
                 std::vector<uint16_t>,
@@ -3852,7 +3864,7 @@ void sample_los_extinction_discrete(
         params.inv_sigma_dy_neg = 1. / sigma_dy_neg;
         
         // Sample within each temperature
-        for(int t=0; t<n_temperatures; t++) {
+        for(int t=0; t<s.n_temperatures; t++) {
             int16_t* y_idx_t = y_idx.at(t)->data();
             double* line_int_t = line_int.at(t)->data();
             double& logPr_t = logPr.at(t);
@@ -3862,13 +3874,13 @@ void sample_los_extinction_discrete(
             double b = beta.at(t);
             
             // Loop over update cycles
-            for(int u=0; u<updates_per_swap; u++) {
+            for(int u=0; u<s.updates_per_swap; u++) {
                 // Update neighbors
                 if(params.neighbor_pixels) {
                     // Copy in central pixel's l.o.s. reddening profile
                     params.set_central_delta(y_idx_t);
                     
-                    for(int n=0; n<neighbor_steps_per_update; n++) {
+                    for(int n=0; n<s.neighbor_steps_per_update; n++) {
                         // Randomize Gibbs step order
                         std::shuffle(neighbor_gibbs_order.begin(),
                                      neighbor_gibbs_order.end(),
@@ -3900,7 +3912,6 @@ void sample_los_extinction_discrete(
                     }
                     
                     // Update priors on central
-                    // TODO: need shifted version of this function
                     params.update_priors_image(
                         lnP_dy_t,
                         *(neighbor_idx.at(t)),
@@ -4112,24 +4123,31 @@ void sample_los_extinction_discrete(
         
         // Add beta=1 state to chain (must occur *before* possible swap)
         if((swap >= n_swaps_burnin) && (--save_in == 0)) {
-            int16_t* y_idx_t = y_idx.at(0)->data();
-            
-            for(int k=0; k<n_x; k++) {
-                y_idx_dbl[k] = (double)y_idx_t[k];
-            }
-            chain.add_point(y_idx_dbl.data(), logPr.at(0), 1.);//log_p, 1.);
-
-            // Save info needed to calculate marginal probabilities
-            if(params.neighbor_pixels) {
-                logL_chain.push_back(logL.at(0));
-                logPr_chain.push_back(logPr.at(0));
-                neighbor_sample_chain.insert(
-                    neighbor_sample_chain.end(),
-                    neighbor_idx.at(0)->begin()+1,
-                    neighbor_idx.at(0)->end()
-                );
+            for(int t=0; t<t_save_max; t++) {
+                int16_t* y_idx_t = y_idx.at(t)->data();
+                
                 for(int k=0; k<n_x; k++) {
-                    y_idx_chain.push_back(y_idx_t[k]);
+                    y_idx_dbl[k] = (double)y_idx_t[k];
+                }
+                chain.at(t)->add_point(
+                    y_idx_dbl.data(),
+                    logL.at(t),
+                    logPr.at(t),
+                    1.
+                );
+
+                // Save info needed to calculate marginal probabilities
+                if(params.neighbor_pixels) {
+                    logL_chain.at(t).push_back(logL.at(t));
+                    logPr_chain.at(t).push_back(logPr.at(t));
+                    neighbor_sample_chain.at(t).insert(
+                        neighbor_sample_chain.at(t).end(),
+                        neighbor_idx.at(t)->begin()+1,
+                        neighbor_idx.at(t)->end()
+                    );
+                    for(int k=0; k<n_x; k++) {
+                        y_idx_chain[t].push_back(y_idx_t[k]);
+                    }
                 }
             }
 
@@ -4139,7 +4157,7 @@ void sample_los_extinction_discrete(
         }
 
         if(verbosity >= 2) {
-            int t_report = 0;//n_temperatures-1;
+            int t_report = 0;//s.n_temperatures-1;
             int16_t* y_idx_t = y_idx.at(t_report)->data();
             double* line_int_t = line_int.at(t_report)->data();
             
@@ -4185,7 +4203,7 @@ void sample_los_extinction_discrete(
             }
             
             std::cerr << "log(p)_t =";
-            for(int t=0; t<n_temperatures; t++) {
+            for(int t=0; t<s.n_temperatures; t++) {
                 std::cerr << " " << log_p.at(t);
             }
             std::cerr << std::endl;
@@ -4204,25 +4222,63 @@ void sample_los_extinction_discrete(
         }
         
         // Attempt swap
-        if(n_temperatures > 1) {
-            n_swaps_proposed++;
-            
+        if(s.n_temperatures > 1) {
             // Choose temperature pair to swap
             int t1 = r_temperature(params.r); // 1 <= t1 <= n_temperatures-1
+            int t0 = t1 - 1;
+            
+            n_swaps_proposed[t0]++;
             
             // Determine probability density of each temperature
-            double logp_t1 = params.log_prior(
-                y_idx.at(t1)->data(),
-                *(lnP_dy.at(t1))
-            );
-            double logp_t0 = params.log_prior(
-                y_idx.at(t1-1)->data(),
-                *(lnP_dy.at(t1-1))
-            );
-            logp_t1 += logL.at(t1);
-            logp_t0 += logL.at(t1-1);
             
-            double alpha = (beta.at(t1) - beta.at(t1-1))
+            // First, calculate the prior at each temperature
+            double logp_t1, logp_t0;
+            
+            if(params.neighbor_pixels) {
+                params.set_central_delta(y_idx.at(t1)->data());
+                logp_t1 = params.neighbor_pixels->calc_lnprob_shifted(
+                    *(neighbor_idx.at(t1)),
+                    shift_weight,
+                    false
+                );
+                
+                params.set_central_delta(y_idx.at(t0)->data());
+                logp_t0 = params.neighbor_pixels->calc_lnprob_shifted(
+                    *(neighbor_idx.at(t0)),
+                    shift_weight,
+                    false
+                );
+            } else {
+                logp_t1 = params.log_prior(
+                    y_idx.at(t1)->data(),
+                    *(lnP_dy.at(t1))
+                );
+                logp_t0 = params.log_prior(
+                    y_idx.at(t0)->data(),
+                    *(lnP_dy.at(t0))
+                );
+            }
+
+            // Next, add in the likelihoods
+            logp_t1 += logL.at(t1);
+            logp_t0 += logL.at(t0);
+            
+            if(params.neighbor_pixels) {
+                for(int neighbor=1; neighbor<n_neighbors; neighbor++) {
+                    logp_t1 += params.neighbor_pixels->get_likelihood(
+                        neighbor,
+                        neighbor_idx.at(t1)->at(neighbor)
+                    );
+                    logp_t0 += params.neighbor_pixels->get_likelihood(
+                        neighbor,
+                        neighbor_idx.at(t0)->at(neighbor)
+                    );
+                }
+            }
+            
+            // TODO: Add in neighbors' likelihoods
+            
+            double alpha = (beta.at(t1) - beta.at(t0))
                            * (logp_t0 - logp_t1);
             
             if(verbosity >= 2) {
@@ -4241,18 +4297,18 @@ void sample_los_extinction_discrete(
                   ))
             {
                 // Swap accepted
-                n_swaps_accepted++;
+                n_swaps_accepted[t0]++;
                 
                 // Swap all the relevant pointers
-                y_idx.at(t1).swap(y_idx.at(t1-1));
-                line_int.at(t1).swap(line_int.at(t1-1));
-                neighbor_idx.at(t1).swap(neighbor_idx.at(t1-1));
-                lnP_dy.at(t1).swap(lnP_dy.at(t1-1));
+                y_idx.at(t1).swap(y_idx.at(t0));
+                line_int.at(t1).swap(line_int.at(t0));
+                neighbor_idx.at(t1).swap(neighbor_idx.at(t0));
+                lnP_dy.at(t1).swap(lnP_dy.at(t0));
                 
                 // Swap all the relevant values
-                std::swap(log_p.at(t1), log_p.at(t1-1));
-                std::swap(logPr.at(t1), logPr.at(t1-1));
-                std::swap(logL.at(t1), logL.at(t1-1));
+                std::swap(log_p.at(t1), log_p.at(t0));
+                std::swap(logPr.at(t1), logPr.at(t0));
+                std::swap(logL.at(t1), logL.at(t0));
                 
                 if(verbosity >= 2) {
                     std::cerr << " (accepted)";
@@ -4715,20 +4771,28 @@ void sample_los_extinction_discrete(
         }
 
         for(int i=0; i<N_PROPOSAL_TYPES; i++) {
-            double p_valid = (double)n_proposals_valid[i] / (double)n_proposals[i];
-            double p_accept = (double)n_proposals_accepted[i] / (double)n_proposals[i];
-            double p_of_tot = (double)n_proposals[i] / (double)n_proposals_tot;
+            double p_valid = (double)n_proposals_valid[i]
+                             / (double)n_proposals[i];
+            double p_accept = (double)n_proposals_accepted[i]
+                             / (double)n_proposals[i];
+            double p_of_tot = (double)n_proposals[i]
+                             / (double)n_proposals_tot;
             std::cerr << prop_name[i] << " proposals "
-                      << "(" << 100. * p_of_tot << " %):" << std::endl
-                      << " *    valid : " << 100. * p_valid << " %" << std::endl
-                      << " * accepted : " << 100. * p_accept << " %" << std::endl;
-        }
-
-        if(params.neighbor_pixels) {
-            double p_accept = (double)n_swaps_accepted / (double)n_swaps_proposed;
-            std::cerr << "Swap propsals: " << 100. * p_accept << " % accepted"
+                      << "(" << 100. * p_of_tot << " %):"
+                      << std::endl
+                      << " *    valid : " << 100. * p_valid << " %"
+                      << std::endl
+                      << " * accepted : " << 100. * p_accept << " %"
                       << std::endl;
         }
+        
+        std::cerr << "Swap acceptance:";
+        for(int t=0; t<s.n_temperatures-1; t++) {
+            double p_accept = (double)n_swaps_accepted.at(t)
+                              / (double)n_swaps_proposed.at(t);
+            std::cerr << " " << 100. * p_accept << "%";
+        }
+        std::cerr << std::endl;
         
         std::cerr << n_saved << " samples saved." << std::endl;
     }
@@ -4746,78 +4810,139 @@ void sample_los_extinction_discrete(
     // Add final state to chain
     // chain.add_point(y_idx_dbl, log_p, (double)w);
 
-    // Estimate marginal probabilities
-    //if(params.neighbor_pixels) {
-    //    std::cerr << std::endl << "Estimating marginals ..." << std::endl;
-    //    auto t_start_marg = std::chrono::steady_clock::now();
+    // Estimate marginal probabilities of central reddening
+    if(params.neighbor_pixels) {
+        if(verbosity >= 2) {
+            std::cerr << std::endl
+                      << "Estimating p(alpha_central) ..."
+                      << std::endl;
+        }
+        
+        auto t_start_marg = std::chrono::steady_clock::now();
+        
+        int16_t* chain_ptr = y_idx_chain.at(0).data();
+        int chain_len = logL_chain.at(0).size();
+        
+        // For each temperature, p(alpha_t|neighbors_0) for all
+        // samples alpha_t from temperature t, and all neighbors
+        // from the temperature=1 chain.
+        // shape = (temperature, (chain sample, neighbor sample))
+        std::vector<std::vector<double>> prior_chain;
+        for(int t=0; t<t_save_max; t++) {
+            prior_chain.emplace_back(chain_len*chain_len, 0);
+        }
+        
+        //std::vector<double> prior_avg(chain_len, 0.);
+        std::vector<uint16_t> neighbor_sample_ws;
+        neighbor_sample_ws.resize(n_neighbors);
+        neighbor_sample_ws[0] = 0;
+        
+        // For each set of neighbor pixels
+        for(int i=0; i<chain_len; i++) {
+            // Set the neighbor pixel indices
+            // (taken from the temperature=1 chain)
+            int j0 = (n_neighbors-1) * i;
+            for(int k=1; k<n_neighbors; k++) {
+                neighbor_sample_ws[k] = neighbor_sample_chain[0][j0+k-1];
+            }
 
-    //    int16_t* chain_ptr = y_idx_chain.data();
-    //    int chain_len = logL_chain.size();
-    //    std::vector<double> prior_chain; // shape = (chain sample, neighbor sample)
-    //    prior_chain.resize(chain_len*chain_len);
-    //    //std::vector<double> prior_avg(chain_len, 0.);
+            // Update the pre-computed priors image, in (E, DM)-pixel-space,
+            // using the neighbors from the temperature=1 chain.
+            params.update_priors_image(
+                *(lnP_dy.at(0)),
+                neighbor_sample_ws,
+                0.,
+                params.priors_subsampling,
+                shift_weight,
+                verbosity
+            );
+            
+            for(int t=0; t<t_save_max; t++) {
+                double* prior_chain_t = prior_chain.at(t).data();
+                int16_t* chain_ptr_t = y_idx_chain.at(t).data();
+                
+                // Calculate the log(prior) of each point in chain
+                for(int k=0; k<chain_len; k++) {
+                    prior_chain_t[chain_len*k+i] = params.log_prior(
+                        chain_ptr_t + n_x*k,
+                        *(lnP_dy.at(0))
+                    );
+                    //std::cerr << "prior = " << prior_chain[chain_len*k+i] << std::endl;
+                }
+            }
 
-    //    // For each set of neighbor pixels
-    //    for(int i=0; i<chain_len; i++) {
-    //        // Set the neighbor pixel indices
-    //        for(int k=1; k<n_neighbors; k++) {
-    //            neighbor_sample_ws[k] = neighbor_sample_chain[n_neighbors*i+k-1];
-    //        }
+            if((verbosity >= 2) && (i % 10 == 0)) {
+                auto t_now = std::chrono::steady_clock::now();
+                std::chrono::duration<double> t_elapsed
+                    = t_now - t_start_marg;
+                ascii_progressbar(
+                    i,
+                    chain_len,
+                    50,
+                    t_elapsed.count(),
+                    std::cerr,
+                    false,
+                    true
+                );
+            }
+        }
+        
+        if(verbosity >= 2) {
+            std::cerr << std::endl << std::endl;
+        }
+        
+        double log_chain_len = std::log((double)chain_len);
+        std::vector<double> log_p_tmp;
+        log_p_tmp.reserve(chain_len);
 
-    //        // Update the pre-computed priors image, in (E, DM)-pixel-space
-    //        params.update_priors_image(
-    //            neighbor_sample_ws, 0.,
-    //            params.priors_subsampling,
-    //            verbosity);
-
-    //        // Calculate the log(prior) of each point in chain
-    //        for(int k=0; k<chain_len; k++) {
-    //            prior_chain[chain_len*k+i] = params.log_prior(chain_ptr + n_x*k);
-    //        }
-
-    //        if(i % 10 == 0) {
-    //            auto t_now = std::chrono::steady_clock::now();
-    //            std::chrono::duration<double> t_elapsed = t_now - t_start_marg;
-    //            ascii_progressbar(i, chain_len, 50, t_elapsed.count(), std::cerr, false, true);
-    //        }
-    //    }
-
-    //    std::cerr << std::endl << std::endl;
-    //    
-    //    double log_chain_len = std::log((double)chain_len);
-    //    std::vector<double> log_p_tmp;
-    //    log_p_tmp.reserve(chain_len);
-
-    //    for(unsigned int i=0; i<chain_len; i++) {
-    //        // Set log(p) of chain to prior_avg
-    //        auto it_0 = prior_chain.begin() + i*chain_len;
-    //        auto it_1 = it_0 + (chain_len-1);
-    //        double log_p_max = *std::max_element(it_0, it_1);
-    //        double p = std::accumulate(it_0, it_1, 0.,
-    //            [log_p_max](double a, double b) { return a + std::exp(b-log_p_max); }
-    //        );
-    //        p = log_p_max + std::log(p) - log_chain_len;
-    //        log_p_tmp.push_back(p);
-    //        //chain.set_L(i, p);
-    //    }
-    //    
-    //    double log_p0 = *std::max_element(log_p_tmp.begin(), log_p_tmp.end());
-    //    for(unsigned int i=0; i<chain_len; i++) {
-    //        chain.set_L(i, log_p_tmp.at(i) - log_p0);
-    //    }
-    //}
+        for(int t=0; t<t_save_max; t++) {
+            log_p_tmp.clear();
+            
+            for(unsigned int i=0; i<chain_len; i++) {
+                // Set log(p) of chain to prior_avg
+                auto it_0 = prior_chain.at(t).begin() + i*chain_len;
+                auto it_1 = it_0 + chain_len;
+                double log_p_max = *std::max_element(it_0, it_1);
+                //std::cerr << "log_p_max = " << log_p_max << std::endl;
+                double p = std::accumulate(it_0, it_1, 0.,
+                    [log_p_max](double a, double b) -> double {
+                        return a + std::exp(b-log_p_max);
+                    }
+                );
+                //std::cerr << "p = " << p << std::endl;
+                p = log_p_max + std::log(p) - log_chain_len;
+                // TODO: Check this correction
+                //p -= logL_chain.at(t).at(i);
+                //std::cerr << "log(p) = " << p << std::endl;
+                log_p_tmp.push_back(p);
+            }
+            
+            double log_p0 = *std::max_element(
+                log_p_tmp.begin(),
+                log_p_tmp.end()
+            );
+            std::cerr << "log_p0 = " << log_p0 << std::endl;
+            for(unsigned int i=0; i<chain_len; i++) {
+                chain.at(t)->set_p(i, log_p_tmp.at(i) - log_p0);
+            }
+        }
+    }
 
     // Save the chain
     // chain.save(out_fname, group_name, "")
-    TChainWriteBuffer chain_write_buffer(n_x, n_save, 1);
+    TChainWriteBuffer chain_write_buffer(n_x, s.n_save, 1);
+    chain_write_buffer.reserve(t_save_max+1);
 
-    chain_write_buffer.add(
-        chain,
-        true,   // converged
-        std::numeric_limits<double>::quiet_NaN(), // ln(Z)
-        NULL,   // Gelman-Rubin statistic
-        false   // subsample
-    );
+    for(int t=0; t<t_save_max; t++) {
+        chain_write_buffer.add(
+            *(chain.at(t)),
+            true,   // converged
+            std::numeric_limits<double>::quiet_NaN(), // ln(Z)
+            NULL,   // Gelman-Rubin statistic
+            false   // subsample
+        );
+    }
+    
     chain_write_buffer.write(out_fname, group_name, "discrete-los");
     
     std::stringstream dset_name;

@@ -421,6 +421,33 @@ void los_integral_clouds(TImgStack &img_stack, const double *const subpixel, dou
                          const double *const logDelta_EBV, unsigned int N_clouds);
 
 
+// Sampling parameters for discrete l.o.s. model
+struct TDiscreteLOSSamplingSettings {
+    unsigned int n_temperatures = 5;
+    // Spacing of sampling temperatures:
+    //   0 < beta_spacing < 1
+    //   1 -> degenerate
+    //   0 -> maximal spacing
+    double beta_spacing = 0.85; 
+    // # of steps to take in central pixel per update
+    unsigned int central_steps_per_update = 20; // times # of distances
+    // # of neighbor steps to take per update
+    unsigned int neighbor_steps_per_update = 5; // times # of neighbors
+    // # of update cycles per swap
+    unsigned int updates_per_swap = 1;
+    // # of swaps to attempt
+    unsigned int n_swaps = 1000;
+    // Fraction of sampling to use as burn-in
+    double burnin_frac = 1./4.;
+    // # of samples to save
+    unsigned int n_save = 100;
+    // Deformation of prior to correlate neighboring distances
+    double log_shift_weight = -1.;
+    // If true, save all temperature chains
+    bool save_all_temperatures = false;
+};
+
+
 // Sample discrete line-of-sight model
 void sample_los_extinction_discrete(
         const std::string& out_fname,
@@ -428,6 +455,7 @@ void sample_los_extinction_discrete(
         TMCMCOptions &options,
         TDiscreteLosMcmcParams &params,
         const std::vector<uint16_t>& neighbor_sample,
+        const TDiscreteLOSSamplingSettings& s,
         int verbosity);
 
 

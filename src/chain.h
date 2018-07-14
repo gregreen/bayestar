@@ -146,6 +146,7 @@ class TChain {
 private:
 	std::vector<double> x;			// Elements in chain. Each point takes up N contiguous slots in array
 	std::vector<double> L;			// Likelihood of each point in chain
+	std::vector<double> p;			// Prior of each point in chain
 	std::vector<double> w;			// Weight of each point in chain
 	double total_weight;			// Sum of the weights
 	unsigned int N, length, capacity;	// # of dimensions, length and capacity of chain
@@ -168,39 +169,86 @@ public:
 	~TChain();
 
 	// Mutators
-	void add_point(const double *const element, double L_i, double w_i);		// Add a point to the end of the chain
-	void clear();								// Remove all the points from the chain
-	void set_capacity(unsigned int _capacity);				// Set the capacity of the vectors used in the chain
-	double append(const TChain& chain, bool reweight=false, bool use_peak=true, double nsigma_max=1.,
-	              double nsigma_peak=0.1, double chain_frac=0.05, double threshold=1.e-5);	// Append a second chain to this one
-        void set_L(unsigned int i, double L_i);
+	
+	// Add a point to the end of the chain
+	void add_point(const double *const element,
+                   double L_i, double w_i);
+	void add_point(const double *const element,
+                   double L_i, double p_i, double w_i);
+    
+    // Remove all the points from the chain
+	void clear();
+    
+    // Set the capacity of the vectors used in the chain
+	void set_capacity(unsigned int _capacity);
+    
+    // Append a second chain to this one
+	double append(const TChain& chain,
+                  bool reweight=false,
+                  bool use_peak=true,
+                  double nsigma_max=1.,
+	              double nsigma_peak=0.1,
+                  double chain_frac=0.05,
+                  double threshold=1.e-5);
+    
+    void set_L(unsigned int i, double L_i);
+    void set_p(unsigned int i, double p_i);
 
 	// Accessors
-	unsigned int get_capacity() const;			// Return the capacity of the vectors used in the chain
-	unsigned int get_length() const;			// Return the number of unique points in the chain
-	double get_total_weight() const;			// Return the sum of the weights in the chain
-	const double* get_element(unsigned int i) const;	// Return the i-th point in the chain
-	void get_best(std::vector<double> &x) const;		// Return best point in chain
+	
+	// Return the capacity of the vectors used in the chain
+	unsigned int get_capacity() const;
+
+    // Return the number of unique points in the chain
+	unsigned int get_length() const;
+
+    // Return the sum of the weights in the chain
+	double get_total_weight() const;
+
+    // Return the i-th point in the chain
+	const double* get_element(unsigned int i) const;
+    
+    // Return best point in chain
+	void get_best(std::vector<double> &x) const;
 	unsigned int get_index_of_best() const;
-	double get_L(unsigned int i) const;			// Return the likelihood of the i-th point
-	double get_w(unsigned int i) const;			// Return the weight of the i-th point
+    
+    // Return the likelihood of the i-th point
+	double get_L(unsigned int i) const;
+
+    // Return the prior of the i-th point
+	double get_p(unsigned int i) const;
+    
+    // Return the weight of the i-th point
+	double get_w(unsigned int i) const;
+    
+    // Get # of dimensions in the parameter space
 	unsigned int get_ndim() const;
 
 	// Computations on chain
 
-	// Estimate the Bayesian Evidence of the posterior using the bounded Harmonic Mean Approximation
-	double get_ln_Z_harmonic(bool use_peak=true, double nsigma_max=1.,
-	                         double nsigma_peak=0.1, double chain_frac=0.1) const;
+	// Estimate the Bayesian Evidence of the posterior
+	// using the bounded Harmonic Mean Approximation
+	double get_ln_Z_harmonic(bool use_peak=true,
+                             double nsigma_max=1.,
+	                         double nsigma_peak=0.1,
+                             double chain_frac=0.1) const;
 
 	// Estimate coordinates with peak density by binning
 	void density_peak(double* const peak, double nsigma) const;
 
-	// Find a point in space with high density by picking a random point, drawing an ellipsoid,
-	// taking the mean coordinate within the ellipsoid, and then iterating
-	void find_center(double* const center, gsl_matrix *const cov, gsl_matrix *const inv_cov,
-	                 double* det_cov, double dmax=1., unsigned int iterations=5) const;
-
-	void fit_gaussian_mixture(TGaussianMixture *gm, unsigned int iterations=10);
+	// Find a point in space with high density by picking
+	// a random point, drawing an ellipsoid, taking the mean
+	// coordinate within the ellipsoid, and then iterating
+	void find_center(double* const center,
+                     gsl_matrix *const cov,
+                     gsl_matrix *const inv_cov,
+	                 double* det_cov,
+                     double dmax=1.,
+                     unsigned int iterations=5) const;
+    
+    // Fit a Gaussian mixture model to the chain
+	void fit_gaussian_mixture(TGaussianMixture *gm,
+                              unsigned int iterations=10);
 
 	// Return an image, optionally with smoothing
 	void get_image(cv::Mat &mat, const TRect &grid,
@@ -209,11 +257,19 @@ public:
 				   bool sigma_pix_units=false) const;
 
 	// File IO
+	
 	// Save the chain to an HDF5 file
-	bool save(std::string fname, std::string group_name, size_t index,
-	          std::string dim_name, int compression=1, int subsample=-1,
-	          bool converged=true, float lnZ=std::numeric_limits<float>::quiet_NaN()) const;
-	bool load(std::string filename, bool reserve_extra=false);	// Load the chain from file
+	bool save(std::string fname,
+              std::string group_name,
+              size_t index,
+	          std::string dim_name,
+              int compression=1,
+              int subsample=-1,
+	          bool converged=true,
+              float lnZ=std::numeric_limits<float>::quiet_NaN()) const;
+
+    // Load the chain from file
+	bool load(std::string filename, bool reserve_extra=false);
 
 	// Operators
 	const double* operator [](unsigned int i);	// Calls get_element
@@ -228,7 +284,9 @@ public:
 
 class TChainWriteBuffer {
 public:
-	TChainWriteBuffer(unsigned int nDim, unsigned int nSamples, unsigned int nReserved = 10);
+	TChainWriteBuffer(unsigned int nDim,
+                      unsigned int nSamples,
+                      unsigned int nReserved = 10);
 	~TChainWriteBuffer();
 
 	void add(const TChain &chain,
