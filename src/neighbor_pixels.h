@@ -68,6 +68,9 @@ private:
 
     // # of samples in given pix with dominant distance at given dist
     std::vector<uint16_t> n_dominant_dist_samples; // shape = (pix, dist)
+    
+    // True if data loaded successfully, else false
+    bool loaded;
 
 public:
     // Constructor/destructor
@@ -107,6 +110,8 @@ public:
             unsigned int dist,
             unsigned int pix0,
             unsigned int pix1) const;
+    
+    bool data_loaded() const;
     
     // Setters
     void set_delta(

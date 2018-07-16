@@ -164,26 +164,33 @@ int main(int argc, char **argv) {
                     process_pixel = true;
                 } else {
                     //cout << "Group exists" << endl;
-
-                    if(!H5Utils::dataset_exists("stellar chains", *pix_group)) {
-                        process_pixel = true;
-                    } else {
-                        if(opts.save_surfs) {
-                            if(!H5Utils::dataset_exists("stellar pdfs", *pix_group)) {
-                                process_pixel = true;
-                            }
+                    
+                    if(opts.sample_stars) {
+                        if(!H5Utils::dataset_exists("stellar chains", *pix_group)) {
+                            process_pixel = true;
                         }
-
-                        if((!process_pixel) && (opts.N_clouds != 0)) {
-                            if(!H5Utils::dataset_exists("clouds", *pix_group)) {
-                                process_pixel = true;
-                            }
+                    }
+                    if(opts.save_surfs) {
+                        if(!H5Utils::dataset_exists("stellar pdfs", *pix_group)) {
+                            process_pixel = true;
                         }
+                    }
 
-                        if((!process_pixel) && (opts.N_regions != 0)) {
-                            if(!H5Utils::dataset_exists("los", *pix_group)) {
-                                process_pixel = true;
-                            }
+                    if((!process_pixel) && (opts.N_clouds != 0)) {
+                        if(!H5Utils::dataset_exists("clouds", *pix_group)) {
+                            process_pixel = true;
+                        }
+                    }
+
+                    if((!process_pixel) && (opts.N_regions != 0)) {
+                        if(!H5Utils::dataset_exists("los", *pix_group)) {
+                            process_pixel = true;
+                        }
+                    }
+                    
+                    if((!process_pixel) && (opts.discrete_los)) {
+                        if(!H5Utils::dataset_exists("discrete-los", *pix_group)) {
+                            process_pixel = true;
                         }
                     }
 
@@ -367,6 +374,15 @@ int main(int argc, char **argv) {
                         opts.pixel_lookup_fname,
                         opts.output_fname_pattern,
                         1000);
+                    
+                    if(!neighbor_pixels->data_loaded()) {
+                        cerr << "Failed to load neighboring pixels! Aborting."
+                             << endl;
+                        return 1;
+                    }
+                    
+                    // Calculate covariance matrices tying
+                    // pixels together at each distance
                     neighbor_pixels->init_covariance(opts.correlation_scale);
                 }
                 

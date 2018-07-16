@@ -58,6 +58,7 @@ TNeighborPixels::TNeighborPixels(
     if(!status) {
         std::cerr << "Failed to load list of neighbors!"
                   << std::endl;
+        loaded = false;
     }
 
     // Lookup pixel locations
@@ -67,6 +68,7 @@ TNeighborPixels::TNeighborPixels(
         std::cerr << "Failed to load list of output files "
                   << "containing neighbors!"
                   << std::endl;
+        loaded = false;
     }
 
     // Load in neighboring pixels
@@ -74,11 +76,20 @@ TNeighborPixels::TNeighborPixels(
     if(!status) {
         std::cerr << "Failed to load neighboring sightline data!"
                   << std::endl;
+        loaded = false;
     }
+    
+    // Successfully loaded data
+    loaded = true;
 }
 
 
 TNeighborPixels::~TNeighborPixels() {}
+
+
+bool TNeighborPixels::data_loaded() const {
+    return loaded;
+}
 
 
 bool TNeighborPixels::load_neighbor_list(
