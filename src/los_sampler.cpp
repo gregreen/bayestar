@@ -4962,6 +4962,15 @@ void sample_los_extinction_discrete(
         "DM_max",
         dm_max
     );
+    
+    auto t_end = std::chrono::steady_clock::now();
+    std::chrono::duration<double> t_runtime = t_end - t_start;
+    H5Utils::add_watermark<double>(
+        out_fname,
+        dset_name.str(),
+        "runtime",
+        t_runtime.count()
+    );
 
     gsl_rng_free(r);
 }
