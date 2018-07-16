@@ -35,11 +35,39 @@ def PCA(data):
     return eival, eivec, d_transf
 
 
-def autocorr(data):
-    acorr = []
-    for dim in data.T:
-        acorr.append(np.correlate(dim, dim, mode='same'))
-    return np.vstack(acorr)
+def autocorr_1d(y):
+    """
+    Calculates the autocorrelation of a 1-dimensional
+    signal, y.
+    
+    Inputs:
+        y (array-like): 1-dimensional signal.
+    
+    Returns:
+        Autocorrelation as a function of displacement,
+        and an estimate of the autocorrelation time,
+        based on the smallest displacement with a
+        negative autocorrelation.
+
+    From the StackOverflow answer by unutbu:
+    <https://stackoverflow.com/a/14298647/1103939>
+    """
+    n = len(y)
+    y0 = np.mean(y)
+    sigma2 = np.var(y)
+    dy = y - y0
+    r = np.correlate(dy, dy, mode='full')[-n:]
+    r /= (sigma2 * np.arange(n, 0, -1))
+    tau = np.where(r < 0)[0][0]
+    return r, tau
+
+
+def rel2abs_coords(ax, x, y):
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    w = xlim[1] - xlim[0]
+    h = ylim[1] - ylim[0]
+    return (xlim[0] + x*w, ylim[0] + y*h)
 
 
 def main():
@@ -70,12 +98,29 @@ def main():
     eival, eivec, chain_transf = PCA(chain)
     #print(eival)
     
-    #acorr = autocorr(chain_transf[:,:1] - np.mean(chain_transf[:,:1], axis=0))
-
     fig = plt.figure(figsize=(8,10), dpi=200)
     
+    # Autocorrelation of principal component coefficients
+    ax = fig.add_subplot(4,1,1)
+    
+    acorr, tau = autocorr_1d(chain_transf[:,0])
+    n = acorr.size // 2
+    dt = np.arange(n)
+    ax.plot(dt, acorr[:n], c='b', alpha=1.0)
+    ax.axhline(y=0., c='k', alpha=0.25)
+    
+    x, y = rel2abs_coords(ax, 0.98, 0.98)
+    ax.text(x, y, r'$\tau = {:d}$'.format(tau),
+            ha='right', va='top', fontsize=12)
+    x, y = rel2abs_coords(ax, 0.98, 0.85)
+    ax.text(x, y, r'$n_{{\tau}} = {:.1f}$'.format(acorr.size/tau),
+            ha='right', va='top', fontsize=12)
+    
+    ax.set_xlabel(r'$\Delta t$', fontsize=10)
+    ax.set_ylabel(r'$\mathrm{autocorrelation}$', fontsize=10)
+    
     # Principal component coefficients vs. time
-    ax = fig.add_subplot(3,1,1)
+    ax = fig.add_subplot(4,1,2)
     
     x = np.arange(chain_transf.shape[0])
     
@@ -92,7 +137,7 @@ def main():
     ax.set_ylabel(r'$\mathrm{principal\ component\ strength}$', fontsize=10)
     
     # Principal components
-    ax = fig.add_subplot(3,1,2)
+    ax = fig.add_subplot(4,1,3)
     
     x = np.arange(eivec.shape[1])
     for k in range(10):
@@ -103,7 +148,7 @@ def main():
     ax.set_ylabel(r'$\mathrm{principal\ component}$', fontsize=10)
 
     # Raw data
-    ax = fig.add_subplot(3,1,3)
+    ax = fig.add_subplot(4,1,4)
     x = np.arange(chain.shape[1])
     y0 = np.mean(chain, axis=0)
     for k in range(chain.shape[0]):
