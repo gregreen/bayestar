@@ -32,7 +32,7 @@ from scipy.ndimage.filters import gaussian_filter
 import matplotlib as mplib
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import ImageGrid
-from matplotlib.ticker import MaxNLocator, AutoMinorLocator
+from matplotlib.ticker import MaxNLocator, AutoMinorLocator, MultipleLocator
 
 import hdf5io
 import h5py
@@ -380,8 +380,8 @@ def main():
 
 	ax.set_xlabel(r'$\mu$', fontsize=16)
 	ax.set_ylabel(r'$\mathrm{E} \left( B - V \right)$', fontsize=16)
-	ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
-	ax.xaxis.set_minor_locator(AutoMinorLocator())
+	ax.xaxis.set_major_locator(MultipleLocator(base=4.0))
+	ax.xaxis.set_minor_locator(AutoMinorLocator(n=4))
 	ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
 	ax.yaxis.set_minor_locator(AutoMinorLocator())
 	fig.subplots_adjust(bottom=0.12, left=0.12, right=0.98)
