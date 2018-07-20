@@ -2227,6 +2227,8 @@ double neighbor_gibbs_step_shifted(
     int n_dists = neighbor_pixels.get_n_dists();
 
     log_p_sample_ws.resize(n_samples);
+    
+    const int track_pix = 1;
 
     // Determine chi^2 of each sample
     for(int sample=0; sample<n_samples; sample++) {
@@ -2246,23 +2248,23 @@ double neighbor_gibbs_step_shifted(
             dx = neighbor_pixels.get_delta(pix, sample, dist) - mu;
             log_p_sample_ws[sample] += ivar * dx*dx;
 
-            //if(pix == 1) {
-            //    std::cerr << "d = " << dist << std::endl
-            //              << "     delta =";
-            //    for(int k=0; k<neighbor_pixels->get_n_pix(); k++) {
-            //        int s = neighbor_sample[k];
-            //        std::cerr  << " " << neighbor_pixels->get_delta(k, s, dist);
-            //    }
-            //    std::cerr << std::endl
-            //              << "         x = " << mu << " +- " << 1./std::sqrt(ivar)
-            //                                 << std::endl
-            //              << "  delta[1] = " << neighbor_pixels->get_delta(1, sample, dist)
-            //                                 << std::endl
-            //              << "        dx = " << dx
-            //                                 << std::endl
-            //              << "     chi^2 = " << ivar * dx*dx
-            //                                 << std::endl;
-            //}
+            if((pix == track_pix) && ((sample == 82) || (sample == 83)) && (ivar*dx*dx > 1.)) {
+                std::cerr << "d,s = " << dist << " " << sample << std::endl
+                          << "     delta =";
+                for(int k=0; k<neighbor_pixels.get_n_pix(); k++) {
+                    int s = neighbor_sample[k];
+                    std::cerr  << " " << neighbor_pixels.get_delta(k, s, dist);
+                }
+                std::cerr << std::endl
+                          << "         x = " << mu << " +- " << 1./std::sqrt(ivar)
+                                             << std::endl
+                          << "  delta[1] = " << neighbor_pixels.get_delta(1, sample, dist)
+                                             << std::endl
+                          << "        dx = " << dx
+                                             << std::endl
+                          << "     chi^2 = " << ivar * dx*dx
+                                             << std::endl;
+            }
         }
         
         log_p_sample_ws[sample] *= -0.5 * beta;
@@ -2271,6 +2273,10 @@ double neighbor_gibbs_step_shifted(
         log_p_sample_ws[sample] -=
             neighbor_pixels.get_prior(pix, sample) + 
             (1.-beta) * neighbor_pixels.get_likelihood(pix, sample);
+        
+        if((pix == track_pix) && ((sample == 82) || (sample == 83))) {
+            std::cerr << std::endl << std::endl;
+        }
     }
     
     // Turn chi^2 into probability
@@ -2290,12 +2296,24 @@ double neighbor_gibbs_step_shifted(
         }
     }
     //std::cerr << std::endl << std::endl;
-
+    
     // Choose a sample at random, weighted by the probabilities
     int idx_old = neighbor_sample[pix];
     std::discrete_distribution<> d(p_sample_ws.begin(), p_sample_ws.end());
     int idx = d(r);
     neighbor_sample[pix] = idx;
+    
+    // Calculate entropy of distribution
+    if((pix == track_pix) && (beta >= 0.9999)) {
+        double plnp = 0.;
+        for(auto p : d.probabilities()) {
+            if(p > 1.e-10) {
+                plnp += p * std::log(p);
+            }
+        }
+        double n_eff = std::exp(-1. * plnp);
+        std::cerr << "n_eff = " << n_eff << std::endl;
+    }
 
     //if(pix == 2) {
     //    std::cerr << "beta = " << beta << std::endl;
@@ -3381,7 +3399,6 @@ void sample_los_extinction_discrete(
     int n_swaps_burnin = s.burnin_frac * s.n_swaps;
     int n_swaps = s.n_swaps + n_swaps_burnin;
     int central_steps_per_update = s.central_steps_per_update * n_x;
-    double shift_weight = std::exp(s.log_shift_weight);
     
     if(verbosity >= 2) {
         std::cerr << "Total # of central steps: "
@@ -3417,6 +3434,21 @@ void sample_los_extinction_discrete(
     for(int t=0; t<s.n_temperatures; t++, b*=s.beta_spacing) {
         beta.push_back(b);
     }
+    
+    // Shift-weight ladder
+    std::vector<double> shift_weight_ladder;
+    shift_weight_ladder.reserve(s.n_temperatures);
+    double ln_sw_min = -100.;
+    double ln_sw_max = -99.5;
+    double sw_min = std::exp(ln_sw_min);
+    double sw_max = std::exp(ln_sw_max);
+    double dsw = (sw_max - sw_min) / (s.n_temperatures - 1);
+    double sw = sw_min;
+    for(int t=0; t<s.n_temperatures; t++, sw+=dsw) {
+        shift_weight_ladder.push_back(sw);
+        std::cerr << "shift_weight_" << t << " = " << sw << std::endl;
+    }
+    //double shift_weight = std::exp(s.log_shift_weight);
 
     // Temporary variables
     std::vector<double> log_p(s.n_temperatures, 0.);
@@ -3690,7 +3722,7 @@ void sample_los_extinction_discrete(
             *(neighbor_idx.at(t)),
             0.,
             params.priors_subsampling,
-            shift_weight,
+            shift_weight_ladder.at(t),
             verbosity
         );
         logPr.at(t) = params.log_prior(
@@ -3761,7 +3793,7 @@ void sample_los_extinction_discrete(
                     &p_sample_ws,
                     &mu_ws,
                     bt=beta.at(t),
-                    shift_weight,
+                    shift_weight_ladder.at(t),
                     lnp_cutoff_cache
                 ]
                 (const std::vector<uint16_t>& nbor_idx)
@@ -3778,7 +3810,7 @@ void sample_los_extinction_discrete(
                     p_sample_ws,
                     mu_ws,
                     bt,
-                    shift_weight,
+                    shift_weight_ladder.at(t),
                     lnp_cutoff_cache
                 );
                 //nbor_samp[step_pix] = s_tmp;
@@ -3797,7 +3829,7 @@ void sample_los_extinction_discrete(
                     &p_sample_ws,
                     &mu_ws,
                     bt=beta.at(t),
-                    shift_weight,
+                    shift_weight_ladder.at(t),
                     lnp_cutoff_cache,
                     &rr=params.r,
                     &disc_distr_res,
@@ -3815,7 +3847,7 @@ void sample_los_extinction_discrete(
                         p_sample_ws,
                         mu_ws,
                         bt,
-                        shift_weight,
+                        shift_weight_ladder.at(t),
                         lnp_cutoff_cache,
                         rr
                     );
@@ -3905,7 +3937,7 @@ void sample_los_extinction_discrete(
                                 p_sample_ws,
                                 params.r,
                                 b,
-                                shift_weight
+                                shift_weight_ladder.at(t)
                             );
                             #endif
                         }
@@ -3917,7 +3949,7 @@ void sample_los_extinction_discrete(
                         *(neighbor_idx.at(t)),
                         0.,
                         params.priors_subsampling,
-                        shift_weight,
+                        shift_weight_ladder.at(t),
                         verbosity
                     );
                     logPr_t = params.log_prior(y_idx_t, lnP_dy_t);
@@ -4232,63 +4264,94 @@ void sample_los_extinction_discrete(
             // Determine probability density of each temperature
             
             // First, calculate the prior at each temperature
-            double logp_t1, logp_t0;
+            double logPr_x1s1, logPr_x0s0;
+            double logPr_x1s0, logPr_x0s1;
             
             if(params.neighbor_pixels) {
                 params.set_central_delta(y_idx.at(t1)->data());
-                logp_t1 = params.neighbor_pixels->calc_lnprob_shifted(
+                logPr_x1s1 = params.neighbor_pixels->calc_lnprob_shifted(
                     *(neighbor_idx.at(t1)),
-                    shift_weight,
+                    shift_weight_ladder.at(t1),
+                    false
+                );
+                logPr_x1s0 = params.neighbor_pixels->calc_lnprob_shifted(
+                    *(neighbor_idx.at(t1)),
+                    shift_weight_ladder.at(t0),
                     false
                 );
                 
                 params.set_central_delta(y_idx.at(t0)->data());
-                logp_t0 = params.neighbor_pixels->calc_lnprob_shifted(
+                logPr_x0s0 = params.neighbor_pixels->calc_lnprob_shifted(
                     *(neighbor_idx.at(t0)),
-                    shift_weight,
+                    shift_weight_ladder.at(t0),
+                    false
+                );
+                logPr_x0s1 = params.neighbor_pixels->calc_lnprob_shifted(
+                    *(neighbor_idx.at(t0)),
+                    shift_weight_ladder.at(t1),
                     false
                 );
             } else {
-                logp_t1 = params.log_prior(
+                logPr_x1s1 = params.log_prior(
                     y_idx.at(t1)->data(),
                     *(lnP_dy.at(t1))
                 );
-                logp_t0 = params.log_prior(
+                logPr_x1s0 = params.log_prior(
+                    y_idx.at(t1)->data(),
+                    *(lnP_dy.at(t0))
+                );
+                logPr_x0s0 = params.log_prior(
                     y_idx.at(t0)->data(),
                     *(lnP_dy.at(t0))
+                );
+                logPr_x0s1 = params.log_prior(
+                    y_idx.at(t0)->data(),
+                    *(lnP_dy.at(t1))
                 );
             }
 
             // Next, add in the likelihoods
-            logp_t1 += logL.at(t1);
-            logp_t0 += logL.at(t0);
+            double logL_t0 = logL.at(0);
+            double logL_t1 = logL.at(1);
+            //logp_t1 += logL.at(t1);
+            //logp_t0 += logL.at(t0);
             
             if(params.neighbor_pixels) {
                 for(int neighbor=1; neighbor<n_neighbors; neighbor++) {
-                    logp_t1 += params.neighbor_pixels->get_likelihood(
+                    logL_t1 += params.neighbor_pixels->get_likelihood(
                         neighbor,
                         neighbor_idx.at(t1)->at(neighbor)
                     );
-                    logp_t0 += params.neighbor_pixels->get_likelihood(
+                    logL_t0 += params.neighbor_pixels->get_likelihood(
                         neighbor,
                         neighbor_idx.at(t0)->at(neighbor)
                     );
                 }
             }
             
-            // TODO: Add in neighbors' likelihoods
+            // Acceptance likelihood term
+            double alpha_L = (beta.at(t1) - beta.at(t0))
+                             * (logL_t0 - logL_t1);
             
-            double alpha = (beta.at(t1) - beta.at(t0))
-                           * (logp_t0 - logp_t1);
+            // Acceptance prior term
+            double alpha_Pr = beta.at(t0) * (logPr_x1s0 - logPr_x0s0)
+                            + beta.at(t1) * (logPr_x0s1 - logPr_x1s1);
+            
+            double alpha = alpha_L + alpha_Pr;
             
             if(verbosity >= 2) {
                 std::cerr << "Swap " << t1-1 << " <-> " << t1
                           << std::endl
-                          << "  ln(p) = " << logp_t0 << " " << logp_t1
+                          << "  alpha_L = " << alpha_L
+                          << std::endl
+                          << "  alpha_Pr = " << alpha_Pr
+                          << std::endl
+                          << "  logPr_x0s1 - logPr_x0s0 = " << logPr_x0s1 - logPr_x0s0
+                          << std::endl
+                          << "  logPr_x1s0 - logPr_x1s1 = " << logPr_x1s0 - logPr_x1s1
                           << std::endl
                           << "  alpha = " << alpha;
             }
-            //alpha = -100.; // TODO: Remove this line.
             
             if((alpha > 0.)
                || (
@@ -4306,9 +4369,11 @@ void sample_los_extinction_discrete(
                 lnP_dy.at(t1).swap(lnP_dy.at(t0));
                 
                 // Swap all the relevant values
-                std::swap(log_p.at(t1), log_p.at(t0));
-                std::swap(logPr.at(t1), logPr.at(t0));
                 std::swap(logL.at(t1), logL.at(t0));
+                logPr.at(t1) = logPr_x0s1;
+                logPr.at(t0) = logPr_x1s0;
+                log_p.at(t0) = logL.at(t0) + logPr.at(t0);
+                log_p.at(t1) = logL.at(t1) + logPr.at(t1);
                 
                 if(verbosity >= 2) {
                     std::cerr << " (accepted)";
@@ -4853,7 +4918,7 @@ void sample_los_extinction_discrete(
                 neighbor_sample_ws,
                 0.,
                 params.priors_subsampling,
-                shift_weight,
+                shift_weight_ladder.at(0),
                 verbosity
             );
             
