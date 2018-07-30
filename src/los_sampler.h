@@ -442,7 +442,9 @@ struct TDiscreteLOSSamplingSettings {
     // # of samples to save
     unsigned int n_save = 100;
     // Deformation of prior to correlate neighboring distances
-    double log_shift_weight = -1.;
+    double log_shift_weight_min = -3.; // At temperature = 1
+    double log_shift_weight_max = -1.; // At highest temperature
+    bool shift_weight_ladder_logarithmic = false;
     // If true, save all temperature chains
     bool save_all_temperatures = false;
 };

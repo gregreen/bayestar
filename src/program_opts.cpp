@@ -325,13 +325,30 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
                  "(default: " +
                     to_string(opts.dsc_samp_settings.n_save) +
                  ")").c_str())
-        ("dsc-log-shift-weight",
-            po::value<double>(&(opts.dsc_samp_settings.log_shift_weight)),
+        ("dsc-log-shift-weight-min",
+            po::value<double>(&(opts.dsc_samp_settings.log_shift_weight_min)),
                 ("Discrete l.o.s. sampler: Parameter that controls \n"
                  "strength of correlations between neighboring \n"
-                 "distances, as a fraction of inv. cov. between \n"
-                 "neighboring pixels (default: " +
-                    to_string(opts.dsc_samp_settings.log_shift_weight) +
+                 "distances in the temperature=1 sampler, \n"
+                 "as a fraction of inv. cov. between neighboring \n"
+                 "pixels (default: " +
+                    to_string(opts.dsc_samp_settings.log_shift_weight_min) +
+                 ")").c_str())
+        ("dsc-log-shift-weight-max",
+            po::value<double>(&(opts.dsc_samp_settings.log_shift_weight_max)),
+                ("Discrete l.o.s. sampler: Parameter that controls \n"
+                 "strength of correlations between neighboring \n"
+                 "distances in the highest-temperature sampler, \n"
+                 "as a fraction of inv. cov. between neighboring \n"
+                 "pixels (default: " +
+                    to_string(opts.dsc_samp_settings.log_shift_weight_max) +
+                 ")").c_str())
+        ("dsc-shift-weight-ladder-logarithmic",
+            po::value<bool>(&(opts.dsc_samp_settings.shift_weight_ladder_logarithmic)),
+                ("If this flag is set, then the shift weights will \n"
+                 "be spaced logarithmically, instead of linearly \n"
+                 "(default: " +
+                    to_string(opts.dsc_samp_settings.shift_weight_ladder_logarithmic) +
                  ")").c_str())
         ("dsc-save-all-temperatures",
             po::value<bool>(&(opts.dsc_samp_settings.save_all_temperatures)),
