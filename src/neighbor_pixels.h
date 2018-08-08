@@ -48,6 +48,10 @@ private:
     
     // shape = (pix, sample, dist)
     std::vector<double> delta;
+    std::vector<double> log_dy;
+
+    // shape = (pix, sample). Summed over distance.
+    std::vector<double> sum_log_dy;
     
     // Prior and likelihood stored for each neighbor
     std::vector<double> prior;
@@ -88,6 +92,15 @@ public:
             unsigned int sample,
             unsigned int dist) const;
     
+    double get_log_dy(
+            unsigned int pix,
+            unsigned int sample,
+            unsigned int dist) const;
+    
+    double get_sum_log_dy(
+            unsigned int pix,
+            unsigned int sample) const;
+    
     uint16_t get_dominant_dist(
             unsigned int pix,
             unsigned int sample) const;
@@ -119,6 +132,17 @@ public:
             unsigned int pix,
             unsigned int sample,
             unsigned int dist);
+    
+    void set_log_dy(
+            double value,
+            unsigned int pix,
+            unsigned int sample,
+            unsigned int dist);
+    
+    void set_sum_log_dy(
+            double value,
+            unsigned int pix,
+            unsigned int sample);
     
     // Calculate statistics
     double get_inv_var(unsigned int pix,
