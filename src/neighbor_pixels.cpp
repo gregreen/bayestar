@@ -898,49 +898,69 @@ double TNeighborPixels::calc_mean_shifted(
     
     Eigen::MatrixXd& inv_cov_0 = *(inv_cov[dist]);
     
-    double norm = 1. + 2. * shift_weight;
+    double norm = 1. + 2.*shift_weight;
 
     if(dist == 0) {
+        Eigen::MatrixXd& inv_cov_p1 = *(inv_cov[dist+1]);
         //norm = 1. + shift_weight;
         for(int i=start_pix; i<pix; i++) {
-            double delta_eff = get_delta(i, sample[i], dist)
-                               + shift_weight * get_delta(i, sample[i], dist+1);
-            mu += inv_cov_0(pix, i) * delta_eff;
+            double icov_0 = inv_cov_0(pix, i);
+            double icov_p1 = 0.5 * (icov_0 + inv_cov_p1(pix, i));
+            mu += icov_0 * get_delta(i, sample[i], dist)
+               + shift_weight * (
+                   icov_p1 * get_delta(i, sample[i], dist+1)
+               );
         }
         for(int i=pix+1; i<n_pix; i++) {
-            double delta_eff = get_delta(i, sample[i], dist)
-                               + shift_weight * get_delta(i, sample[i], dist+1);
-            mu += inv_cov_0(pix, i) * delta_eff;
+            double icov_0 = inv_cov_0(pix, i);
+            double icov_p1 = 0.5 * (icov_0 + inv_cov_p1(pix, i));
+            mu += icov_0 * get_delta(i, sample[i], dist)
+               + shift_weight * (
+                   icov_p1 * get_delta(i, sample[i], dist+1)
+               );
         }
     } else if(dist == n_dists-1) {
+        Eigen::MatrixXd& inv_cov_m1 = *(inv_cov[dist-1]);
         //norm = 1. + shift_weight;
         for(int i=start_pix; i<pix; i++) {
-            double delta_eff = get_delta(i, sample[i], dist)
-                               + shift_weight * get_delta(i, sample[i], dist-1);
-            mu += inv_cov_0(pix, i) * delta_eff;
+            double icov_0 = inv_cov_0(pix, i);
+            double icov_m1 = 0.5 * (icov_0 + inv_cov_m1(pix, i));
+            mu += icov_0 * get_delta(i, sample[i], dist)
+               + shift_weight * (
+                   icov_m1 * get_delta(i, sample[i], dist-1)
+               );
         }
         for(int i=pix+1; i<n_pix; i++) {
-            double delta_eff = get_delta(i, sample[i], dist)
-                               + shift_weight * get_delta(i, sample[i], dist-1);
-            mu += inv_cov_0(pix, i) * delta_eff;
+            double icov_0 = inv_cov_0(pix, i);
+            double icov_m1 = 0.5 * (icov_0 + inv_cov_m1(pix, i));
+            mu += icov_0 * get_delta(i, sample[i], dist)
+               + shift_weight * (
+                   icov_m1 * get_delta(i, sample[i], dist-1)
+               );
         }
     } else {
+        Eigen::MatrixXd& inv_cov_m1 = *(inv_cov[dist-1]);
+        Eigen::MatrixXd& inv_cov_p1 = *(inv_cov[dist+1]);
         //norm = 1. + 2. * shift_weight;
         for(int i=start_pix; i<pix; i++) {
-            double delta_eff = get_delta(i, sample[i], dist)
-                               + shift_weight * (
-                                   get_delta(i, sample[i], dist-1) +
-                                   get_delta(i, sample[i], dist+1)
-                               );
-            mu += inv_cov_0(pix, i) * delta_eff;
+            double icov_0 = inv_cov_0(pix, i);
+            double icov_m1 = 0.5 * (icov_0 + inv_cov_m1(pix, i));
+            double icov_p1 = 0.5 * (icov_0 + inv_cov_p1(pix, i));
+            mu += icov_0 * get_delta(i, sample[i], dist)
+               + shift_weight * (
+                   icov_m1 * get_delta(i, sample[i], dist-1)
+                 + icov_p1 * get_delta(i, sample[i], dist+1)
+               );
         }
         for(int i=pix+1; i<n_pix; i++) {
-            double delta_eff = get_delta(i, sample[i], dist)
-                               + shift_weight * (
-                                   get_delta(i, sample[i], dist-1) +
-                                   get_delta(i, sample[i], dist+1)
-                               );
-            mu += inv_cov_0(pix, i) * delta_eff;
+            double icov_0 = inv_cov_0(pix, i);
+            double icov_m1 = 0.5 * (icov_0 + inv_cov_m1(pix, i));
+            double icov_p1 = 0.5 * (icov_0 + inv_cov_p1(pix, i));
+            mu += icov_0 * get_delta(i, sample[i], dist)
+               + shift_weight * (
+                   icov_m1 * get_delta(i, sample[i], dist-1)
+                 + icov_p1 * get_delta(i, sample[i], dist+1)
+               );
         }
     }
 
@@ -998,10 +1018,9 @@ double TNeighborPixels::calc_lnprob_shifted(
     // Normalization factors related to distance shift.
     // The factors of 2 out front come from the fact that we are
     // only calculating one triangle of the pixel-pixel covariance matrix.
-    double a = 2. / (1. + 2*shift_weight); // d,d
-    double b = 2. * shift_weight / (1. + 2*shift_weight); // d,d-1 or d-1,d
-
-    //double b1 = 2*shift_weight / (1. + 2*shift_weight);
+    double norm = 1. + 2.*shift_weight;
+    double a = 2. / norm; // d,d
+    double b = 2. * shift_weight / norm; // d,d-1 or d-1,d
 
     for(int pix0=0; pix0<n_pix; pix0++) {
         s0 = sample[pix0];
@@ -1018,20 +1037,25 @@ double TNeighborPixels::calc_lnprob_shifted(
             
             // Each distance coupled to distance-1 bins
             for(int dist=1; dist<n_dists; dist++) {
-                p += (*(inv_cov[dist]))(pix0, pix1) * (
+                double cov = (*(inv_cov[dist]))(pix0, pix1);
+                double cov_m1 = (*(inv_cov[dist-1]))(pix0, pix1);
+                double cov_avg = 0.5 * (cov + cov_m1);
+                
+                p += 
                     // Same distance
-                    a
-                        * get_delta(pix0, s0, dist)
-                        * get_delta(pix1, s1, dist)
-                    // Cross-distance
-                    + b * (
+                    a * cov * (
                         get_delta(pix0, s0, dist)
-                        * get_delta(pix1, s1, dist-1)
-                        +
-                        get_delta(pix0, s0, dist-1)
-                        * get_delta(pix1, s1, dist)
+                      * get_delta(pix1, s1, dist)
                     )
-                );
+                    // Cross-distance
+                    + b * cov_avg * (
+                        get_delta(pix0, s0, dist)
+                      * get_delta(pix1, s1, dist-1)
+                      +
+                        get_delta(pix0, s0, dist-1)
+                      * get_delta(pix1, s1, dist)
+                    )
+                ;
             }
         }
 
