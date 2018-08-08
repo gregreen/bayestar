@@ -2228,50 +2228,44 @@ double neighbor_gibbs_step_shifted(
 
     log_p_sample_ws.resize(n_samples);
     
-    const int track_pix = 18;
+    const int track_pix = 1;
 
-    // Determine chi^2 of each sample
     for(int sample=0; sample<n_samples; sample++) {
         log_p_sample_ws[sample] = 0.;
+    }
         
-        for(int dist=0; dist<n_dists; dist++) {
-            // Calculate mean, sigma of pixel
-            mu = neighbor_pixels.calc_mean_shifted(
-                pix,
-                dist,
-                neighbor_sample,
-                shift_weight
-            );
-            ivar = neighbor_pixels.get_inv_var(pix, dist);
+    for(int dist=0; dist<n_dists; dist++) {
+        // Calculate mean, sigma of pixel
+        mu = neighbor_pixels.calc_mean_shifted(
+            pix,
+            dist,
+            neighbor_sample,
+            shift_weight
+        );
+        ivar = neighbor_pixels.get_inv_var(pix, dist);
+        
+        //double mu_0 = neighbor_pixels.calc_mean_shifted(
+        //    pix,
+        //    dist,
+        //    neighbor_sample,
+        //    0.
+        //);
+        //
+        //if(beta <= 0.975) {
+        //    std::cerr << "(pix, dist) = (" << pix << ", " << dist << "): "
+        //              << "(mu, mu') = (" << mu_0 << ", " << mu << ")"
+        //              << std::endl;
+        //}
 
-            // Add to chi^2
+        // Determine chi^2 of each sample at this distance
+        for(int sample=0; sample<n_samples; sample++) {
             y = neighbor_pixels.get_delta(pix, sample, dist);
             dy = y - mu;
             log_p_sample_ws[sample] += ivar * dy*dy;
-
-            //if(y > 0) {
-            //    log_p_sample_ws[sample] -= std::log(y);
-            //}
-
-            //if((pix == track_pix) && ((sample == 82) || (sample == 83)) && (ivar*dx*dx > 1.)) {
-            //    std::cerr << "d,s = " << dist << " " << sample << std::endl
-            //              << "     delta =";
-            //    for(int k=0; k<neighbor_pixels.get_n_pix(); k++) {
-            //        int s = neighbor_sample[k];
-            //        std::cerr  << " " << neighbor_pixels.get_delta(k, s, dist);
-            //    }
-            //    std::cerr << std::endl
-            //              << "         x = " << mu << " +- " << 1./std::sqrt(ivar)
-            //                                 << std::endl
-            //              << "  delta[1] = " << neighbor_pixels.get_delta(1, sample, dist)
-            //                                 << std::endl
-            //              << "        dx = " << dx
-            //                                 << std::endl
-            //              << "     chi^2 = " << ivar * dx*dx
-            //                                 << std::endl;
-            //}
         }
+    }
         
+    for(int sample=0; sample<n_samples; sample++) {
         log_p_sample_ws[sample] *= -0.5;
         log_p_sample_ws[sample] -= neighbor_pixels.get_sum_log_dy(pix, sample);
         log_p_sample_ws[sample] *= beta;
@@ -2292,7 +2286,6 @@ double neighbor_gibbs_step_shifted(
         log_p_sample_ws[sample] -=
             neighbor_pixels.get_prior(pix, sample) + 
             (1.-beta) * neighbor_pixels.get_likelihood(pix, sample);
-        
         
         //if((pix == track_pix) && ((sample == 82) || (sample == 83))) {
         //    std::cerr << std::endl << std::endl;
@@ -2333,7 +2326,7 @@ double neighbor_gibbs_step_shifted(
     //        }
     //    }
     //    double n_eff = std::exp(-1. * plnp);
-    //    std::cerr << "n_eff_" << pix << " = " << n_eff << std::endl;
+    //    std::cerr << "n_eff_" << pix << "(b=" << beta << ")" << " = " << n_eff << std::endl;
     //}
 
     //if(pix == 2) {
@@ -2653,9 +2646,11 @@ void TDiscreteLosMcmcParams::update_priors_image(
             } else {
                 mu = neighbor_pixels->calc_mean(0, x, neighbor_sample);
             }
-            //std::cerr << "x = " << x << std::endl
-            //          << "  * mu = " << mu << std::endl
-            //          << "  * sigma = " << 1./inv_sigma << std::endl;
+            //if(shift_weight < std::exp(-1.9)) {
+            //    std::cerr << "x = " << x << std::endl
+            //              << "  * mu = " << mu << std::endl
+            //              << "  * sigma = " << 1./std::sqrt(inv_var) << std::endl;
+            //}
         } else {
             mu = 0.;
             inv_var = 1.;
@@ -3688,7 +3683,6 @@ void sample_los_extinction_discrete(
         }
     }
     
-    // TODO: Statistics broken down by temperature
     std::vector<int64_t> n_swaps_proposed(s.n_temperatures-1, 0);
     std::vector<int64_t> n_swaps_accepted(s.n_temperatures-1, 0);
     
@@ -4290,11 +4284,26 @@ void sample_los_extinction_discrete(
                       << std::endl;
             
             if(params.neighbor_pixels) {
-                std::cerr << "neighbor samples:";
-                for(int j=0; j<params.neighbor_pixels->get_n_pix(); j++) {
-                    std::cerr << " " << neighbor_idx.at(t_report)->at(j);
+                for(int tt=0; tt<s.n_temperatures; tt++) {
+                    std::cerr << "neighbor samples (" << tt << "):";
+                    for(int j=0; j<params.neighbor_pixels->get_n_pix(); j++) {
+                        std::cerr << " " << neighbor_idx.at(tt)->at(j);
+                    }
+                    std::cerr << std::endl;
                 }
-                std::cerr << std::endl;
+                
+                for(int tt=0; tt<s.n_temperatures; tt++) {
+                    std::cerr << "dominant dist (" << tt << "):";
+                    uint16_t dist_max;
+                    for(int j=0; j<params.neighbor_pixels->get_n_pix(); j++) {
+                        dist_max = params.neighbor_pixels->get_dominant_dist(
+                                j,
+                                neighbor_idx.at(tt)->at(j)
+                        );
+                        std::cerr << " " << dist_max;
+                    }
+                    std::cerr << std::endl;
+                }
             }
             
             std::cerr << "log(p)_t =";
@@ -4401,6 +4410,7 @@ void sample_los_extinction_discrete(
                             + beta.at(t1) * (logPr_x0s1 - logPr_x1s1);
             
             double alpha = alpha_L + alpha_Pr;
+            //alpha = -9999.; // TODO: remove this line
             
             if(verbosity >= 2) {
                 std::cerr << "Swap " << t1-1 << " <-> " << t1
