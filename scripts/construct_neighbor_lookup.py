@@ -127,7 +127,7 @@ def main():
             
             # Neighbors
             data = np.empty((np.sum(idx), args.n+1, 2), dtype='i4')
-            data[:,:,0] = n
+            data[:,:,0] = nside[match_idx[idx]]
             data[:,:,1] = pix_idx[match_idx[idx]]
             
             dset = f_n.create_dataset(
@@ -139,7 +139,7 @@ def main():
             
             # Pixels
             data = np.empty((np.sum(idx), 3), dtype='i4')
-            data[:,0] = n
+            data[:,0] = nside[idx]
             data[:,1] = pix_idx[idx]
             data[:,2] = file_idx[idx]
             
