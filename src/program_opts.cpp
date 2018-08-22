@@ -504,6 +504,11 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
             po::value<unsigned int>(&(opts.N_threads)),
             ("# of threads to run on (default: " +
                 to_string(opts.N_threads) + ")").c_str())
+        ("force-pix",
+            po::value<std::vector<std::string>>()->multitoken(),
+            ("Force the given pixels to run. E.g., \"1024-0 512-50\\n "
+             "would force (nside,healpix_idx) = (1024,0) and (512,50)\n "
+             "to run, even if they are already present in the output."))
     ;
 
     po::positional_options_description pd;
@@ -584,7 +589,12 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
         opts.smoothing_beta_coeff[0] = pct_smoothing_coeffs[2];
         opts.smoothing_beta_coeff[1] = pct_smoothing_coeffs[3];
     }
-
+    
+    // Read forced pixels
+    if(!vm["force-pix"].empty()) {
+        opts.force_pix =
+            vm["force-pix"].as<std::vector<std::string> >();
+    }
 
     // Convert error floor from mmags to mags
     opts.err_floor /= 1000.;

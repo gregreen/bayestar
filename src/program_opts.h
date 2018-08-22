@@ -89,6 +89,8 @@ struct TProgramOpts {
     double correlation_scale;
     
     TDiscreteLOSSamplingSettings dsc_samp_settings;
+    
+    std::vector<std::string> force_pix;
 
     TProgramOpts();
 };

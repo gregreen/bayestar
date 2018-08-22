@@ -165,6 +165,20 @@ int main(int argc, char **argv) {
                 } else {
                     //cout << "Group exists" << endl;
                     
+                    if(opts.force_pix.size() != 0) {
+                        std::stringstream pix_spec_ss;
+                        pix_spec_ss << stellar_data.nside
+                                    << "-" << stellar_data.healpix_index;
+                        std::string pix_spec_str = pix_spec_ss.str();
+                        for(auto const &s : opts.force_pix) {
+                            if(pix_spec_str == s) {
+                                std::cerr << "Force-reprocessing pixel " << s << std::endl;
+                                process_pixel = true;
+                                break;
+                            }
+                        }
+                    }
+                    
                     if(opts.sample_stars) {
                         if(!H5Utils::dataset_exists("stellar chains", *pix_group)) {
                             process_pixel = true;
