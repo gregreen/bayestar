@@ -5850,6 +5850,11 @@ void TImgStack::normalize(double norm) {
     // Calculate and divide out sum of each matrix
     for(int i=0; i<N_images; i++) {
         double sum_img = cv::sum(*(img[i]))[0];
+        
+        if(sum_img < 1.e-30) {
+            sum_img = 1.;
+        }
+        
         *(img[i]) *= norm/sum_img;
     }
 }

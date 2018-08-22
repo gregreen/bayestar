@@ -443,7 +443,7 @@ double integrate_ML_solution(
     }
 
     double chi2_min = *std::min_element(chi2_ML.begin(), chi2_ML.end());
-
+    
     if(verbosity >= 2) {
         std::cerr << "prior_max = " << prior_max << std::endl;
         std::cerr << "chi2_min = " << chi2_min << std::endl;
@@ -484,6 +484,12 @@ double integrate_ML_solution(
 
         if(in_bounds) {
             double p = exp(log_p);
+            //if((a0 < 0.) || (a0 > 1.) || (a1 < 0.) || (a1 > 1.)) {
+            //    std::cerr << "(a0, a1) = (" << a0 << ", " << a1 << ")" << std::endl;
+            //}
+            //if((p < 0.) || std::isnan(p)) {
+            //    std::cerr << "p = " << p << std::endl;
+            //}
 
             // Interpolate between bins
             img_stack.img[img_idx]->at<floating_t>(img_idx0, img_idx1) += (1-a0) * (1-a1) * p;
@@ -492,12 +498,23 @@ double integrate_ML_solution(
             img_stack.img[img_idx]->at<floating_t>(img_idx0+1, img_idx1+1) += a0 * a1 * p;
         }
     }
+    
+    //for(int j=0; j<img_stack.rect->N_bins[0]; j++) {
+    //    for(int k=0; k<img_stack.rect->N_bins[1]; k++) {
+    //        double val_tmp = img_stack.img[img_idx]->at<floating_t>(j, k);
+    //        if((val_tmp < 0.) || std::isnan(val_tmp)) {
+    //            std::cerr << "img[" << j << ", " << k << "] = " << val_tmp << std::endl;
+    //        }
+    //    }
+    //}
 
     // Smooth PDF with covariance of the ML solution
     cv::Mat cov_img;
     gaussian_filter(inv_cov_11, inv_cov_01, inv_cov_00,
                     *(img_stack.rect), cov_img, 5, 2, 1.0,
-                    verbosity);
+                    5, verbosity);
+    
+    //print_matrix(cov_img, std::cerr);
 
     cv::Mat filtered_img = cv::Mat::zeros(
         img_stack.rect->N_bins[0],
@@ -505,7 +522,16 @@ double integrate_ML_solution(
         CV_FLOATING_TYPE
     );
     cv::filter2D(*img_stack.img[img_idx], filtered_img, CV_FLOATING_TYPE, cov_img);
-    *img_stack.img[img_idx] = filtered_img;
+    *img_stack.img[img_idx] = cv::max(filtered_img, 0.); // Copy over matrix, setting negative values to zero
+    
+    //for(int j=0; j<img_stack.rect->N_bins[0]; j++) {
+    //    for(int k=0; k<img_stack.rect->N_bins[1]; k++) {
+    //        double val_tmp = img_stack.img[img_idx]->at<floating_t>(j, k);
+    //        if(val_tmp < 0.) {
+    //            std::cerr << "img'[" << j << ", " << k << "] = " << val_tmp << std::endl;
+    //        }
+    //    }
+    //}
     
     // Stores chosen Gaussians
     if(save_gaussians) {
