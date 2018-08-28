@@ -1591,9 +1591,10 @@ void TLOSMCMCParams::calc_Delta_EBV_prior(TGalacticLOSModel& gal_los_model,
     double log_norm = log(norm);
 
     // Integrate Delta E(B-V) from close distance to mu_0
-    double mu = mu_0 - 5 * Delta_mu * (double)subsampling;
+    int n_close = 1; // As n_close -> infty, inner distance approaches 0
+    double mu = mu_0 - n_close * Delta_mu * (double)subsampling;
     Delta_EBV_prior[0] = 0.;
-    for(int k=0; k<5*subsampling; k++, mu += Delta_mu) {
+    for(int k=0; k<n_close*subsampling; k++, mu += Delta_mu) {
         Delta_EBV_prior[0] += gal_los_model.dA_dmu(mu);
     }
     Delta_EBV_prior[0] *= Delta_mu;
