@@ -397,7 +397,10 @@ int main(int argc, char **argv) {
                     
                     // Calculate covariance matrices tying
                     // pixels together at each distance
-                    neighbor_pixels->init_covariance(opts.correlation_scale);
+                    neighbor_pixels->init_covariance(
+                        opts.correlation_scale,
+                        opts.d_soft,
+                        opts.gamma_soft);
                 }
                 
                 TDiscreteLosMcmcParams discrete_los_params(

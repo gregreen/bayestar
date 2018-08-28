@@ -80,6 +80,8 @@ TProgramOpts::TProgramOpts() {
     output_fname_pattern = "NONE";
 
     correlation_scale = 1.0; // in pc
+    d_soft = 0.25; // in pc
+    gamma_soft = 4.0; // unitless
 }
 
 
@@ -272,6 +274,16 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
             ("Dust log density correlation scale, in pc "
                 "(default: " +
                 to_string(opts.correlation_scale) + ")").c_str())
+        ("corr-softening-scale",
+            po::value<double>(&(opts.d_soft)),
+            ("Softening length for the dust log density "
+             "correlation scale, in pc (default: " +
+                to_string(opts.d_soft) + ")").c_str())
+        ("corr-softening-gamma",
+            po::value<double>(&(opts.gamma_soft)),
+            ("Shape of the correlation softening. Higher -> sharper "
+             "(default: " +
+                to_string(opts.d_soft) + ")").c_str())
     ;
 
     po::options_description dsc_samp_settings_desc(

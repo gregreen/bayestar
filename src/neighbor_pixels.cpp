@@ -591,7 +591,9 @@ void TNeighborPixels::apply_priors_indiv(
 
 
 void TNeighborPixels::init_covariance(
-        double scale)
+        double scale,
+        double d_soft,
+        double gamma_soft)
 {
     // For each distance, initializes the covariance matrix
     // describing the correlations between neighboring pixels.
@@ -600,12 +602,13 @@ void TNeighborPixels::init_covariance(
     //     scale: Correlation scale, in pc.
 
     // Calculate the distances
-    std::cerr << "Calculating distances ..." << std::endl;
+    //std::cerr << "Calculating distances ..." << std::endl;
     
     std::vector<double> dist;   // In pc
     double dmu = (dm_max - dm_min) / (double)(n_dists);
     double mu;  // Distance modulus, in mag
-    std::cerr << "dm in (" << dm_min << ", " << dm_max << ")" << std::endl;
+    //std::cerr << "dm in (" << dm_min << ", " << dm_max << ")"
+    //          << std::endl;
     for(int i=0; i<n_dists; i++) {
         mu = dm_min + i * dmu;
         dist.push_back(std::pow(10., 0.2*mu + 1.));
@@ -613,19 +616,31 @@ void TNeighborPixels::init_covariance(
 
     std::cerr << std::endl << "(lon,lat) of neighbors:" << std::endl;
     for(int i=0; i<lon.size(); i++) {
-        std::cerr << "(" << lon.at(i) << ", " << lat.at(i) << ")" << std::endl;
+        std::cerr << "(" << lon.at(i) << ", "
+                  << lat.at(i) << ")" << std::endl;
     }
     std::cerr << std::endl;
     
     double scale_coeff = -1. / scale;
     std::function<double(double)> kernel
-        = [scale, scale_coeff](double d2) -> double
+        = [d_soft, gamma_soft, scale_coeff](double d2) -> double
     {
-        if(d2 > 1.e-8) { d2 += 0.5*0.5*scale*scale; } // TODO: Set softening?
-        return std::exp(scale_coeff * std::sqrt(d2));
+        if(d2 > 1.e-8) {
+            double d_eff = std::pow(d2, gamma_soft/2.);
+            d_eff += std::pow(d_soft, gamma_soft);
+            d_eff = std::pow(d_eff, 1./gamma_soft);
+            //std::cerr << "d: " << std::sqrt(d2) << " -> " << d_eff
+            //          << std::endl;
+            return std::exp(scale_coeff * d_eff);
+        } else {
+            return 1.;
+        }
+        //double xi = scale_coeff * std::sqrt(d2);
+        //return 1. / (std::exp(xi) + std::exp(-xi));
+        //return std::exp(scale_coeff * std::sqrt(d2));
     };
     
-    std::cerr << "Initializing covariance matrices ..." << std::endl;
+    //std::cerr << "Initializing covariance matrices ..." << std::endl;
 
     inv_cov.clear();
     inv_cov_lonlat(lon, lat, dist, kernel, inv_cov);
@@ -636,7 +651,7 @@ void TNeighborPixels::init_covariance(
     //    SharedMatrixXd& C_inv, 0,
     //    inv_var, SharedMatrixXd& A_cond);
     
-    std::cerr << "Reading off inverse variances ..." << std::endl;
+    //std::cerr << "Reading off inverse variances ..." << std::endl;
 
     inv_var.clear();
     inv_var.reserve(n_pix*n_dists);
@@ -646,7 +661,7 @@ void TNeighborPixels::init_covariance(
         }
     }
     
-    std::cerr << "Done initializing covariance matrices." << std::endl;
+    //std::cerr << "Done initializing covariance matrices." << std::endl;
 }
 
 

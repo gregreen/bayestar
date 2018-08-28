@@ -203,7 +203,10 @@ public:
             double mu, double sigma,
             double log_scale);
     
-    void init_covariance(double scale);
+    void init_covariance(
+            double scale,
+            double d_soft,
+            double gamma_soft);
 
     void init_dominant_dist();
 };

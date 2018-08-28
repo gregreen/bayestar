@@ -87,6 +87,8 @@ struct TProgramOpts {
     string output_fname_pattern;
 
     double correlation_scale;
+    double d_soft;
+    double gamma_soft;
     
     TDiscreteLOSSamplingSettings dsc_samp_settings;
     
