@@ -447,6 +447,8 @@ struct TDiscreteLOSSamplingSettings {
     bool shift_weight_ladder_logarithmic = false;
     // If true, save all temperature chains
     bool save_all_temperatures = false;
+    // Outlier fraction
+    double p_badstar = 1.e-5; // Higher means less weight for outliers
 };
 
 

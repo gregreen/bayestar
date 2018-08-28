@@ -356,6 +356,12 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
                  "temperature samplers will be saved as well (default: " +
                     to_string(opts.dsc_samp_settings.save_all_temperatures) +
                  ")").c_str())
+        ("dsc-p-badstar",
+            po::value<double>(&(opts.dsc_samp_settings.p_badstar)),
+                ("Stellar outlier fraction: larger values mean less \n"
+                 "weight to outliers (default: " +
+                    to_string(opts.dsc_samp_settings.p_badstar) +
+                 ")").c_str())
     ;
     config_desc.add(dsc_samp_settings_desc);
     

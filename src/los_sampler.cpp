@@ -3918,7 +3918,7 @@ void sample_los_extinction_discrete(
 
     // Softening parameter
     // TODO: Make p_badstar either a config option or dep. on ln(Z)
-    const floating_t p_badstar = 1.e-9; //0.0001;
+    const floating_t p_badstar = s.p_badstar;//1.e-5; //0.0001;
     const floating_t epsilon = p_badstar / (floating_t)n_y;
 
     double sigma_dy_neg = 1.e-5;
