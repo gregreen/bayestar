@@ -1747,7 +1747,8 @@ TDiscreteLosMcmcParams::TDiscreteLosMcmcParams(
             TImgStack *_img_stack,
             std::unique_ptr<TNeighborPixels> _neighbor_pixels,
             unsigned int _N_runs,
-            unsigned int _N_threads)
+            unsigned int _N_threads,
+            int verbosity)
         : img_stack(_img_stack),
           neighbor_pixels(std::move(_neighbor_pixels)),
           N_runs(_N_runs), N_threads(_N_threads)
@@ -1774,26 +1775,36 @@ TDiscreteLosMcmcParams::TDiscreteLosMcmcParams(
 
     // Priors
     mu_log_dE = -10.;
-    sigma_log_dE = 0.75; // TODO: Make this configurable
+    set_sigma_log_dE(0.75);
+    //sigma_log_dE = 0.75; // TODO: Make this configurable
     mu_log_dy = mu_log_dE - log(img_stack->rect->dx[0]);
-    inv_sigma_log_dy = 1. / sigma_log_dE;
+    //inv_sigma_log_dy = 1. / sigma_log_dE;
     inv_sigma_dy_neg = 1. / 0.1;
 
     priors_subsampling = 1; //10;
     
     log_P_dy = std::make_shared<cv::Mat>();
 
-    std::cerr << "n_dists = " << n_dists << std::endl;
-    std::cerr << "n_E = " << n_E << std::endl;
-    std::cerr << "y_zero_idx = " << y_zero_idx << std::endl;
-    std::cerr << "mu_log_dy = " << mu_log_dy << std::endl;
-    std::cerr << "inv_sigma_log_dy = " << inv_sigma_log_dy << std::endl;
+    if(verbosity >= 2) {
+        std::cerr << "n_dists = " << n_dists << std::endl;
+        std::cerr << "n_E = " << n_E << std::endl;
+        std::cerr << "y_zero_idx = " << y_zero_idx << std::endl;
+        std::cerr << "mu_log_dy = " << mu_log_dy << std::endl;
+        std::cerr << "inv_sigma_log_dy = " << inv_sigma_log_dy
+                  << std::endl;
+    }
 }
 
 
 TDiscreteLosMcmcParams::~TDiscreteLosMcmcParams() {
     if(line_int != NULL) { delete[] line_int; }
     if(E_pix_idx != NULL) { delete[] E_pix_idx; }
+}
+
+
+void TDiscreteLosMcmcParams::set_sigma_log_dE(const double s) {
+    sigma_log_dE = s;
+    inv_sigma_log_dy = 1. / s;
 }
 
 
@@ -2539,6 +2550,7 @@ void TDiscreteLosMcmcParams::initialize_priors(
         TGalacticLOSModel& gal_los_model,
         double log_Delta_EBV_floor,
         double log_Delta_EBV_ceil,
+        double sigma_log_Delta_EBV,
         int verbosity)
 {
     // Calculate log-normal prior on reddening increase at each distance
@@ -2551,6 +2563,7 @@ void TDiscreteLosMcmcParams::initialize_priors(
         n_dists
     );
     los_params.alpha_skew = 0.;
+    set_sigma_log_dE(sigma_log_Delta_EBV);
     los_params.calc_Delta_EBV_prior(
         gal_los_model,
         log_Delta_EBV_floor,

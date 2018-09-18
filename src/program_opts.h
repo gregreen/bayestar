@@ -60,6 +60,7 @@ struct TProgramOpts {
     bool disk_prior;
     double log_Delta_EBV_floor;
     double log_Delta_EBV_ceil;
+    double sigma_log_Delta_EBV;
 
     bool SFD_prior;
     bool SFD_subpixel;

@@ -180,7 +180,8 @@ struct TDiscreteLosMcmcParams {
     TDiscreteLosMcmcParams(TImgStack *_img_stack,
                            std::unique_ptr<TNeighborPixels> _neighbor_pixels,
                            unsigned int _N_runs,
-                           unsigned int _N_threads);
+                           unsigned int _N_threads,
+                           int verbosity=0);
     ~TDiscreteLosMcmcParams();
 
     // Access fit information for one thread
@@ -290,10 +291,13 @@ struct TDiscreteLosMcmcParams {
 
     void guess_EBV_profile_discrete(int16_t *const y_idx_ret, gsl_rng *r);
 
+    void set_sigma_log_dE(const double s);
+    
     void initialize_priors(
             TGalacticLOSModel& gal_los_model,
             double log_Delta_EBV_floor,
             double log_Delta_EBV_ceil,
+            double sigma_log_Delta_EBV,
             int verbosity=0);
     
     void update_priors_image(

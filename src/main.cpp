@@ -406,11 +406,13 @@ int main(int argc, char **argv) {
                 TDiscreteLosMcmcParams discrete_los_params(
                     &img_stack,
                     std::move(neighbor_pixels),
-                    1, 1);
+                    1, 1,
+                    opts.verbosity);
                 discrete_los_params.initialize_priors(
                     los_model,
                     opts.log_Delta_EBV_floor,
                     opts.log_Delta_EBV_ceil,
+                    opts.sigma_log_Delta_EBV,
                     opts.verbosity
                 );
                 
@@ -418,7 +420,7 @@ int main(int argc, char **argv) {
 
                 if(discrete_los_params.neighbor_pixels) {
                     cout << "Initializing dominant distances ..." << endl;
-                    discrete_los_params.neighbor_pixels->init_dominant_dist();
+                    discrete_los_params.neighbor_pixels->init_dominant_dist(opts.verbosity);
 
                     //cout << "Resampling neighboring pixels ..." << endl;
                     //sample_neighbors(*(discrete_los_params.neighbor_pixels), opts.verbosity);

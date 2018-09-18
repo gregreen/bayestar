@@ -55,6 +55,7 @@ TProgramOpts::TProgramOpts() {
     disk_prior = false;
     log_Delta_EBV_floor = -10.;
     log_Delta_EBV_ceil = -3.;
+    sigma_log_Delta_EBV = 0.75;
 
     SFD_prior = false;
     SFD_subpixel = false;
@@ -218,7 +219,12 @@ int get_program_opts(int argc, char **argv, TProgramOpts &opts) {
             po::value<double>(&(opts.log_Delta_EBV_ceil)),
             ("Maximum log(Delta EBV) in l.o.s. reddening prior "
                 "(default: " +
-                to_string(opts.log_Delta_EBV_floor) + ")").c_str())
+                to_string(opts.log_Delta_EBV_ceil) + ")").c_str())
+        ("sigma-log-Delta-EBV",
+            po::value<double>(&(opts.sigma_log_Delta_EBV)),
+            ("Std. dev. of log(Delta EBV) in one distance bin "
+                "in l.o.s. reddening prior (default: " +
+                to_string(opts.sigma_log_Delta_EBV) + ")").c_str())
         ("SFD-prior",
             "Use SFD E(B-V) as a prior on the total "
             "extinction in each pixel.")
