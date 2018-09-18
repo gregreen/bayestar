@@ -1849,6 +1849,9 @@ class LOSDifferencer:
     
     def pix_diff(self, pix_val_1, pix_val_2):
         return pix_val_2[self.src_idx[1]] - pix_val_1[self.src_idx[0]]
+    
+    def get_pix_val(self, idx, pix_val):
+        return pix_val[self.src_idx[idx]]
 
 
 

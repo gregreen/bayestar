@@ -633,13 +633,7 @@ def main():
                                          help='Galactic latitudes at which to draw lines.')
     parser.add_argument('--EBV-max', '-Em', type=float, default=None,
                                          help='Saturation limit for E(B-V) color scale.')
-    
-    if 'python' in sys.argv[0]:
-        offset = 2
-    else:
-        offset = 1
-    args = parser.parse_args(sys.argv[offset:])
-    
+    args = parser.parse_args()
     
     # Parse arguments
     outfname = args.output

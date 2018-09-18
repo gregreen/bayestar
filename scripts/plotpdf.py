@@ -364,7 +364,7 @@ def main():
 		#	pdf_indiv = pdf_stack[idx[:4]]
 
 	# Set matplotlib style attributes
-	mplib.rc('text', usetex=True)
+	#mplib.rc('text', usetex=True)
 	mplib.rc('xtick.major', size=5)
 	mplib.rc('xtick.minor', size=2)
 	mplib.rc('ytick.major', size=5)
