@@ -4,17 +4,18 @@ from __future__ import print_function, division
 
 import numpy as np
 import h5py
-import matplotlib
-import matplotlib.pyplot as plt
-
 from argparse import ArgumentParser
 
 
-def load_chain(fname, dset):
+def load_chain(fname, dset, idx=0):
     with h5py.File(fname, 'r') as f:
-        # dset.shape = (chain, GR+best+sample, lnp+parameter)
-        dset = f[dset][0,2:,2:]
-    return dset
+        # dset.shape = (chain, GR+best+sample, lnlike+lnprior+parameter)
+        dset = f[dset][idx,2:,:]
+        ln_like = dset[:,0]
+        ln_prior = dset[:,1]
+        theta = dset[:,2:]
+    
+    return {'ln_like': ln_like, 'ln_prior': ln_prior, 'theta': theta}
 
 
 def PCA(data):
@@ -22,11 +23,15 @@ def PCA(data):
     C = np.cov(data, rowvar=False)
     eival, eivec = np.linalg.eigh(C)
     
+    # Normalize eigenvectors (unit length) and rescale eigenvalues
+    norm = np.linalg.norm(eivec, axis=1)
+    eivec = eivec[:,:] / norm[:,None]
+    eival *= norm
+    
     # Sort the eigenvalues/eigenvectors (largest to smallest)
     idx = np.argsort(eival)[::-1]
     eival = eival[idx]
     eivec = eivec[:,idx]
-    eivec = eivec[:,:] / np.linalg.norm(eivec, axis=1)[:,None]
     
     # Transform the data to the new coordinate system
     d_transf = np.dot(data - np.mean(data, axis=0), eivec)
@@ -35,7 +40,7 @@ def PCA(data):
     return eival, eivec, d_transf
 
 
-def autocorr_1d(y):
+def autocorr_1d(y, threshold=0.05):
     """
     Calculates the autocorrelation of a 1-dimensional
     signal, y.
@@ -56,9 +61,19 @@ def autocorr_1d(y):
     y0 = np.mean(y)
     sigma2 = np.var(y)
     dy = y - y0
+    
+    if sigma2 == 0:
+        return np.ones(n), -1.0
+    
     r = np.correlate(dy, dy, mode='full')[-n:]
     r /= (sigma2 * np.arange(n, 0, -1))
-    tau = np.where(r < 0)[0][0]
+    
+    idx = np.where(r < threshold)[0]
+    
+    if not len(idx):
+        return r, -1.0
+    
+    tau = idx[0]
     return r, tau
 
 
@@ -90,76 +105,115 @@ def main():
         '-o', '--output',
         metavar='plot.png',
         type=str,
-        required=True,
         help='Filename to save figure to.')
+    parser.add_argument(
+        '--chain-idx',
+        metavar='index',
+        type=int,
+        default=0,
+        help='Index of chain to analyze (default: 0).')
+    parser.add_argument(
+        '--threshold',
+        metavar='epsilon',
+        type=float,
+        default=0.05,
+        help='Tau defined by time at which autocorr drops '
+             'below this threshold (default: 0.05).')
     args = parser.parse_args()
 
-    chain = load_chain(args.input, args.dataset)
-    eival, eivec, chain_transf = PCA(chain)
-    #print(eival)
+    data = load_chain(args.input, args.dataset, idx=args.chain_idx)
     
-    fig = plt.figure(figsize=(8,10), dpi=200)
+    # Autocorrelation of log(prior) and log(likelihood)
+    acorr_prior, tau_prior = autocorr_1d(
+        data['ln_prior'],
+        threshold=args.threshold)
+    acorr_like, tau_like = autocorr_1d(
+        data['ln_like'],
+        threshold=args.threshold)
     
     # Autocorrelation of principal component coefficients
-    ax = fig.add_subplot(4,1,1)
+    eival, eivec, chain_transf = PCA(data['theta'])
+    acorr, tau = autocorr_1d(
+        chain_transf[:,0],
+        threshold=args.threshold)
     
-    acorr, tau = autocorr_1d(chain_transf[:,0])
-    n = acorr.size // 2
-    dt = np.arange(n)
-    ax.plot(dt, acorr[:n], c='b', alpha=1.0)
-    ax.axhline(y=0., c='k', alpha=0.25)
+    tau_max = max([tau, tau_prior, tau_like])
+    tau_max_idx = np.argmax([tau, tau_prior, tau_like])
+    n_tau_min = acorr.size / tau_max
     
-    x, y = rel2abs_coords(ax, 0.98, 0.98)
-    ax.text(x, y, r'$\tau = {:d}$'.format(tau),
-            ha='right', va='top', fontsize=12)
-    x, y = rel2abs_coords(ax, 0.98, 0.85)
-    ax.text(x, y, r'$n_{{\tau}} = {:.1f}$'.format(acorr.size/tau),
-            ha='right', va='top', fontsize=12)
+    c_line = ('b', 'g', 'orange')
     
-    ax.set_xlabel(r'$\Delta t$', fontsize=10)
-    ax.set_ylabel(r'$\mathrm{autocorrelation}$', fontsize=10)
+    print(n_tau_min)
     
-    # Principal component coefficients vs. time
-    ax = fig.add_subplot(4,1,2)
-    
-    x = np.arange(chain_transf.shape[0])
-    
-    alpha = np.abs(eival)
-    alpha /= np.max(alpha)
+    # Optionally, plot figure
+    if args.output:
+        import matplotlib
+        import matplotlib.pyplot as plt
 
-    for k in range(10):
-        y = np.sqrt(eival[k]) * chain_transf[:,k]
-        ax.plot(x, y, c='b', alpha=alpha[k])
+        fig = plt.figure(figsize=(8,10), dpi=200)
+        
+        ax = fig.add_subplot(4,1,1)
+        
+        n = acorr.size // 2
+        dt = np.arange(n)
+        ax.plot(dt, acorr[:n], c=c_line[0], alpha=1.0)
+        ax.plot(dt, acorr_prior[:n], c=c_line[1], alpha=0.7)
+        ax.plot(dt, acorr_like[:n], c=c_line[2], alpha=0.7)
+        ax.axhline(y=0., c='k', alpha=0.25)
+        
+        x, y = rel2abs_coords(ax, 0.98, 0.98)
+        ax.text(x, y, r'$\tau = {:d}$'.format(tau_max),
+                ha='right', va='top', fontsize=12,
+                color=c_line[tau_max_idx])
+        x, y = rel2abs_coords(ax, 0.98, 0.85)
+        ax.text(x, y, r'$n_{{\tau}} = {:.1f}$'.format(n_tau_min),
+                ha='right', va='top', fontsize=12,
+                color=c_line[tau_max_idx])
+        
+        ax.set_xlabel(r'$\Delta t$', fontsize=10)
+        ax.set_ylabel(r'$\mathrm{autocorrelation}$', fontsize=10)
+        
+        # Principal component coefficients vs. time
+        ax = fig.add_subplot(4,1,2)
+        
+        x = np.arange(chain_transf.shape[0])
+        
+        alpha = np.abs(eival)
+        alpha /= np.max(alpha)
 
-    ax.axhline(y=0., c='k', alpha=0.25)
-    
-    ax.set_xlabel(r'$\mathrm{sample\ \#}$', fontsize=10)
-    ax.set_ylabel(r'$\mathrm{principal\ component\ strength}$', fontsize=10)
-    
-    # Principal components
-    ax = fig.add_subplot(4,1,3)
-    
-    x = np.arange(eivec.shape[1])
-    for k in range(10):
-        y = np.sqrt(eival[k]) * eivec[:,k]
-        ax.plot(x, y, c='b', alpha=alpha[k])
-    
-    ax.set_xlabel(r'$\mathrm{distance\ bin}$', fontsize=10)
-    ax.set_ylabel(r'$\mathrm{principal\ component}$', fontsize=10)
+        for k in range(10):
+            y = np.sqrt(eival[k]) * chain_transf[:,k]
+            ax.plot(x, y, c='b', alpha=alpha[k])
 
-    # Raw data
-    ax = fig.add_subplot(4,1,4)
-    x = np.arange(chain.shape[1])
-    y0 = np.mean(chain, axis=0)
-    for k in range(chain.shape[0]):
-        y = chain[k] - y0
-        ax.plot(x, y, c='b', alpha=0.1)
-    
-    ax.set_xlabel(r'$\mathrm{distance\ bin}$', fontsize=10)
-    ax.set_ylabel(r'$\mathrm{raw\ data\ \left( mean\ subtracted \right)}$', fontsize=10)
-    
-    # Save figure
-    fig.savefig(args.output, bbox_inches='tight', dpi=200)
+        ax.axhline(y=0., c='k', alpha=0.25)
+        
+        ax.set_xlabel(r'$\mathrm{sample\ \#}$', fontsize=10)
+        ax.set_ylabel(r'$\mathrm{principal\ component\ strength}$', fontsize=10)
+        
+        # Principal components
+        ax = fig.add_subplot(4,1,3)
+        
+        x = np.arange(eivec.shape[1])
+        for k in range(10):
+            y = np.sqrt(eival[k]) * eivec[:,k]
+            ax.plot(x, y, c='b', alpha=alpha[k])
+        
+        ax.set_xlabel(r'$\mathrm{distance\ bin}$', fontsize=10)
+        ax.set_ylabel(r'$\mathrm{principal\ component}$', fontsize=10)
+
+        # Raw data
+        ax = fig.add_subplot(4,1,4)
+        x = np.arange(data['theta'].shape[1])
+        y0 = np.mean(data['theta'], axis=0)
+        for k in range(data['theta'].shape[0]):
+            y = data['theta'][k] - y0
+            ax.plot(x, y, c='b', alpha=0.1)
+        
+        ax.set_xlabel(r'$\mathrm{distance\ bin}$', fontsize=10)
+        ax.set_ylabel(r'$\mathrm{raw\ data\ \left( mean\ subtracted \right)}$', fontsize=10)
+        
+        # Save figure
+        fig.savefig(args.output, bbox_inches='tight', dpi=200)
     
     return 0
 
