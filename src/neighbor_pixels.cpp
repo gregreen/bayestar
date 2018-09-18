@@ -665,9 +665,9 @@ void TNeighborPixels::init_covariance(
 }
 
 
-void TNeighborPixels::init_dominant_dist() {
-    // For each sample of each pixel, calculates distance with largest deviation
-    // from priors.
+void TNeighborPixels::init_dominant_dist(int verbosity) {
+    // For each sample of each pixel, calculates distance
+    // with largest deviation from priors.
     
     dominant_dist.clear();
     dominant_dist.reserve(n_pix*n_samples);
@@ -698,40 +698,42 @@ void TNeighborPixels::init_dominant_dist() {
         }
     }
     
-    std::cout << std::endl
-              << "Dominant distance histograms:"
-              << std::endl << std::endl;
-    
-    int h_max = 20;
-    for(int pix=0; pix<n_pix; pix++) {
-        std::string msg(h_max*(n_dists+1), ' ');
+    if(verbosity >= 2) {
+        std::cerr << std::endl
+                  << "Dominant distance histograms:"
+                  << std::endl << std::endl;
+        
+        int h_max = 20;
+        for(int pix=0; pix<n_pix; pix++) {
+            std::string msg(h_max*(n_dists+1), ' ');
 
-        for(int j=0; j<h_max; j++) {
-            msg[(j+1)*(n_dists+1) - 1] = '\n';
-        }
-
-        for(int dist=0; dist<n_dists; dist++) {
-            int h = n_dominant_dist_samples[n_dists*pix + dist]/2;
-            if(h > h_max) { h = h_max; }
-            
-            int base = (h_max-1)*(n_dists+1) + dist;
-
-            for(int j=0; j<h; j++) {
-                int idx = base - j*(n_dists+1);
-                msg[idx] = '*';
+            for(int j=0; j<h_max; j++) {
+                msg[(j+1)*(n_dists+1) - 1] = '\n';
             }
-        }
-        std::cout << msg;
 
-        for(int dist=0; dist<n_dists; dist++) {
-            std::cout << "-";
-        }
-        std::cout << std::endl;
+            for(int dist=0; dist<n_dists; dist++) {
+                int h = n_dominant_dist_samples[n_dists*pix + dist]/2;
+                if(h > h_max) { h = h_max; }
+                
+                int base = (h_max-1)*(n_dists+1) + dist;
 
-        for(int dist=0; dist<n_dists; dist++) {
-            std::cout << (dist % 10 ? ' ' : '|');
+                for(int j=0; j<h; j++) {
+                    int idx = base - j*(n_dists+1);
+                    msg[idx] = '*';
+                }
+            }
+            std::cerr << msg;
+
+            for(int dist=0; dist<n_dists; dist++) {
+                std::cerr << "-";
+            }
+            std::cerr << std::endl;
+
+            for(int dist=0; dist<n_dists; dist++) {
+                std::cerr << (dist % 10 ? ' ' : '|');
+            }
+            std::cerr << std::endl << std::endl;
         }
-        std::cout << std::endl << std::endl;
     }
 }
 

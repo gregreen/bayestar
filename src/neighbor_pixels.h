@@ -208,7 +208,7 @@ public:
             double d_soft,
             double gamma_soft);
 
-    void init_dominant_dist();
+    void init_dominant_dist(int verbosity=0);
 };
 
 
