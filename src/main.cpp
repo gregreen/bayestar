@@ -338,6 +338,11 @@ int main(int argc, char **argv) {
                     n_filtered++;
                 }
             }
+            // Write stellar rejection fraction to output file
+            double reject_frac = (double)n_filtered / chi2.size();
+            try {
+                H5Utils::add_watermark<double>(opts.output_fname, group_name.str(), "reject_frac", reject_frac);
+            } catch(H5::AttributeIException err_att_exists) { }
         }
         if(gatherSurfs) { img_stack.cull(keep); }
 
@@ -480,6 +485,11 @@ int main(int argc, char **argv) {
                 + 1.e-9 * (t_end.tv_nsec - t_start.tv_nsec);
         t_star = (t_mid.tv_sec - t_start.tv_sec)
                 + 1.e-9 * (t_mid.tv_nsec - t_start.tv_nsec);
+        
+        try {
+            H5Utils::add_watermark<float>(opts.output_fname, group_name.str(), "t_tot", (float)t_tot);
+            H5Utils::add_watermark<float>(opts.output_fname, group_name.str(), "t_star", (float)t_star);
+        } catch(H5::AttributeIException err_att_exists) { }
 
         if(opts.verbosity >= 1) {
             cout << endl
