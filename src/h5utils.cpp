@@ -353,3 +353,35 @@ float H5Utils::read_attribute<float>(H5::DataSet& dataset, const std::string& na
     H5::DataType dtype = H5::PredType::NATIVE_FLOAT;
     return read_attribute_helper<double>(dataset, name, dtype);
 }
+
+
+/*
+ * Convert C++ data types to HDF5 data types
+ *
+ */
+
+template<>
+H5::PredType H5Utils::get_dtype<float>() {
+    return H5::PredType::NATIVE_FLOAT;
+}
+
+template<>
+H5::PredType H5Utils::get_dtype<double>() {
+    return H5::PredType::NATIVE_DOUBLE;
+}
+
+template<>
+H5::PredType H5Utils::get_dtype<uint32_t>() {
+    return H5::PredType::NATIVE_UINT32;
+}
+
+template<>
+H5::PredType H5Utils::get_dtype<uint64_t>() {
+    return H5::PredType::NATIVE_UINT64;
+}
+
+template<>
+H5::PredType H5Utils::get_dtype<bool>() {
+    return H5::PredType::NATIVE_UCHAR;
+}
+
