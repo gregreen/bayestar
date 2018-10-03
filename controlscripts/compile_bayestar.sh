@@ -32,12 +32,17 @@ if [[ ! -z ${six_str} ]]; then
 fi
 
 cpu_spec=`grep "model name" /proc/cpuinfo | head -n 1 `
+cpu_flags=`grep "flags" /proc/cpuinfo | head -n 1 `
 
-full_spec="${centos_ver} ${cpu_info} ${bayestar_ver}"
+full_spec="${centos_ver} ${cpu_info} ${cpu_flags} ${bayestar_ver}"
 full_hash=`echo ${full_spec} | md5sum | awk '{print $1}' | cut -c -8`
 
 echo "CentOS ${centos_ver}"
 echo "CPU spec: ${cpu_spec}"
+echo "CPU flags: ${cpu_flags}"
+grep "cache size" /proc/cpuinfo | head -n 1
+grep "cpu MHz" /proc/cpuinfo | head -n 1
+grep "cpu cores" /proc/cpuinfo | head -n 1
 echo "Bayestar version: ${bayestar_ver}"
 echo "Hash: ${full_hash}"
 

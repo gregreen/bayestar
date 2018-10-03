@@ -48,10 +48,10 @@ termination_handler()
     echo "~   * Copying output file to ${out_fname} ..."
     cp "${out_fname_tmp}" "${out_fname}"
     echo "~   * Done."
-    exit -1
+    exit 17
 }
 
-trap 'termination_handler' USR1 # Job script should specify --signal=B:USR1@120
+trap 'termination_handler' USR1 # Job script should specify --signal=USR1@120
 
 # Get list of pixels in input file
 echo "## Getting list of pixels in input file ..."

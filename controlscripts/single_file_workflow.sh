@@ -86,7 +86,7 @@ date
 
 # Process the input file
 echo "# Processing the input file ..."
-exec "${bayestar_dir}/controlscripts/process_file.sh" \
+bash "${bayestar_dir}/controlscripts/process_file.sh" \
     "./bayestar" \
     "${in_fname_base}" \
     "${out_fname}" \
