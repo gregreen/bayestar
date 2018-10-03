@@ -1,0 +1,73 @@
+#!/bin/bash
+
+#SBATCH -J bayestar-galplane30-<ITERATION> # Job name
+#SBATCH --mail-user=gregorymgreen@gmail.com
+#SBATCH --mail-type=FAIL
+#SBATCH -n 1  # Number of cores per job
+#SBATCH -t 0-09:30:00  # Wall time (days-hh:mm:ss)
+#SBATCH -p shared # Queue to submit to 
+#SBATCH --mem-per-cpu=4000  # Memory per core in MB
+#SBATCH -o /n/fink2/ggreen/bayestar/tests/galplane30/log/it<ITERATION>/galplane30.%a.%j.o
+#SBATCH -e /n/fink2/ggreen/bayestar/tests/galplane30/log/it<ITERATION>/galplane30.%a.%j.e
+#SBATCH --array=0-<ARRAYMAX> # Job array
+#SBATCH --signal=B:USR1@180
+# <dependency code here>
+
+idx=`printf "%05d" ${SLURM_ARRAY_TASK_ID}`
+
+export bayestar_ver="2018y09m20d"
+it=<ITERATION>
+
+# Get a list of input files to process
+if [[ ${it} -eq 0 ]]; then
+    list_fn="/n/fink2/ggreen/bayestar/tests/galplane30/input_lists/it0/job.${idx}.txt"
+else
+    list_fn="/n/fink2/ggreen/bayestar/tests/galplane30/input_lists/it1/job.${idx}.txt"
+fi
+
+n_files=`wc -l < "${list_fn}"`
+n_files=$(( ${n_files} + 1 ))
+echo "Job ${idx} will process ${n_files} input files."
+
+start_dir=`pwd`
+
+# On termination, propagate signal to entire process group
+job_termination_handler()
+{
+    echo "+ Job termination handler:"
+    echo "+   * Propagating signal to subprocesses ..."
+    PGID=$(ps -o pgid= $$ | grep -o [0-9]*)
+    kill -USR1 -$PGID
+    echo "+   * Waiting 160 seconds ..."
+    sleep 160
+    echo "+   * Exiting ..."
+    exit 17
+}
+
+trap 'job_termination_handler' USR1 # Job script should specify --signal=USR1@120
+
+# Process each file in sequence
+k=0
+for fn in `cat ${list_fn}`; do
+    k=$(( $k + 1 ))
+    
+    cd ${start_dir}
+    
+    echo ""
+    echo "========================================="
+    echo "Processing ${fn} (${k} of ${n_files})
+    echo "========================================="
+    echo ""
+    
+    bash ~/projects/bayestar/controlscripts/single_file_workflow.sh \
+        /n/fink2/ggreen/bayestar/tests/galplane30/input/${fn} \
+        /n/fink2/ggreen/bayestar/tests/galplane30/output/it${it}/${fn} \
+        /n/fink2/ggreen/bayestar/tests/galplane30/config/it${it}/config.cfg \
+        /n/home09/ggreen/projects/bayestar/data/std_data.tar.gz &
+    
+    pid=$!
+    wait ${pid}
+    
+    echo "Done with ${fn}."
+    echo ""
+done
