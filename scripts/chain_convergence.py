@@ -156,9 +156,9 @@ def main():
         
         n = acorr.size // 2
         dt = np.arange(n)
-        ax.plot(dt, acorr[:n], c=c_line[0], alpha=1.0)
-        ax.plot(dt, acorr_prior[:n], c=c_line[1], alpha=0.7)
-        ax.plot(dt, acorr_like[:n], c=c_line[2], alpha=0.7)
+        ax.plot(dt, acorr[:n], c=c_line[0], alpha=1.0, label=r'$\mathrm{principal \ component}$')
+        ax.plot(dt, acorr_prior[:n], c=c_line[1], alpha=0.7, label=r'$\mathrm{prior}$')
+        ax.plot(dt, acorr_like[:n], c=c_line[2], alpha=0.7, label=r'$\mathrm{likelihood}$')
         ax.axhline(y=0., c='k', alpha=0.25)
         
         x, y = rel2abs_coords(ax, 0.98, 0.98)
@@ -172,6 +172,8 @@ def main():
         
         ax.set_xlabel(r'$\Delta t$', fontsize=10)
         ax.set_ylabel(r'$\mathrm{autocorrelation}$', fontsize=10)
+        
+        ax.legend(loc='upper center')
         
         # Principal component coefficients vs. time
         ax = fig.add_subplot(4,1,2)
