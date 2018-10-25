@@ -104,7 +104,7 @@ void distance_matrix_lonlat(
     std::vector<double> xyz;
     xyz.reserve(3*n_coords);
     
-    std::cerr << "Calculating (x, y, z) of pixels ..." << std::endl;
+    //std::cerr << "Calculating (x, y, z) of pixels ..." << std::endl;
 
     double cos_lon, cos_lat, sin_lon, sin_lat;
     for(int i=0; i<n_coords; i++) {
@@ -119,7 +119,7 @@ void distance_matrix_lonlat(
     }
     
     // Calculate pairwise squared distances
-    std::cerr << "Calculating distance^2 between pixels ..." << std::endl;
+    //std::cerr << "Calculating distance^2 between pixels ..." << std::endl;
     d2.resize(n_coords, n_coords);
     double dx, dy, dz, d2_tmp;
     for(int j=0; j<n_coords; j++) {
@@ -133,7 +133,7 @@ void distance_matrix_lonlat(
         }
     }
 
-    std::cerr << "Done calculating distance^2 matrix." << std::endl;
+    //std::cerr << "Done calculating distance^2 matrix." << std::endl;
 }
 
 
@@ -155,12 +155,12 @@ void inv_cov_lonlat(
     Eigen::MatrixXd d2_mat;
     distance_matrix_lonlat(lon, lat, d2_mat);
 
-    std::cerr << "Transverse distances:" << std::endl
-              << d2_mat << std::endl;
+    //std::cerr << "Transverse distances:" << std::endl
+    //          << d2_mat << std::endl;
     
     // Generate one covariance matrix per physical distance
     for(double d : dist) {
-        std::cerr << "Calculating Cov^-1 at distance = " << d << " pc ..." << std::endl;
+        //std::cerr << "Calculating Cov^-1 at distance = " << d << " pc ..." << std::endl;
         UniqueMatrixXd C = std::make_unique<Eigen::MatrixXd>();
         //UniqueMatrixXd C = std::unique_ptr<Eigen::MatrixXd>();
         C->resize(d2_mat.rows(), d2_mat.cols());
@@ -169,8 +169,8 @@ void inv_cov_lonlat(
             return kernel(d*d * d2); 
         }).inverse();
         
-        std::cerr << std::endl << "dist = " << d << " pc" << std::endl;
-        std::cerr << std::endl << *C << std::endl;
+        //std::cerr << std::endl << "dist = " << d << " pc" << std::endl;
+        //std::cerr << std::endl << *C << std::endl;
 
         inv_cov.push_back(std::move(C));
     }
