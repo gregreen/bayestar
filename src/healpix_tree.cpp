@@ -44,7 +44,12 @@ void healpix_loc2digits(
     // The above digits also correspond to nside = 16,
     // and
     //   pix_idx = 1 + 4*3 + 4^2*1 + 4^3*0 + 4^4*10
-
+    
+    //std::cerr << "healpix_loc2digits("
+    //          << "nside=" << nside << ", "
+    //          << "pix_idx=" << pix_idx
+    //          << ")" << std::endl;
+    
     // Take log_2(nside) + 1
     uint32_t n_levels = 1;
     while(nside >>= 1) {
@@ -66,6 +71,12 @@ void healpix_loc2digits(
     d = pix_idx % 12;
     //std::cerr << "d[0] = " << d << std::endl;
     digits[0] = d;
+    
+    //std::cerr << "digits =";
+    //for(auto d : digits) {
+    //    std::cerr << " " << (uint32_t)d;
+    //}
+    //std::cerr << std::endl;
 }
 
 
@@ -99,7 +110,7 @@ std::unique_ptr<H5::DataSet> healtree_get_dataset(
         }
     }
     
-    std::cerr << "Looking for dataset: " << g.str() << std::endl;
+    //std::cerr << "Looking for dataset: " << g.str() << std::endl;
     
     // Load dataset
     return H5Utils::openDataSet(file, g.str());

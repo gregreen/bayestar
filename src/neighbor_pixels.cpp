@@ -266,7 +266,7 @@ bool TNeighborPixels::load_neighbor_los(
     std::vector<std::pair<int32_t,int32_t> > file_idx_sort;
     for(int32_t i=0; i<file_idx.size(); i++) {
         file_idx_sort.push_back(std::make_pair(file_idx.at(i), i));
-        std::cerr << "file_idx[" << i << "] = " << file_idx.at(i) << std::endl;
+        //std::cerr << "file_idx[" << i << "] = " << file_idx.at(i) << std::endl;
     }
     std::sort(file_idx_sort.begin(), file_idx_sort.end());
     
@@ -299,8 +299,8 @@ bool TNeighborPixels::load_neighbor_los(
             );
             std::string fname(fname_size+1, '\0');
             std::sprintf(&fname[0], output_fname_pattern.c_str(), fidx);
-            std::cerr << "Opening output file " << fname
-                      << " ..." << std::endl;
+            //std::cerr << "Opening output file " << fname
+            //          << " ..." << std::endl;
             //f.reset();
             f = H5Utils::openFile(fname, H5Utils::READ);
             if(!f) {
@@ -345,11 +345,11 @@ bool TNeighborPixels::load_neighbor_los(
         }
         
         // Check dimensions
-        if(dims[0] > 1) {
-            std::cerr << "Ignoring " << dims[0]-1 << " higher-temperature samples "
-                      << "in neighboring pixels (" << dset_name.str() << ")"
-                      << std::endl;
-        }
+        //if(dims[0] > 1) {
+        //    std::cerr << "Ignoring " << dims[0]-1 << " higher-temperature samples "
+        //              << "in neighboring pixels (" << dset_name.str() << ")"
+        //              << std::endl;
+        //}
         if(dims[1] < n_samples+2) {
             std::cerr << "Not enough samples in dataset "
                       << dset_name.str()
@@ -429,8 +429,8 @@ bool TNeighborPixels::load_neighbor_los(
             set_sum_log_dy(sum_log_dy_tmp, i, sample);
         }
         
-        std::cerr << "Loaded output from " << dset_name.str()
-                  << std::endl;
+        //std::cerr << "Loaded output from " << dset_name.str()
+        //          << std::endl;
 
         // Load attributes
         if(dm_min < -99.) {
@@ -449,8 +449,8 @@ bool TNeighborPixels::load_neighbor_los(
         lon.push_back(lon_tmp);
         lat.push_back(lat_tmp);
         
-        std::cerr << "Loaded attributes related to " << dset_name.str()
-                  << std::endl;
+        //std::cerr << "Loaded attributes related to " << dset_name.str()
+        //          << std::endl;
         
         delete[] buf;
     }
