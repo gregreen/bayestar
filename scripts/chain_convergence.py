@@ -119,6 +119,11 @@ def main():
         default=0.05,
         help='Tau defined by time at which autocorr drops '
              'below this threshold (default: 0.05).')
+    parser.add_argument(
+        '--add-attribute',
+        action='store_true',
+        help='Write # of autocorrelation times to dataset '
+             'as attribute.')
     args = parser.parse_args()
 
     data = load_chain(args.input, args.dataset, idx=args.chain_idx)
@@ -144,6 +149,12 @@ def main():
     c_line = ('b', 'g', 'orange')
     
     print(n_tau_min)
+    
+    # Write attribute
+    if args.add_attribute:
+        with h5py.File(args.input, 'r+') as f:
+            dset = f[args.dataset]
+            dset.attrs['n_tau'] = np.float32(n_tau_min)
     
     # Optionally, plot figure
     if args.output:

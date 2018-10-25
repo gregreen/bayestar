@@ -44,7 +44,7 @@ def main():
         type=str,
         default=r'[^0-9]([0-9]{5})[^0-9]',
         help=('Regex pattern to use to extract index '
-              'from input filenames.'))
+              'from input filenames (default: [^0-9]([0-9]{5})[^0-9]).'))
     parser.add_argument(
         '-n',
         metavar='N',
