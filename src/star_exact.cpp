@@ -351,17 +351,18 @@ void gaussian_filter(double inv_cov_00, double inv_cov_01, double inv_cov_11,
 
 
 double integrate_ML_solution(
-            TStellarModel& stellar_model,
-            TGalacticLOSModel& los_model,
-            TStellarData::TMagnitudes& mags_obs,
-            TExtinctionModel& ext_model,
-            TImgStack& img_stack,
-            unsigned int img_idx,
-            bool save_gaussians,
-            std::shared_ptr<std::vector<TDMESaveData> > save_data,
-            bool use_priors,
-            bool use_gaia,
-            double RV, int verbosity)
+        TStellarModel& stellar_model,
+        TGalacticLOSModel& los_model,
+        TStellarData::TMagnitudes& mags_obs,
+        TExtinctionModel& ext_model,
+        TImgStack& img_stack,
+        unsigned int img_idx,
+        bool save_gaussians,
+        std::vector<TDMESaveData>& fit_centers,
+        std::vector<float>& fit_icov,
+        bool use_priors,
+        bool use_gaia,
+        double RV, int verbosity)
 {
     //
     TSED sed;
@@ -551,18 +552,20 @@ double integrate_ML_solution(
                       << " Gaussians." << std::endl;
         }
         
-        //std::shared_ptr<std::vector<TDMESaveData> > save_data
-        //    = std::make_shared<std::vector<TDMESaveData> >();
-        save_data->reserve(save_list.size());
+        fit_centers.reserve(save_list.size());
         
         for(int32_t i : save_list) {
-            save_data->push_back({
+            fit_centers.push_back({
                 (float)(mu_ML.at(i)),
                 (float)(E_ML.at(i)),
                 (float)(-0.5*(chi2_ML.at(i) - chi2_min_filtered)),
                 (float)(prior_ML.at(i) - prior_max)
             });
         }
+        
+        fit_icov.push_back(inv_cov_00); // dm,dm
+        fit_icov.push_back(inv_cov_01); // dm,E
+        fit_icov.push_back(inv_cov_11); // E,E
     }
 
     // Return mininum chi^2 / passband
@@ -619,16 +622,18 @@ void grid_eval_stars(TGalacticLOSModel& los_model,
     group_name << "/" << stellar_data.pix_name;
     
     // Create empty vector of stellar data to save
-    std::vector<std::shared_ptr<std::vector<TDMESaveData> > > save_data;
-    save_data.reserve(n_stars);
+    std::vector<std::vector<TDMESaveData> > fit_centers;
+    std::vector<float> fit_icovs;
+    fit_centers.reserve(n_stars);
+    fit_icovs.reserve(n_stars);
 
     for(int i=0; i<n_stars; i++) {
         if(verbosity >= 2) {
             std::cerr << "Star " << i+1 << " of " << n_stars << std::endl;
         }
         
-        save_data.push_back(
-            std::make_shared<std::vector<TDMESaveData> >()
+        fit_centers.push_back(
+            std::vector<TDMESaveData>()
         );
 
         double chi2_min = integrate_ML_solution(
@@ -636,7 +641,8 @@ void grid_eval_stars(TGalacticLOSModel& los_model,
             stellar_data[i], ext_model,
             img_stack, i,
             save_gaussians,
-            save_data.at(i),
+            fit_centers.at(i),
+            fit_icovs,
             use_priors,
             use_gaia,
             RV,
@@ -651,7 +657,8 @@ void grid_eval_stars(TGalacticLOSModel& los_model,
             out_fname,
             group_name.str(),
             "gridstars",
-            save_data
+            fit_centers,
+            fit_icovs
         );
     }
     
@@ -739,14 +746,18 @@ bool save_gridstars(
     const std::string& fname,
     const std::string& group,
     const std::string& dset,
-    std::vector<std::shared_ptr<std::vector<TDMESaveData> > >& fits)
+    std::vector<std::vector<TDMESaveData> >& fit_centers,
+    std::vector<float>& fit_icovs)
 {
     // Number of stars to save
-    uint32_t n_stars = fits.size();
+    uint32_t n_stars = fit_centers.size();
 	if(n_stars == 0) {
 		std::cerr << "! No stars to write." << std::endl;
 		return false;
 	}
+    
+    // # of covariance matrices should match # of stars
+    assert(fit_icovs.size() == 3 * n_stars);
 
     // Open up file and create group
 	H5::Exception::dontPrint();
@@ -759,9 +770,9 @@ bool save_gridstars(
     
     // Determine maximum number of Gaussians for one star
     uint32_t n_gaussians = 0;
-    for(auto v : fits) {
-        if(v->size() > n_gaussians) {
-            n_gaussians = v->size();
+    for(auto& v : fit_centers) {
+        if(v.size() > n_gaussians) {
+            n_gaussians = v.size();
         }
     }
     
@@ -785,6 +796,8 @@ bool save_gridstars(
 	hsize_t n_stars_chunk = target_size / size_per_star;
     if(n_stars_chunk < 1) {
         n_stars_chunk = 1;
+    } else if(n_stars_chunk > n_stars) {
+        n_stars_chunk = n_stars;
     }
 	hsize_t chunk[2] = {n_stars_chunk, n_gaussians};
 	plist.setChunk(2, &(chunk[0]));
@@ -796,11 +809,11 @@ bool save_gridstars(
     
     // Copy data into one array
     TDMESaveData* data = new TDMESaveData[n_stars*n_gaussians];
-    for(int i=0; i<fits.size(); i++) {
-        for(int j=0; j<fits[i]->size(); j++) {
-            data[n_gaussians*i+j] = fits[i]->at(j);
+    for(int i=0; i<fit_centers.size(); i++) {
+        for(int j=0; j<fit_centers[i].size(); j++) {
+            data[n_gaussians*i+j] = fit_centers[i].at(j);
         }
-        for(int j=fits[i]->size(); j<n_gaussians; j++) {
+        for(int j=fit_centers[i].size(); j<n_gaussians; j++) {
             TDMESaveData* d = &(data[n_gaussians*i+j]);
             d->dm = 0.;
             d->E = 0.;
@@ -811,4 +824,57 @@ bool save_gridstars(
     
     // Write dataset
     dataset.write(data, dtype);
+    
+    // Write stellar covariances
+    std::stringstream dset_cov;
+    dset_cov << dset << "_icov";
+    
+    //std::cout << "dset_cov = " << dset_cov.str() << std::endl;
+    
+    hsize_t dim_cov[2] = {n_stars, 3}; // (dm,dm), (dm,E), (E,E)
+    H5::DataSpace dspace_cov(2, &(dim_cov[0]));
+    
+    H5::DSetCreatPropList plist_cov;
+	int64_t size_per_star_cov = dim_cov[1] * sizeof(float);
+	hsize_t n_stars_chunk_cov = target_size / size_per_star_cov;
+    if(n_stars_chunk_cov < 1) {
+        n_stars_chunk_cov = 1;
+    } else if(n_stars_chunk_cov > n_stars) {
+        n_stars_chunk_cov = n_stars;
+    }
+	hsize_t chunk_cov[2] = {n_stars_chunk_cov, dim_cov[1]};
+	plist_cov.setChunk(2, &(chunk_cov[0]));
+	plist_cov.setDeflate(3); // DEFLATE compression level (min=0, max=9)
+    //std::cout << "chunk length: " << n_stars_chunk_cov << std::endl;
+
+    //std::cout << "Creating dataset_cov" << std::endl;
+    
+	H5::DataSet dataset_cov = gp->createDataSet(
+        dset_cov.str(),
+        H5::PredType::NATIVE_FLOAT,
+        dspace_cov,
+        plist_cov);
+    
+    //std::cout << "Writing dataset_cov" << std::endl;
+    
+    dataset_cov.write(fit_icovs.data(), H5::PredType::NATIVE_FLOAT);
+    
+    // Attribute noting meaning of inverse cov. matrix entries
+    //std::cout << "Closing file" << std::endl;
+    file->close();
+    
+    //std::cout << "Adding attribute" << std::endl;
+    std::stringstream dset_cov_fullpath;
+    dset_cov_fullpath << group << "/" << dset_cov.str();
+    //std::cout << "Writing attribute to " << dset_cov_fullpath.str()
+    //          << std::endl;
+    std::string attr_name = "entries";
+    std::string attr_value = "dd, dE, EE";
+    H5Utils::add_watermark(
+        fname,
+        dset_cov_fullpath.str(),
+        attr_name,
+        attr_value
+    );
+    //std::cout << "Done." << std::endl;
 }
