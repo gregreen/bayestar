@@ -262,7 +262,7 @@ def main():
     pdf_stack = None
     pdf_indiv = None
     EBV_max = args.EBV_max
-
+    
     try:
         dset = '%s/stellar chains' % group
         chain = hdf5io.TChain(fname, dset)
@@ -281,6 +281,27 @@ def main():
             chi2 = f[dset][:]
     except KeyError:
         chi2 = None
+    
+    # Load samples from brute-force stellar calculation
+    dset = '{:s}/gridstars'.format(group)
+    with h5py.File(fname, 'r') as f:
+        if dset in f:
+            grid_samples = f[dset][:]
+            grid_samples_icov = f[dset+'_icov'][:]
+        else:
+            grid_samples = None
+    
+    if grid_samples is not None:
+        grid_samples_det = (
+            grid_samples_icov[:,0]*grid_samples_icov[:,2]
+            - grid_samples_icov[:,1]**2
+        )
+        grid_samples_cov = np.empty((grid_samples.shape[0], 2, 2), dtype='f8')
+        grid_samples_cov[:,0,0] = grid_samples_icov[:,2]
+        grid_samples_cov[:,0,1] = -grid_samples_icov[:,1]
+        grid_samples_cov[:,1,0] = -grid_samples_icov[:,1]
+        grid_samples_cov[:,1,1] = grid_samples_icov[:,0]
+        grid_samples_cov /= grid_samples_det[:,None,None]
 
     # Load catalog
     if args.catalog is not None:
@@ -408,6 +429,22 @@ def main():
 
         ax.imshow(img, extent=bounds, origin='lower',
                   aspect='auto', cmap='Blues', interpolation='nearest')
+        
+        if grid_samples is not None:
+            d_grid_samples = np.random.multivariate_normal(
+                [0., 0.],
+                grid_samples_cov[i],
+                size=grid_samples.shape[1]
+            )
+            ax.scatter(
+                grid_samples[i]['dm'] + d_grid_samples[:,0],
+                grid_samples[i]['E'] + d_grid_samples[:,1],
+                c=grid_samples[i]['Mr'],
+                edgecolors='none',
+                s=5,
+                alpha=0.5,
+                cmap='plasma_r'
+            )
 
         c = 'k'
         
