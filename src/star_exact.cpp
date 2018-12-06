@@ -426,6 +426,13 @@ double integrate_ML_solution(
             if(use_priors) {
                 prior = los_model.log_prior_emp(mu, Mr, FeH)
                         + stellar_model.get_log_lf(Mr);
+                if(std::isnan(prior) || std::isinf(prior)) {
+                    prior = -std::numeric_limits<double>::infinity();
+                }
+            }
+            
+            if(std::isnan(chi2) || std::isinf(chi2)) {
+                chi2 = std::numeric_limits<double>::infinity();
             }
             
             // std::cerr << "p(FeH = " << FeH << ") = " << prior << std::endl;
@@ -462,11 +469,20 @@ double integrate_ML_solution(
     unsigned int img_idx0, img_idx1;
     double a0, a1;
     
+    std::vector<double> log_p_all;
+    log_p_all.reserve(mu_ML.size());
+    
+    double chi2_min_filtered = std::numeric_limits<double>::infinity();
+    
     for(int k=0; k<mu_ML.size(); k++) {
         // Calculate ln(p/p_0)
         double log_p = -0.5 * (chi2_ML.at(k) - chi2_min);
         if(use_priors) {
             log_p += prior_ML.at(k) - prior_max;
+        }
+        
+        if(save_gaussians) {
+            log_p_all.push_back(log_p);
         }
         
         // Add single point to image at ML solution location (E, mu)
@@ -493,23 +509,27 @@ double integrate_ML_solution(
             img_stack.img[img_idx]->at<floating_t>(img_idx0, img_idx1+1) += (1-a0) * a1 * p;
             img_stack.img[img_idx]->at<floating_t>(img_idx0+1, img_idx1+1) += a0 * a1 * p;
             
-            // Choose whether or not to save this point
-            if(log_p > delta_logp_threshold) {
-                save_list.push_back(k);
+            if(chi2_ML.at(k) < chi2_min_filtered) {
+                chi2_min_filtered = chi2_ML.at(k);
             }
+            // Choose whether or not to save this point
+            //if(log_p > delta_logp_threshold) {
+            //    save_list.push_back(k);
+            //}
         }
     }
     
+    // TODO: Move this to after save_list is determined?
     // Filtered version of chi^2, excluding out-of-bounds (mu,E) values
-    std::vector<double> chi2_filtered;
-    chi2_filtered.reserve(save_list.size());
-    for(auto i : save_list) {
-        chi2_filtered.push_back(chi2_ML.at(i));
-    }
-    double chi2_min_filtered = 1.e9;
-    if(save_list.size()) {
-        chi2_min_filtered = *std::min_element(chi2_filtered.begin(), chi2_filtered.end());
-    }
+    //std::vector<double> chi2_filtered;
+    //chi2_filtered.reserve(save_list.size());
+    //for(auto i : save_list) {
+    //    chi2_filtered.push_back(chi2_ML.at(i));
+    //}
+    //double chi2_min_filtered = 1.e9;
+    //if(save_list.size()) {
+    //    chi2_min_filtered = *std::min_element(chi2_filtered.begin(), chi2_filtered.end());
+    //}
     
     //for(int j=0; j<img_stack.rect->N_bins[0]; j++) {
     //    for(int k=0; k<img_stack.rect->N_bins[1]; k++) {
@@ -547,10 +567,37 @@ double integrate_ML_solution(
     
     // Stores chosen Gaussians
     if(save_gaussians) {
-        if(verbosity >= 2) {
-            std::cerr << "Saving " << save_list.size()
-                      << " Gaussians." << std::endl;
+        // Construct discrete distribution
+        std::vector<double> p_all;
+        p_all.reserve(mu_ML.size());
+        double lnp_max = *std::max_element(
+            log_p_all.begin(),
+            log_p_all.end()
+        );
+        for(auto lnp : log_p_all) {
+            p_all.push_back(std::exp(lnp-lnp_max));
+            //std::cout << lnp - lnp_max << std::endl;
         }
+        std::discrete_distribution<uint16_t> d(
+            p_all.begin(),
+            p_all.end()
+        );
+        
+        // Create pseudorandom number generator
+        std::mt19937 r;
+        std::random_device rd;
+        r.seed(rd());
+        
+        // Draw n samples
+        int n_samples = 100;
+        for(int i=0; i<n_samples; i++) {
+            save_list.push_back(d(r));
+        }
+        
+        //if(verbosity >= 2) {
+        //    std::cerr << "Saving " << save_list.size()
+        //              << " Gaussians." << std::endl;
+        //}
         
         fit_centers.reserve(save_list.size());
         
@@ -583,8 +630,11 @@ double integrate_ML_solution(
     }
 
     if(verbosity >= 2) {
-        std::cerr << "# of passbands: " << n_passbands << std::endl;
-        std::cerr << "chi^2 / passband: " << chi2_min_filtered / n_passbands << std::endl;
+        std::cerr << "# of passbands: " << n_passbands
+                  << std::endl;
+        std::cerr << "chi^2 / passband: "
+                  << chi2_min_filtered / n_passbands
+                  << std::endl;
     }
 
     return chi2_min_filtered / n_passbands;
