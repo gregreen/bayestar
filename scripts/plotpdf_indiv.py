@@ -434,14 +434,16 @@ def main():
             d_grid_samples = np.random.multivariate_normal(
                 [0., 0.],
                 grid_samples_cov[i],
-                size=grid_samples_cov.shape[0]
+                size=grid_samples.shape[1]
             )
             ax.scatter(
                 grid_samples[i]['dm'] + d_grid_samples[:,0],
                 grid_samples[i]['E'] + d_grid_samples[:,1],
-                c='orange',
+                c=grid_samples[i]['Mr'],
                 edgecolors='none',
-                s=5
+                s=5,
+                alpha=0.5,
+                cmap='plasma_r'
             )
 
         c = 'k'

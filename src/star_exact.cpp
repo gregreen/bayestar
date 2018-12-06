@@ -461,8 +461,8 @@ double integrate_ML_solution(
     assert( chi2_ML.size() == mu_ML.size() );
     assert( prior_ML.size() == mu_ML.size() );
 
-    std::vector<int32_t> save_list; // List of Gaussians to save
-    save_list.reserve(mu_ML.size());
+    //std::vector<int32_t> save_list; // List of Gaussians to save
+    //save_list.reserve(mu_ML.size());
     double delta_logp_threshold = -8.;
     
     // Interpolation information
@@ -519,7 +519,6 @@ double integrate_ML_solution(
         }
     }
     
-    // TODO: Move this to after save_list is determined?
     // Filtered version of chi^2, excluding out-of-bounds (mu,E) values
     //std::vector<double> chi2_filtered;
     //chi2_filtered.reserve(save_list.size());
@@ -578,7 +577,7 @@ double integrate_ML_solution(
             p_all.push_back(std::exp(lnp-lnp_max));
             //std::cout << lnp - lnp_max << std::endl;
         }
-        std::discrete_distribution<uint16_t> d(
+        std::discrete_distribution<uint32_t> d(
             p_all.begin(),
             p_all.end()
         );
@@ -589,24 +588,23 @@ double integrate_ML_solution(
         r.seed(rd());
         
         // Draw n samples
-        int n_samples = 100;
+        int n_samples = 250;
+        fit_centers.reserve(n_samples);
+        
         for(int i=0; i<n_samples; i++) {
-            save_list.push_back(d(r));
-        }
-        
-        //if(verbosity >= 2) {
-        //    std::cerr << "Saving " << save_list.size()
-        //              << " Gaussians." << std::endl;
-        //}
-        
-        fit_centers.reserve(save_list.size());
-        
-        for(int32_t i : save_list) {
+            uint32_t sample_idx = d(r);
+            
+            unsigned int FeH_idx = sample_idx % N_FeH;
+            unsigned int Mr_idx = (sample_idx - FeH_idx) / N_FeH;
+            stellar_model.get_Mr_FeH(Mr_idx, FeH_idx, Mr, FeH);
+            
             fit_centers.push_back({
-                (float)(mu_ML.at(i)),
-                (float)(E_ML.at(i)),
-                (float)(-0.5*(chi2_ML.at(i) - chi2_min_filtered)),
-                (float)(prior_ML.at(i) - prior_max)
+                (float)(mu_ML.at(sample_idx)),
+                (float)(E_ML.at(sample_idx)),
+                (float)Mr,
+                (float)FeH,
+                (float)(-0.5*(chi2_ML.at(sample_idx) - chi2_min_filtered)),
+                (float)(prior_ML.at(sample_idx) - prior_max)
             });
         }
         
@@ -830,6 +828,8 @@ bool save_gridstars(
     H5::CompType dtype(sizeof(TDMESaveData));
     dtype.insertMember("dm", HOFFSET(TDMESaveData, dm), H5::PredType::NATIVE_FLOAT);
     dtype.insertMember("E", HOFFSET(TDMESaveData, E), H5::PredType::NATIVE_FLOAT);
+    dtype.insertMember("Mr", HOFFSET(TDMESaveData, Mr), H5::PredType::NATIVE_FLOAT);
+    dtype.insertMember("FeH", HOFFSET(TDMESaveData, FeH), H5::PredType::NATIVE_FLOAT);
     dtype.insertMember("ln_likelihood", HOFFSET(TDMESaveData, ln_likelihood), H5::PredType::NATIVE_FLOAT);
     dtype.insertMember("ln_prior", HOFFSET(TDMESaveData, ln_prior), H5::PredType::NATIVE_FLOAT);
     

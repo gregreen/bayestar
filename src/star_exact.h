@@ -52,6 +52,8 @@ void star_max_likelihood(TSED& mags_model, TStellarData::TMagnitudes& mags_obs,
 struct TDMESaveData {
     float dm;
     float E;
+    float Mr;
+    float FeH;
     float ln_likelihood;
     float ln_prior;
 };

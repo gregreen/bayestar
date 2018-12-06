@@ -90,7 +90,11 @@ public:
 				 TSED& sed, double& Mr, double& FeH) const;
 	unsigned int get_N_FeH() const;
 	unsigned int get_N_Mr() const;
-
+    
+    // Look up (Mr, FeH) corresponding to (i, j) index in grid
+    bool get_Mr_FeH(unsigned int Mr_idx, unsigned int FeH_idx,
+                    double& Mr, double& FeH) const;
+    
 	// Luminosity function
 	double get_log_lf(double Mr) const;
 

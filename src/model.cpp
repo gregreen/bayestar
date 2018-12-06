@@ -745,6 +745,21 @@ unsigned int TStellarModel::get_N_Mr() const {
 	return N_Mr_seds;
 }
 
+bool TStellarModel::get_Mr_FeH(
+        unsigned int Mr_idx, unsigned int FeH_idx,
+        double& Mr, double& FeH) const
+{
+	if((Mr_idx >= N_Mr_seds) || (FeH_idx >= N_FeH_seds)) {
+		std::cerr << " ! Mr_idx = " << Mr_idx
+				  << " , N_Mr_seds = " << N_Mr_seds << std::endl;
+  		std::cerr << " ! FeH_idx = " << FeH_idx
+  				  << " , N_FeH_seds = " << N_FeH_seds << std::endl;
+		return false;
+	}
+    sed_interp->get_xy(Mr_idx, FeH_idx, Mr, FeH);
+    return true;
+}
+
 bool TStellarModel::in_model(double Mr, double FeH) {
 	return (Mr > Mr_min_seds) && (Mr < Mr_max_seds) && (FeH > FeH_min_seds) && (FeH < FeH_max_seds);
 }
