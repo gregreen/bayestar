@@ -248,6 +248,10 @@ def main():
                                 help='Overplot true stellar (DM, EBV) from mock catalog.')
     parser.add_argument('-y', '--EBV-max', type=float,
                                 help='Maximum E(B-V) to plot.')
+    parser.add_argument('--transparent', action='store_true',
+                                help='Transparent plot background.')
+    parser.add_argument('--no-text-overlays', action='store_true',
+                                help='Do not overlay ln(Z), etc.')
     args = parser.parse_args()
 
     if (args.output == None) and not args.show:
@@ -446,21 +450,22 @@ def main():
                 cmap='plasma_r'
             )
 
-        c = 'k'
-        
-        if chi2 is None:
-            if lnZ[i] < lnZ_max - 10.:
-                c = 'r'
-            ax.text(x_lnZ, y_lnZ, r'$%.1f$' % lnZ[i],
-                    ha='left', va='top', fontsize=10, color=c)
-        else:
-            if chi2[i] > 5.:
-                c = 'r'
-            ax.text(x_lnZ, y_lnZ, r'${:.1f}$'.format(chi2[i]),
-                    ha='left', va='top', fontsize=10, color=c)
+        if not args.no_text_overlays:
+            c = 'k'
+            
+            if chi2 is None:
+                if lnZ[i] < lnZ_max - 10.:
+                    c = 'r'
+                ax.text(x_lnZ, y_lnZ, r'$%.1f$' % lnZ[i],
+                        ha='left', va='top', fontsize=10, color=c)
+            else:
+                if chi2[i] > 5.:
+                    c = 'r'
+                ax.text(x_lnZ, y_lnZ, r'${:.1f}$'.format(chi2[i]),
+                        ha='left', va='top', fontsize=10, color=c)
 
-        ax.text(x_idx, y_lnZ, r'$%d$' % i,
-                ha='right', va='top', fontsize=10, color='k')
+            ax.text(x_idx, y_lnZ, r'$%d$' % i,
+                    ha='right', va='top', fontsize=10, color='k')
 
         if args.show_los:
             los.plot(ax)
@@ -518,17 +523,26 @@ def main():
     # Save/show plot
     base_fname = args.output
 
-    if base_fname.endswith('.png'):
-        base_fname = base_fname[:-4]
+    ext = 'png'
+    for img_type in ('png', 'svg', 'pdf'):
+        if base_fname.endswith('.' + img_type):
+            base_fname = base_fname[:-4]
+            ext = img_type
+            break
 
     for i, fig in enumerate(figs):
-        print 'Saving figure %d of %d ...' % (i+1, len(figs))
+        print 'Saving figure {:d} of {:d} ...'.format(i+1, len(figs))
 
         fig.subplots_adjust(bottom=0.12, top=0.98,
                             left=0.12, right=0.98,
                             wspace=0., hspace=0.)
 
-        fig.savefig('%s.%.4d.png' % (base_fname, i), transparent=False, bbox_inches='tight', dpi=400)
+        fig.savefig(
+            '{:s}.{:04d}.{:s}'.format(base_fname, i, ext),
+            transparent=args.transparent,
+            bbox_inches='tight',
+            dpi=400
+        )
 
     if args.show:
         plt.show()
