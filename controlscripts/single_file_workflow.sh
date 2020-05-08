@@ -6,7 +6,7 @@
 # deletes the working directory.
 # 
 # Invocation:
-#   $ exec single_file_workflow.sh \
+#   $ bash single_file_workflow.sh \
 #         /full/path/to/input.h5 \
 #         /full/path/to/output.h5 \
 #         /config/base/filename.cfg \
