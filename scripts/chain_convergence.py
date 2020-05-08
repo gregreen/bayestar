@@ -124,6 +124,11 @@ def main():
         action='store_true',
         help='Write # of autocorrelation times to dataset '
              'as attribute.')
+    parser.add_argument(
+        '--store-results',
+        metavar='*.h5',
+        type=str,
+        help='Store results to the specified filename.')
     args = parser.parse_args()
 
     data = load_chain(args.input, args.dataset, idx=args.chain_idx)
@@ -155,6 +160,19 @@ def main():
         with h5py.File(args.input, 'r+') as f:
             dset = f[args.dataset]
             dset.attrs['n_tau'] = np.float32(n_tau_min)
+    
+    # Optionally, store results to file
+    if args.store_results is not None:
+        with h5py.File(args.store_results, 'w') as f:
+            n = acorr.size // 2
+            kw = dict(compression='gzip', compression_opts=3, chunks=True)
+            dset = f.create_dataset('chain_transf', data=chain_transf, **kw)
+            dset = f.create_dataset('eival', data=eival, **kw)
+            dset = f.create_dataset('ln_prior', data=data['ln_prior'], **kw)
+            dset = f.create_dataset('ln_likelihood', data=data['ln_like'], **kw)
+            dset = f.create_dataset('acorr_PC', data=acorr[:n], **kw)
+            dset = f.create_dataset('acorr_prior', data=acorr_prior[:n], **kw)
+            dset = f.create_dataset('acorr_likelihood', data=acorr_like[:n], **kw)
     
     # Optionally, plot figure
     if args.output:
