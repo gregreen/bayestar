@@ -131,6 +131,19 @@ def lb_in_bounds(l, b, bounds):
     return (l_p >= 0.) & (l_p <= l_1) & (b >= bounds[2]) & (b <= bounds[3])
 
 
+def lonlat_in_beam(l, b, l_0, b_0, r):
+    """
+    Returns True if (l, b) is less than r distance from (l_0, b_0).
+    All inputs are assumed to be in degrees. Also works for arrays
+    of l and b.
+    """
+    xyz0 = hp.pixelfunc.ang2vec(l_0, b_0, lonlat=True)
+    xyz = hp.pixelfunc.ang2vec(l, b, lonlat=True)
+    d2 = np.sum((xyz-xyz0[None,:])**2, axis=1)
+    theta = np.degrees(np.arccos(1. - 0.5 * d2))
+    return theta < r
+
+
 def shift_lon_lat(lon, lat, delta_lon, delta_lat,
                   degrees=True, clip=False):
     '''
