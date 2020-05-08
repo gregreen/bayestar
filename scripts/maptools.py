@@ -1062,14 +1062,14 @@ def reduce_to_single_res(pix_idx, nside, pix_val, nside_max=None):
     pix_val_exp = []
     
     for n in nside_unique:#[:-1]:
-        n_rep = (nside_max / n)**2
+        n_rep = (nside_max // n)**2
         
         idx = (nside == n)
         n_pix = np.sum(idx)
         
-        pix_idx_n = np.repeat(n_rep * pix_idx[idx], n_rep, axis=0)
+        pix_idx_n = np.repeat(n_rep * pix_idx[idx], n_rep, axis=0).astype('i8')
         
-        pix_adv = np.mod(np.arange(n_rep * n_pix), n_rep)
+        pix_adv = np.mod(np.arange(n_rep * n_pix), n_rep).astype('i8')
         pix_idx_n += pix_adv
         
         pix_val_n = np.repeat(pix_val[idx], n_rep, axis=0)
