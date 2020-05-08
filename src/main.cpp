@@ -285,6 +285,7 @@ int main(int argc, char **argv) {
             H5Utils::add_watermark<uint64_t>(opts.output_fname, group_name.str(), "healpix_index", stellar_data.healpix_index);
             H5Utils::add_watermark<double>(opts.output_fname, group_name.str(), "l", stellar_data.l);
             H5Utils::add_watermark<double>(opts.output_fname, group_name.str(), "b", stellar_data.b);
+            H5Utils::add_watermark<uint32_t>(opts.output_fname, group_name.str(), "n_stars", stellar_data.star.size());
         } catch(H5::AttributeIException err_att_exists) { }
 
         // Filter based on goodness-of-fit and convergence
@@ -338,7 +339,11 @@ int main(int argc, char **argv) {
                     n_filtered++;
                 }
             }
-            // Write stellar rejection fraction to output file
+            // Save # of rejected stars
+            try {
+                H5Utils::add_watermark<uint32_t>(opts.output_fname, group_name.str(), "n_stars_rejected", n_filtered);
+            } catch(H5::AttributeIException err_att_exists) { }
+            // Save rejection fraction
             double reject_frac = (double)n_filtered / chi2.size();
             try {
                 H5Utils::add_watermark<double>(opts.output_fname, group_name.str(), "reject_frac", reject_frac);
@@ -346,137 +351,139 @@ int main(int argc, char **argv) {
         }
         if(gatherSurfs) { img_stack.cull(keep); }
 
+        cout << "# of stars filtered: "
+             << n_filtered << " of " << n_stars;
+        cout << " (" << 100. * (double)n_filtered / n_stars
+             << " %)" << endl;
+
         // Fit line-of-sight extinction profile
-        if(((opts.N_clouds != 0) || (opts.N_regions != 0) || opts.discrete_los)
-                && (n_filtered < n_stars)) {
-            //
-            cout << "# of stars filtered: "
-                 << n_filtered << " of " << n_stars;
-            cout << " (" << 100. * (double)n_filtered / n_stars
-                 << " %)" << endl;
-
-            double p0 = exp(-5. - opts.ev_cut);
-            double EBV_max = -1.;
-            if(opts.SFD_prior) {
-                if(opts.SFD_subpixel) {
-                    EBV_max = 1.;
-                } else {
-                    EBV_max = stellar_data.EBV;
+        if((opts.N_clouds != 0) || (opts.N_regions != 0) || opts.discrete_los) {
+            if(n_filtered >= n_stars) {
+                cout << "Every star was rejected!" << endl;
+            } else {
+                double p0 = exp(-5. - opts.ev_cut);
+                double EBV_max = -1.;
+                if(opts.SFD_prior) {
+                    if(opts.SFD_subpixel) {
+                        EBV_max = 1.;
+                    } else {
+                        EBV_max = stellar_data.EBV;
+                    }
                 }
-            }
 
-            TLOSMCMCParams params(
-                &img_stack, lnZ_filtered, p0,
-                opts.N_runs, opts.N_threads,
-                opts.N_regions, EBV_max
-            );
-            if(opts.SFD_subpixel) { params.set_subpixel_mask(subpixel); }
+                TLOSMCMCParams params(
+                    &img_stack, lnZ_filtered, p0,
+                    opts.N_runs, opts.N_threads,
+                    opts.N_regions, EBV_max
+                );
+                if(opts.SFD_subpixel) { params.set_subpixel_mask(subpixel); }
 
-            if(opts.test_mode) {
-                test_extinction_profiles(params);
-            }
+                if(opts.test_mode) {
+                    test_extinction_profiles(params);
+                }
 
-            // Sample discrete l.o.s. model
-            if(opts.discrete_los) {
-                std::unique_ptr<TNeighborPixels> neighbor_pixels;
+                // Sample discrete l.o.s. model
+                if(opts.discrete_los) {
+                    std::unique_ptr<TNeighborPixels> neighbor_pixels;
 
-                if((opts.neighbor_lookup_fname != "NONE") &&
-                   (opts.pixel_lookup_fname != "NONE") &&
-                   (opts.output_fname_pattern != "NONE"))
-                {
-                    // Load information on neighboring pixels
-                    cout << "Loading information on neighboring pixels ..." << endl;
-                    neighbor_pixels = std::make_unique<TNeighborPixels>(
-                        stellar_data.nside,
-                        stellar_data.healpix_index,
-                        opts.neighbor_lookup_fname,
-                        opts.pixel_lookup_fname,
-                        opts.output_fname_pattern,
-                        1000);
-                    
-                    if(!neighbor_pixels->data_loaded()) {
-                        cerr << "Failed to load neighboring pixels! Aborting."
-                             << endl;
-                        return 1;
+                    if((opts.neighbor_lookup_fname != "NONE") &&
+                       (opts.pixel_lookup_fname != "NONE") &&
+                       (opts.output_fname_pattern != "NONE"))
+                    {
+                        // Load information on neighboring pixels
+                        cout << "Loading information on neighboring pixels ..." << endl;
+                        neighbor_pixels = std::make_unique<TNeighborPixels>(
+                            stellar_data.nside,
+                            stellar_data.healpix_index,
+                            opts.neighbor_lookup_fname,
+                            opts.pixel_lookup_fname,
+                            opts.output_fname_pattern,
+                            1000);
+                        
+                        if(!neighbor_pixels->data_loaded()) {
+                            cerr << "Failed to load neighboring pixels! Aborting."
+                                 << endl;
+                            return 1;
+                        }
+                        
+                        // Calculate covariance matrices tying
+                        // pixels together at each distance
+                        neighbor_pixels->init_covariance(
+                            opts.correlation_scale,
+                            opts.d_soft,
+                            opts.gamma_soft);
                     }
                     
-                    // Calculate covariance matrices tying
-                    // pixels together at each distance
-                    neighbor_pixels->init_covariance(
-                        opts.correlation_scale,
-                        opts.d_soft,
-                        opts.gamma_soft);
-                }
-                
-                TDiscreteLosMcmcParams discrete_los_params(
-                    &img_stack,
-                    std::move(neighbor_pixels),
-                    1, 1,
-                    opts.verbosity);
-                discrete_los_params.initialize_priors(
-                    los_model,
-                    opts.log_Delta_EBV_floor,
-                    opts.log_Delta_EBV_ceil,
-                    opts.sigma_log_Delta_EBV,
-                    opts.verbosity
-                );
-                
-                std::vector<uint16_t> neighbor_sample;
-
-                if(discrete_los_params.neighbor_pixels) {
-                    cout << "Initializing dominant distances ..." << endl;
-                    discrete_los_params.neighbor_pixels->init_dominant_dist(opts.verbosity);
-
-                    //cout << "Resampling neighboring pixels ..." << endl;
-                    //sample_neighbors(*(discrete_los_params.neighbor_pixels), opts.verbosity);
-                    //sample_neighbors_pt(
-                    //    *(discrete_los_params.neighbor_pixels),
-                    //    neighbor_sample,
-                    //    opts.verbosity
-                    //);
-                }
-
-                cout << "Sampling line of sight discretely ..." << endl;
-                sample_los_extinction_discrete(
-                    opts.output_fname,
-                    *it,
-                    discrete_los_options,
-                    discrete_los_params,
-                    neighbor_sample,
-                    opts.dsc_samp_settings,
-                    opts.verbosity
-                );
-                cout << "Done with discrete sampling." << endl;
-            }
-
-            if(opts.N_clouds != 0) {
-                sample_los_extinction_clouds(
-                    opts.output_fname, *it,
-                    cloud_options, params,
-                    opts.N_clouds, opts.verbosity
-                );
-            }
-            if(opts.N_regions != 0) {
-                // Covariance matrix for guess has (anti-)correlation
-                // length of 1 distance bin
-                params.gen_guess_covariance(1.);
-
-                if(opts.disk_prior) {
-                    params.alpha_skew = 1.;
-                    params.calc_Delta_EBV_prior(
+                    TDiscreteLosMcmcParams discrete_los_params(
+                        &img_stack,
+                        std::move(neighbor_pixels),
+                        1, 1,
+                        opts.verbosity);
+                    discrete_los_params.initialize_priors(
                         los_model,
                         opts.log_Delta_EBV_floor,
                         opts.log_Delta_EBV_ceil,
-                        stellar_data.EBV,
-                        1.4,
+                        opts.sigma_log_Delta_EBV,
                         opts.verbosity
                     );
+                    
+                    std::vector<uint16_t> neighbor_sample;
+
+                    if(discrete_los_params.neighbor_pixels) {
+                        cout << "Initializing dominant distances ..." << endl;
+                        discrete_los_params.neighbor_pixels->init_dominant_dist(opts.verbosity);
+
+                        //cout << "Resampling neighboring pixels ..." << endl;
+                        //sample_neighbors(*(discrete_los_params.neighbor_pixels), opts.verbosity);
+                        //sample_neighbors_pt(
+                        //    *(discrete_los_params.neighbor_pixels),
+                        //    neighbor_sample,
+                        //    opts.verbosity
+                        //);
+                    }
+
+                    cout << "Sampling line of sight discretely ..." << endl;
+                    sample_los_extinction_discrete(
+                        opts.output_fname,
+                        *it,
+                        discrete_los_options,
+                        discrete_los_params,
+                        neighbor_sample,
+                        opts.dsc_samp_settings,
+                        opts.verbosity
+                    );
+                    cout << "Done with discrete sampling." << endl;
                 }
 
-                sample_los_extinction(
-                    opts.output_fname, *it,
-                    los_options, params, opts.verbosity
-                );
+                if(opts.N_clouds != 0) {
+                    sample_los_extinction_clouds(
+                        opts.output_fname, *it,
+                        cloud_options, params,
+                        opts.N_clouds, opts.verbosity
+                    );
+                }
+                if(opts.N_regions != 0) {
+                    // Covariance matrix for guess has (anti-)correlation
+                    // length of 1 distance bin
+                    params.gen_guess_covariance(1.);
+
+                    if(opts.disk_prior) {
+                        params.alpha_skew = 1.;
+                        params.calc_Delta_EBV_prior(
+                            los_model,
+                            opts.log_Delta_EBV_floor,
+                            opts.log_Delta_EBV_ceil,
+                            stellar_data.EBV,
+                            1.4,
+                            opts.verbosity
+                        );
+                    }
+
+                    sample_los_extinction(
+                        opts.output_fname, *it,
+                        los_options, params, opts.verbosity
+                    );
+                }
             }
         }
 
