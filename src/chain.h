@@ -337,7 +337,6 @@ private:
 };
 
 
-
 /*************************************************************************
  *   Convergence diagnostics in transformed parameter space
  *       (e.g. observable space)

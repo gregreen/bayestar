@@ -159,8 +159,23 @@ void draw_from_synth_model(size_t nstars, double RV, TGalacticLOSModel& gal_mode
 void draw_from_emp_model(size_t nstars, double RV, TGalacticLOSModel& gal_model, TStellarModel& stellar_model,
                            TStellarData& stellar_data, TExtinctionModel& ext_model, double (&mag_limit)[NBANDS]);
 
-// Return healpix indices of pixels in input file
-void get_input_pixels(std::string fname, std::vector<std::string> &pix_name);
+// Return names of pixels in input file
+void get_input_pixels(
+        std::string fname,
+        std::vector<std::string> &pix_name,
+        const std::string &base="/photometry"
+);
 
+// Return attributes describing pixels in input file, given list of pixel names
+void get_pixel_props(
+        const std::string& fname,
+        const std::vector<std::string>& pix_name,
+        std::vector<double>& l,
+        std::vector<double>& b,
+        std::vector<double>& EBV,
+        std::vector<uint32_t>& nside,
+        std::vector<uint64_t>& healpix_index,
+        const std::string &base="/photometry"
+);
 
 #endif // _STELLAR_DATA_H__

@@ -34,6 +34,7 @@
 #include <sstream>
 #include <memory>
 #include <vector>
+#include <cassert>
 #include <H5Cpp.h>
 
 namespace H5Utils {
@@ -63,16 +64,38 @@ namespace H5Utils {
     
     // Read attribute from group
     template<class T>
-    T read_attribute(H5::DataSet& dataset, const std::string& name);
-    
-    template<class T>
     T read_attribute(H5::Group& group, const std::string& name);
+    
+    template<>
+    float read_attribute<float>(H5::Group& g, const std::string& name);
+    
+    template<>
+    double read_attribute<double>(H5::Group& g, const std::string& name);
+    
+    template<>
+    uint32_t read_attribute<uint32_t>(H5::Group& g, const std::string& name);
+    
+    template<>
+    uint64_t read_attribute<uint64_t>(H5::Group& g, const std::string& name);
 	
 	bool group_exists(const std::string& name, H5::H5File& file);
 	bool group_exists(const std::string& name, H5::Group& group);
 	
 	bool dataset_exists(const std::string& name, H5::H5File& file);
 	bool dataset_exists(const std::string& name, H5::Group& group);
+    
+    // Read attribute directly
+    template<class T>
+    void read_attribute_1d_helper(H5::Attribute& attribute, std::vector<T> &ret);
+    
+    template<class T>
+    std::vector<T> read_attribute_1d(H5::Attribute& attribute);
+    
+    template<>
+    std::vector<double> read_attribute_1d<double>(H5::Attribute& attribute);
+
+    template<>
+    std::vector<uint32_t> read_attribute_1d<uint32_t>(H5::Attribute& attribute);
 	
     // Write attribute to group or dataset in file
 	template<class T>

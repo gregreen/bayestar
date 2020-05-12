@@ -39,23 +39,11 @@
 using namespace std;
 
 
-int main(int argc, char **argv) {
-    gsl_set_error_handler_off();
-
+int full_workflow(TProgramOpts &opts, int argc, char **argv) {
     /*
-     *  Parse commandline arguments
+     * Determines stellar posterior densities,
+     * then determines the l.o.s. reddening.
      */
-
-    TProgramOpts opts;
-    int parse_res = get_program_opts(argc, argv, opts);
-    if(parse_res <= 0) { return parse_res; }
-
-    time_t tmp_time = time(0);
-    char * dt = ctime(&tmp_time);
-    cout << "# Start time: " << dt;
-
-    timespec prog_start_time;
-    clock_gettime(CLOCK_MONOTONIC, &prog_start_time);
 
 
     /*
@@ -118,6 +106,7 @@ int main(int argc, char **argv) {
             << " (" << pixel_list_no + 1 << " of " << pix_name.size() << ")"
             << endl;
 
+        // Load input photometry
         TStellarData stellar_data(opts.input_fname, *it, opts.err_floor);
         TGalacticLOSModel los_model(
             stellar_data.l,
@@ -230,7 +219,7 @@ int main(int argc, char **argv) {
 
         // Prepare data structures for stellar parameters
         unsigned int n_stars = stellar_data.star.size();
-        TImgStack img_stack(n_stars);
+        std::unique_ptr<TImgStack> img_stack(new TImgStack(n_stars));
         vector<bool> conv;
         vector<double> lnZ;
         vector<double> chi2;
@@ -242,7 +231,7 @@ int main(int argc, char **argv) {
             // Grid evaluation of stellar models
             grid_eval_stars(los_model, ext_model, *emplib,
                             stellar_data, EBV_smoothing,
-                            img_stack, chi2,
+                            *img_stack, chi2,
                             opts.save_surfs,
                             opts.save_gridstars,
                             opts.output_fname,
@@ -252,14 +241,14 @@ int main(int argc, char **argv) {
         } else if(opts.synthetic) {
             // MCMC sampling of synthetic stellar model
             sample_indiv_synth(opts.output_fname, star_options, los_model, *synthlib, ext_model,
-                               stellar_data, img_stack, conv, lnZ, opts.sigma_RV,
+                               stellar_data, *img_stack, conv, lnZ, opts.sigma_RV,
                                opts.min_EBV, opts.save_surfs, gatherSurfs, opts.verbosity);
         } else {
             #ifdef _USE_PARALLEL_TEMPERING__
             // MCMC sampling of empirical stellar model
             sample_indiv_emp_pt(opts.output_fname, star_options, los_model,
                                 *emplib, ext_model, EBV_smoothing,
-                                stellar_data, img_stack, conv, lnZ,
+                                stellar_data, *img_stack, conv, lnZ,
                                 opts.mean_RV, opts.sigma_RV, opts.min_EBV,
                                 opts.save_surfs, gatherSurfs, opts.star_priors,
                                 opts.verbosity);
@@ -267,7 +256,7 @@ int main(int argc, char **argv) {
             // MCMC sampling of empirical stellar model
             sample_indiv_emp(opts.output_fname, star_options, los_model,
                              *emplib, ext_model, EBV_smoothing,
-                             stellar_data, img_stack, conv, lnZ,
+                             stellar_data, *img_stack, conv, lnZ,
                              opts.mean_RV, opts.sigma_RV, opts.min_EBV,
                              opts.save_surfs, gatherSurfs, opts.star_priors,
                              opts.verbosity);
@@ -349,7 +338,7 @@ int main(int argc, char **argv) {
                 H5Utils::add_watermark<double>(opts.output_fname, group_name.str(), "reject_frac", reject_frac);
             } catch(H5::AttributeIException err_att_exists) { }
         }
-        if(gatherSurfs) { img_stack.cull(keep); }
+        if(gatherSurfs) { img_stack->cull(keep); }
 
         cout << "# of stars filtered: "
              << n_filtered << " of " << n_stars;
@@ -372,7 +361,7 @@ int main(int argc, char **argv) {
                 }
 
                 TLOSMCMCParams params(
-                    &img_stack, lnZ_filtered, p0,
+                    img_stack.get(), lnZ_filtered, p0,
                     opts.N_runs, opts.N_threads,
                     opts.N_regions, EBV_max
                 );
@@ -415,7 +404,7 @@ int main(int argc, char **argv) {
                     }
                     
                     TDiscreteLosMcmcParams discrete_los_params(
-                        &img_stack,
+                        std::move(img_stack),
                         std::move(neighbor_pixels),
                         1, 1,
                         opts.verbosity);
@@ -551,6 +540,359 @@ int main(int argc, char **argv) {
 
     if(synthlib != NULL) { delete synthlib; }
     if(emplib != NULL) { delete emplib; }
+    
+    return 0;
+}
+
+
+int los_workflow(TProgramOpts &opts, int argc, char **argv) {
+    /*
+     * Uses pre-computed stellar posterior densities
+     * to determine the l.o.s. reddening.
+     */
+
+
+    /*
+     *  MCMC Options
+     */
+
+    TMCMCOptions cloud_options(opts.cloud_steps, opts.cloud_samplers, opts.cloud_p_replacement, opts.N_runs);
+    TMCMCOptions los_options(opts.los_steps, opts.los_samplers, opts.los_p_replacement, opts.N_runs);
+
+    TMCMCOptions discrete_los_options(opts.discrete_steps, 1, 0., opts.N_runs);    // TODO: Create commandline options for this
+
+
+    /*
+     *  Construct models
+     */
+
+    TExtinctionModel ext_model(opts.ext_model_fname);
+
+    TEBVSmoothing EBV_smoothing(opts.smoothing_alpha_coeff,
+                                opts.smoothing_beta_coeff,
+                                opts.pct_smoothing_min,
+                                opts.pct_smoothing_max);
+
+    /*
+     *  Execute
+     */
+
+    omp_set_num_threads(opts.N_threads);
+
+    // Get list of pixels in input file
+    vector<string> pix_name;
+    get_input_pixels(opts.input_fname, pix_name, "/stellar_pdfs");
+    cout << "# " << pix_name.size() << " pixels in input file." << endl << endl;
+    
+    // Get (l,b), (nside, healpix index), EBV estimate of each pixel
+    vector<double> pix_l, pix_b, pix_EBV;
+    vector<uint32_t> pix_nside;
+    vector<uint64_t> pix_idx;
+    get_pixel_props(
+        opts.input_fname,
+        pix_name,
+        pix_l, pix_b, pix_EBV,
+        pix_nside, pix_idx,
+        "/stellar_pdfs"
+    );
+
+    // Remove the output file
+    if(opts.clobber) {
+        remove(opts.output_fname.c_str());
+    }
+
+    H5::Exception::dontPrint();
+
+    // Run each pixel
+    timespec t_start, t_mid, t_end;
+
+    double t_tot, t_star;
+    unsigned int pixel_list_no = 0;
+
+    for(vector<string>::iterator it = pix_name.begin(); it != pix_name.end(); ++it, pixel_list_no++) {
+        clock_gettime(CLOCK_MONOTONIC, &t_start);
+
+        cout << "# Pixel: " << *it
+            << " (" << pixel_list_no + 1 << " of " << pix_name.size() << ")"
+            << endl;
+
+        double l = pix_l.at(pixel_list_no);
+        double b = pix_b.at(pixel_list_no);
+        double EBV = pix_EBV.at(pixel_list_no);
+        uint32_t nside = pix_nside.at(pixel_list_no);
+        uint32_t hpidx = pix_idx.at(pixel_list_no);
+        
+        // Load input photometry
+        TGalacticLOSModel los_model(
+            l, b,
+            opts.gal_struct_params
+        );
+        
+        cout << "# HEALPix index: " << hpidx
+             << " (nside = " << nside << ")" << endl;
+        cout << "# (l, b) = "
+             << l << ", " << b << endl;
+        if(opts.SFD_prior) {
+            cout << "# E(B-V)_SFD = " << EBV << endl;
+        }
+        
+        // Load surfaces
+        std::stringstream dset_name;
+        dset_name << "/stellar_pdfs/" << *it << "/stellar_pdfs";
+        std::unique_ptr<TImgStack> img_stack = read_img_stack(
+            opts.input_fname,
+            dset_name.str()
+        );
+        
+        unsigned int n_stars = img_stack->N_images;
+        
+        cout << "# " << n_stars << " stars in pixel" << endl;
+
+        // Check if this pixel has already been fully processed
+        if(!(opts.clobber)) {
+            bool process_pixel = false;
+
+            std::unique_ptr<H5::H5File> out_file = H5Utils::openFile(
+                opts.output_fname,
+                H5Utils::READ | H5Utils::WRITE | H5Utils::DONOTCREATE
+            );
+
+            if(!out_file) {
+                process_pixel = true;
+
+                //cout << "File does not exist" << endl;
+            } else {
+                //cout << "File exists" << endl;
+                //stringstream group_name;
+                //group_name << stellar_data.healpix_index;
+                //group_name << stellar_data.nside << "-" << stellar_data.healpix_index;
+
+                std::unique_ptr<H5::Group> pix_group = H5Utils::openGroup(
+                    *out_file,
+                    *it,
+                    H5Utils::READ | H5Utils::WRITE | H5Utils::DONOTCREATE
+                );
+
+                if(!pix_group) {
+                    process_pixel = true;
+                } else {
+                    //cout << "Group exists" << endl;
+                    
+                    if(opts.force_pix.size() != 0) {
+                        std::stringstream pix_spec_ss;
+                        pix_spec_ss << nside << "-" << hpidx;
+                        std::string pix_spec_str = pix_spec_ss.str();
+                        for(auto const &s : opts.force_pix) {
+                            if(pix_spec_str == s) {
+                                std::cerr << "Force-reprocessing pixel " << s << std::endl;
+                                process_pixel = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if((!process_pixel) && (opts.discrete_los)) {
+                        if(!H5Utils::dataset_exists("discrete-los", *pix_group)) {
+                            process_pixel = true;
+                        }
+                    }
+
+                    // If pixel is missing data, remove it, so that it can be regenerated
+                    if(process_pixel) {
+                        try {
+                            out_file->unlink(*it);
+                        } catch(H5::FileIException unlink_err) {
+                            cout << "Unable to remove group: '" << *it << "'"
+                                 << endl;
+                        }
+                    }
+                }
+            }
+
+            if(!process_pixel) {
+                cout << "# Pixel is already present in output. Skipping."
+                     << endl << endl;
+
+                continue; // All information is already present in output file
+            }
+        }
+
+        clock_gettime(CLOCK_MONOTONIC, &t_mid);
+
+        // Tag output pixel with HEALPix nside and index
+        stringstream group_name;
+        group_name << "/" << *it;
+
+        try {
+            H5Utils::add_watermark<uint32_t>(opts.output_fname, group_name.str(), "nside", nside);
+            H5Utils::add_watermark<uint64_t>(opts.output_fname, group_name.str(), "healpix_index", hpidx);
+            H5Utils::add_watermark<double>(opts.output_fname, group_name.str(), "l", l);
+            H5Utils::add_watermark<double>(opts.output_fname, group_name.str(), "b", b);
+            H5Utils::add_watermark<uint32_t>(opts.output_fname, group_name.str(), "n_stars", n_stars);
+        } catch(H5::AttributeIException err_att_exists) { }
+
+        // Sample discrete l.o.s. model
+        if(opts.discrete_los) {
+            std::unique_ptr<TNeighborPixels> neighbor_pixels;
+
+            if((opts.neighbor_lookup_fname != "NONE") &&
+               (opts.pixel_lookup_fname != "NONE") &&
+               (opts.output_fname_pattern != "NONE"))
+            {
+                // Load information on neighboring pixels
+                cout << "Loading information on neighboring pixels ..." << endl;
+                neighbor_pixels = std::make_unique<TNeighborPixels>(
+                    nside,
+                    hpidx,
+                    opts.neighbor_lookup_fname,
+                    opts.pixel_lookup_fname,
+                    opts.output_fname_pattern,
+                    1000);
+                
+                if(!neighbor_pixels->data_loaded()) {
+                    cerr << "Failed to load neighboring pixels! Aborting."
+                         << endl;
+                    return 1;
+                }
+                
+                // Calculate covariance matrices tying
+                // pixels together at each distance
+                neighbor_pixels->init_covariance(
+                    opts.correlation_scale,
+                    opts.d_soft,
+                    opts.gamma_soft);
+            }
+            
+            TDiscreteLosMcmcParams discrete_los_params(
+                std::move(img_stack),
+                std::move(neighbor_pixels),
+                1, 1,
+                opts.verbosity
+            );
+            discrete_los_params.initialize_priors(
+                los_model,
+                opts.log_Delta_EBV_floor,
+                opts.log_Delta_EBV_ceil,
+                opts.sigma_log_Delta_EBV,
+                opts.verbosity
+            );
+            
+            std::vector<uint16_t> neighbor_sample;
+
+            if(discrete_los_params.neighbor_pixels) {
+                cout << "Initializing dominant distances ..." << endl;
+                discrete_los_params.neighbor_pixels->init_dominant_dist(opts.verbosity);
+
+                //cout << "Resampling neighboring pixels ..." << endl;
+                //sample_neighbors(*(discrete_los_params.neighbor_pixels), opts.verbosity);
+                //sample_neighbors_pt(
+                //    *(discrete_los_params.neighbor_pixels),
+                //    neighbor_sample,
+                //    opts.verbosity
+                //);
+            }
+
+            cout << "Sampling line of sight discretely ..." << endl;
+            sample_los_extinction_discrete(
+                opts.output_fname,
+                *it,
+                discrete_los_options,
+                discrete_los_params,
+                neighbor_sample,
+                opts.dsc_samp_settings,
+                opts.verbosity
+            );
+            cout << "Done with discrete sampling." << endl;
+        }
+
+        clock_gettime(CLOCK_MONOTONIC, &t_end);
+        t_tot = (t_end.tv_sec - t_start.tv_sec)
+                + 1.e-9 * (t_end.tv_nsec - t_start.tv_nsec);
+        t_star = (t_mid.tv_sec - t_start.tv_sec)
+                + 1.e-9 * (t_mid.tv_nsec - t_start.tv_nsec);
+        
+        try {
+            H5Utils::add_watermark<float>(opts.output_fname, group_name.str(), "t_tot", (float)t_tot);
+            H5Utils::add_watermark<float>(opts.output_fname, group_name.str(), "t_star", (float)t_star);
+        } catch(H5::AttributeIException err_att_exists) { }
+
+        if(opts.verbosity >= 1) {
+            cout << endl
+                 << "==================================================="
+                 << endl;
+        }
+        cout << "# Time elapsed for pixel: "
+             << setprecision(2) << t_tot
+             << " s (" << setprecision(2)
+             << t_tot / (double)(n_stars)
+             << " s / star)" << endl;
+        cout << "# Percentage of time spent on l.o.s. fit: "
+             << setprecision(2) << 100. * (t_tot - t_star) / t_tot
+             << " %" << endl;
+        if(opts.verbosity >= 1) {
+            cout << "==================================================="
+                 << endl;
+        }
+        cout << endl;
+    }
+
+    /*
+     *  Add additional metadata to output file
+     */
+    try {
+        string watermark = GIT_BUILD_VERSION;
+        H5Utils::add_watermark<string>(
+            opts.output_fname, "/",
+            "bayestar git commit",
+            watermark
+        );
+    } catch(H5::AttributeIException err_att_exists) { }
+
+    stringstream commandline_args;
+    for(int i=0; i<argc; i++) {
+        commandline_args << argv[i] << " ";
+    }
+    try {
+        string commandline_args_str(commandline_args.str());
+        H5Utils::add_watermark<string>(
+            opts.output_fname, "/",
+            "commandline invocation",
+            commandline_args_str
+        );
+    } catch(H5::AttributeIException err_att_exists) { }
+
+    return 0;
+}
+
+
+int main(int argc, char **argv) {
+    gsl_set_error_handler_off();
+
+    /*
+     *  Parse commandline arguments
+     */
+
+    TProgramOpts opts;
+    int parse_res = get_program_opts(argc, argv, opts);
+    if(parse_res <= 0) { return parse_res; }
+
+    time_t tmp_time = time(0);
+    char * dt = ctime(&tmp_time);
+    cout << "# Start time: " << dt;
+    
+    timespec prog_start_time;
+    clock_gettime(CLOCK_MONOTONIC, &prog_start_time);
+    
+    int res;
+    if(opts.load_surfs) {
+        // Use pre-computed stellar posterior densities
+        // to determine l.o.s. reddening
+        res = los_workflow(opts, argc, argv);
+    } else {
+        // Determine stellar posterior densities,
+        // then determine l.o.s. reddening
+        res = full_workflow(opts, argc, argv);
+    }
 
     tmp_time = time(0);
     dt = ctime(&tmp_time);
@@ -572,6 +914,5 @@ int main(int argc, char **argv) {
          << prog_mm << " m "
          << prog_ss << " s" << endl;
 
-
-    return 0;
+    return res;
 }

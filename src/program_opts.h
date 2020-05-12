@@ -23,6 +23,7 @@ struct TProgramOpts {
 
     bool save_surfs;
     bool save_gridstars;
+    bool load_surfs;
 
     double err_floor;  // in millimags
 

@@ -722,10 +722,40 @@ herr_t fetch_pixel_name(hid_t loc_id, const char *name, void *opdata) {
 	return 0;
 }
 
-void get_input_pixels(std::string fname, std::vector<std::string> &pix_name) {
+void get_input_pixels(
+        std::string fname,
+        std::vector<std::string> &pix_name,
+        const std::string &base
+) {
 	std::unique_ptr<H5::H5File> file = H5Utils::openFile(fname, H5Utils::READ);
 
-	file->iterateElems("/photometry/", NULL, fetch_pixel_name, reinterpret_cast<void*>(&pix_name));
+	file->iterateElems(base, NULL, fetch_pixel_name, reinterpret_cast<void*>(&pix_name));
+}
+
+
+void get_pixel_props(
+        const std::string& fname,
+        const std::vector<std::string>& pix_name,
+        std::vector<double>& l,
+        std::vector<double>& b,
+        std::vector<double>& EBV,
+        std::vector<uint32_t>& nside,
+        std::vector<uint64_t>& healpix_index,
+        const std::string& base
+) {
+	std::unique_ptr<H5::H5File> f = H5Utils::openFile(fname, H5Utils::READ);
+    
+    for(auto& name : pix_name) {
+        std::stringstream path;
+        path << base << "/" << name;
+        std::unique_ptr<H5::Group> g = H5Utils::openGroup(*f, path.str(), H5Utils::READ);
+        if(!g) { std::cerr << "Could not load " << path.str() << " !" << std::endl; }
+        l.push_back(H5Utils::read_attribute<double>(*g, "l"));
+        b.push_back(H5Utils::read_attribute<double>(*g, "b"));
+        EBV.push_back(H5Utils::read_attribute<double>(*g, "EBV"));
+        nside.push_back(H5Utils::read_attribute<uint32_t>(*g, "nside"));
+        healpix_index.push_back(H5Utils::read_attribute<uint64_t>(*g, "healpix_index"));
+    }
 }
 
 

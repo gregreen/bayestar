@@ -354,6 +354,66 @@ float H5Utils::read_attribute<float>(H5::DataSet& dataset, const std::string& na
     return read_attribute_helper<double>(dataset, name, dtype);
 }
 
+// Read attribute from group
+template<class T>
+T read_attribute_helper(H5::Group& g, const std::string& name) {
+    H5::PredType dtype = H5Utils::get_dtype<T>();
+    H5::Attribute attribute = g.openAttribute(name);
+    return read_attribute_helper<T>(attribute, dtype);
+}
+
+template<>
+double H5Utils::read_attribute<double>(H5::Group& g, const std::string& name) {
+    return read_attribute_helper<double>(g, name);
+}
+
+template<>
+float H5Utils::read_attribute<float>(H5::Group& g, const std::string& name) {
+    return read_attribute_helper<float>(g, name);
+}
+
+template<>
+uint32_t H5Utils::read_attribute<uint32_t>(H5::Group& g, const std::string& name) {
+    return read_attribute_helper<uint32_t>(g, name);
+}
+
+template<>
+uint64_t H5Utils::read_attribute<uint64_t>(H5::Group& g, const std::string& name) {
+    return read_attribute_helper<uint64_t>(g, name);
+}
+
+// Read attribute that is 1D array
+template<class T>
+void H5Utils::read_attribute_1d_helper(H5::Attribute& attribute, std::vector<T> &ret) {
+    // Check that attribute is 1D
+    H5::DataSpace dataspace = attribute.getSpace();
+    const hsize_t n_dims = dataspace.getSimpleExtentNdims();
+    assert(n_dims == 1);
+    
+    // Get length of array
+    H5::PredType type = H5Utils::get_dtype<T>();
+    hsize_t length;
+    dataspace.getSimpleExtentDims(&length);
+    
+    // Read in array
+    ret.resize(length);
+    attribute.read(H5Utils::get_dtype<T>(), ret.data());
+}
+
+template<>
+std::vector<double> H5Utils::read_attribute_1d<double>(H5::Attribute& attribute) {
+    std::vector<double> a;
+    read_attribute_1d_helper<double>(attribute, a);
+    return a;
+}
+
+template<>
+std::vector<uint32_t> H5Utils::read_attribute_1d<uint32_t>(H5::Attribute& attribute) {
+    std::vector<uint32_t> a;
+    read_attribute_1d_helper<uint32_t>(attribute, a);
+    return a;
+}
+
 
 /*
  * Convert C++ data types to HDF5 data types

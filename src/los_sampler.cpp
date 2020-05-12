@@ -1744,12 +1744,12 @@ float* TLOSMCMCParams::get_Delta_EBV(unsigned int thread_num) {
  ****************************************************************************************************************************/
 
 TDiscreteLosMcmcParams::TDiscreteLosMcmcParams(
-            TImgStack *_img_stack,
+            std::unique_ptr<TImgStack> _img_stack,
             std::unique_ptr<TNeighborPixels> _neighbor_pixels,
             unsigned int _N_runs,
             unsigned int _N_threads,
             int verbosity)
-        : img_stack(_img_stack),
+        : img_stack(std::move(_img_stack)),
           neighbor_pixels(std::move(_neighbor_pixels)),
           N_runs(_N_runs), N_threads(_N_threads)
 {
@@ -2557,7 +2557,7 @@ void TDiscreteLosMcmcParams::initialize_priors(
     std::cerr << "Initializing discrete l.o.s. priors ..." << std::endl;
     std::vector<double> lnZ_dummy;
     TLOSMCMCParams los_params(
-        img_stack,
+        img_stack.get(),
         lnZ_dummy,
         0., 11, 1,
         n_dists
@@ -5868,6 +5868,77 @@ void TImgStack::normalize(double norm) {
         
         *(img[i]) *= norm/sum_img;
     }
+}
+
+
+std::unique_ptr<TImgStack> read_img_stack(
+    const std::string& fname,
+    const std::string& dset
+) {
+    // Open dataset
+	std::unique_ptr<H5::H5File> f = H5Utils::openFile(fname, H5Utils::READ);
+    if(!f) { return std::unique_ptr<TImgStack>(nullptr); }
+	std::unique_ptr<H5::DataSet> d = H5Utils::openDataSet(*f, dset);
+    if(!d) { return std::unique_ptr<TImgStack>(nullptr); }
+
+    // Read dimensions of image stack
+    size_t n_images;
+    double min[2], max[2];
+    uint32_t n_pix[2];
+    
+    std::cout << "Reading image metadata (nPix,min,max) ..." << std::endl;
+    H5::Attribute a_npix = d->openAttribute("nPix");
+    H5::Attribute a_min = d->openAttribute("min");
+    H5::Attribute a_max = d->openAttribute("max");
+    
+    std::vector<uint32_t> n_pix_vec = H5Utils::read_attribute_1d<uint32_t>(a_npix);
+    std::vector<double> min_vec = H5Utils::read_attribute_1d<double>(a_min);
+    std::vector<double> max_vec = H5Utils::read_attribute_1d<double>(a_max);
+    
+    assert(n_pix_vec.size() == 2);
+    assert(min_vec.size() == 2);
+    assert(max_vec.size() == 2);
+    
+    std::copy(n_pix_vec.begin(), n_pix_vec.end(), &(n_pix[0]));
+    std::copy(min_vec.begin(), min_vec.end(), &(min[0]));
+    std::copy(max_vec.begin(), max_vec.end(), &(max[0]));
+
+    H5::DataSpace dspace = d->getSpace();
+    const hsize_t img_n_dims = dspace.getSimpleExtentNdims();
+    assert(img_n_dims == 3);
+    hsize_t img_shape[3];
+    dspace.getSimpleExtentDims(&(img_shape[0]));
+    n_images = img_shape[0];
+    assert(img_shape[1] == n_pix[0]);
+    assert(img_shape[2] == n_pix[1]);
+    
+    // Initialize image stack
+    TRect rect(min, max, n_pix);
+    auto img_stack = std::unique_ptr<TImgStack>(new TImgStack(n_images, rect));
+
+    for(size_t i=0; i<n_images; i++) {
+        bool res = img_stack->initialize_to_zero(i);
+        if(!res) { return std::unique_ptr<TImgStack>(nullptr); }
+    }
+    
+    // Read in images
+    std::cout << "Reading image data ..." << std::endl;
+	float *buf = new float[n_pix[0] * n_pix[1] * n_images];
+    d->read(buf, H5Utils::get_dtype<float>());
+    
+    for(size_t i=0; i<n_images; i++) {
+        cv::Mat *img = img_stack->img[i];
+        for(size_t j=0; j<n_pix[0]; j++) {
+            for(size_t k=0; k<n_pix[1]; k++) {
+                img->at<floating_t>(j,k) = buf[n_pix[1]*j + k];
+            }
+        }
+    }
+    
+    delete[] buf;
+
+    // Return image stack
+    return img_stack;
 }
 
 

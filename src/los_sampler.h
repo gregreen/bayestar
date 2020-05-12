@@ -39,6 +39,7 @@
 #include <memory>
 #include <random>
 #include <chrono>
+#include <cassert>
 
 #include <stdint.h>
 
@@ -97,6 +98,13 @@ struct TImgStack {
     void normalize(double norm=1.0);
 };
 
+
+std::unique_ptr<TImgStack> read_img_stack(
+    const std::string& fname,
+    const std::string& group
+);
+
+
 struct TLOSMCMCParams {
     TImgStack *img_stack;
     std::vector<double> p0_over_Z, ln_p0_over_Z, inv_p0_over_Z;
@@ -152,7 +160,7 @@ struct TDiscreteLosMcmcParams {
     std::vector<double> p_sample; // Workspace for storing sample probabilities
     //std::vector<int> gibbs_order; // Workspace for storing order of Gibbs sampling
 
-    TImgStack* img_stack;   // Stack of (distance, reddening) posteriors for stars
+    std::unique_ptr<TImgStack> img_stack;   // Stack of (distance, reddening) posteriors for stars
     double y_zero_idx;      // y-index corresponding to zero reddening
 
     double* line_int;       // Line integral through line of sight for each thread
@@ -177,7 +185,7 @@ struct TDiscreteLosMcmcParams {
     unsigned int priors_subsampling;
     
     // Constructor/destructor
-    TDiscreteLosMcmcParams(TImgStack *_img_stack,
+    TDiscreteLosMcmcParams(std::unique_ptr<TImgStack> _img_stack,
                            std::unique_ptr<TNeighborPixels> _neighbor_pixels,
                            unsigned int _N_runs,
                            unsigned int _N_threads,

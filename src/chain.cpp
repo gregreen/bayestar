@@ -970,7 +970,6 @@ void TImgWriteBuffer::write(const std::string& fname, const std::string& group, 
 }
 
 
-
 /*
  *   TChainWriteBuffer member functions
  */
