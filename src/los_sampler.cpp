@@ -5928,9 +5928,10 @@ std::unique_ptr<TImgStack> read_img_stack(
     
     for(size_t i=0; i<n_images; i++) {
         cv::Mat *img = img_stack->img[i];
+        size_t i0 = i * n_pix[0]*n_pix[1];
         for(size_t j=0; j<n_pix[0]; j++) {
             for(size_t k=0; k<n_pix[1]; k++) {
-                img->at<floating_t>(j,k) = buf[n_pix[1]*j + k];
+                img->at<floating_t>(j,k) = buf[i0 + n_pix[1]*j + k];
             }
         }
     }
