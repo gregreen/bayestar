@@ -246,7 +246,7 @@ def main():
     args = parser.parse_args()
 
     if (args.output is None) and not args.show:
-        print 'Either --output or --show must be given.'
+        print('Either --output or --show must be given.')
         return 0
 
     fname = abspath(expanduser(args.input))
@@ -284,13 +284,13 @@ def main():
             lnZ_idx = (lnZ > lnZ_max - 10.)
             #print np.sum(lnZ_idx), np.sum(~lnZ_idx)
 
-            print 'ln(Z_98) = %.2f' % (lnZ_max)
+            print('ln(Z_98) = %.2f' % (lnZ_max))
 
             for Delta_lnZ in [2.5, 5., 10., 15., 100.]:
                 tmp = np.sum(lnZ < lnZ_max - Delta_lnZ) / float(lnZ.size)
-                print '%.2f %% fail D = %.1f cut' % (100.*tmp, Delta_lnZ)
+                print('%.2f %% fail D = %.1f cut' % (100.*tmp, Delta_lnZ))
         except KeyError:
-            print "No stellar chains present."
+            print("No stellar chains present.")
             stellar_chains = False
 
         try:
@@ -318,7 +318,7 @@ def main():
                 pdf_indiv = pdf_indiv[idx[:4]]
 
         except IOError:
-            print 'Using chains to create image of stacked pdfs...'
+            print('Using chains to create image of stacked pdfs...')
 
             star_samples = chain.get_samples()[:, :, 0:2]
 
@@ -421,7 +421,7 @@ def main():
         x_sep = 0.02
         w = (0.98 - 0.12 - 3. * x_sep) / 4.
 
-        for i in xrange(4):
+        for i in range(4):
             x_0 = 0.12 + i * (w + x_sep)
             rect = [x_0, 0.78, w, 0.20]
             ax_tmp = fig.add_axes(rect)

@@ -379,9 +379,9 @@ class TEmpiricalPhotometry:
 				continue
 			data = line.split()
 			if len(data) < 6:
-				print 'Error reading in stellar templates.'
-				print 'The following line does not have the correct number of entries (6 expected):'
-				print line
+				print('Error reading in stellar templates.')
+				print('The following line does not have the correct number of entries (6 expected):')
+				print(line)
 				return 0
 			row.append([float(s) for s in data])
 		f.close()
@@ -483,8 +483,8 @@ def main():
 	                                                            ('M_i', 'f8'),
 	                                                            ('M_z', 'f8'),
 	                                                            ('M_y', 'f8')])
-	print data['M_g']
-	print data['M_r']
+	print(data['M_g'])
+	print(data['M_r'])
 	#ax.scatter(data['M_g'] - data['M_r'], data['M_r'], c='k', s=1.0)
 	
 	ylim = ax.get_ylim()
